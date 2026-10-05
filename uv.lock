@@ -9,6 +9,7 @@ members = [
     "seavix-ports",
     "seavix-registry",
     "seavix-web",
+    "seavix-work",
 ]
 
 [[package]]
@@ -1171,6 +1172,7 @@ dependencies = [
     { name = "seavix-ports" },
     { name = "seavix-registry" },
     { name = "seavix-web" },
+    { name = "seavix-work" },
 ]
 
 [package.dev-dependencies]
@@ -1186,6 +1188,7 @@ requires-dist = [
     { name = "seavix-ports", editable = "packages/seavix-ports" },
     { name = "seavix-registry", editable = "services/registry" },
     { name = "seavix-web", editable = "web" },
+    { name = "seavix-work", editable = "services/work" },
 ]
 
 [package.metadata.requires-dev]
@@ -1251,6 +1254,31 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "python-multipart", specifier = ">=0.0.20" },
+    { name = "uvicorn", specifier = ">=0.35" },
+]
+
+[[package]]
+name = "seavix-work"
+version = "0.1.0"
+source = { editable = "services/work" }
+dependencies = [
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "seavix-ports" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.15" },
+    { name = "asyncpg", specifier = ">=0.30" },
+    { name = "fastapi", specifier = ">=0.130" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "seavix-ports", editable = "packages/seavix-ports" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "uvicorn", specifier = ">=0.35" },
 ]
 

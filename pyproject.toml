@@ -7,6 +7,7 @@ dependencies = [
     "seavix-ports",
     "seavix-registry",
     "seavix-web",
+    "seavix-work",
 ]
 
 [dependency-groups]
@@ -28,3 +29,4 @@ seavix-ports = { workspace = true }
 seavix-identity = { workspace = true }
 seavix-web = { workspace = true }
 seavix-registry = { workspace = true }
+seavix-work = { workspace = true }

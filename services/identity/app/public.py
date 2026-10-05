@@ -22,7 +22,7 @@ async def get_public_org(slug: str) -> PublicOrgResponse:
         row = (
             await session.execute(
                 text(
-                    "SELECT name, about, website, phone, logo_blob_key, profile_status "
+                    "SELECT name, type, about, website, phone, logo_blob_key, profile_status "
                     "FROM organization WHERE slug = :slug"
                 ),
                 {"slug": slug},
@@ -33,6 +33,7 @@ async def get_public_org(slug: str) -> PublicOrgResponse:
     return PublicOrgResponse(
         slug=slug,
         name=row["name"],
+        type=row["type"],
         about=row["about"],
         website=row["website"],
         phone=row["phone"],

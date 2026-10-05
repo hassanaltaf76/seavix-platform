@@ -34,6 +34,7 @@ class RegisterResponse(BaseModel):
 class PublicOrgResponse(BaseModel):
     slug: str
     name: str
+    type: str
     about: str | None
     website: str | None
     phone: str | None

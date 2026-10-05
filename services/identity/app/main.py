@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 from seavix_ports import InMemoryEventBus
 
-from . import profile, public, register
+from . import internal, profile, public, register
 from .orgs import create_organization
 
 
@@ -23,6 +23,7 @@ def create_app() -> FastAPI:
     app.include_router(register.router)
     app.include_router(public.router)
     app.include_router(profile.router)
+    app.include_router(internal.router)
     return app
 
 

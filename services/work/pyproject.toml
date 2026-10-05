@@ -1,0 +1,21 @@
+[project]
+name = "seavix-work"
+version = "0.1.0"
+description = "SeaVix work service — RFQ → quote → job spine."
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.130",
+    "uvicorn>=0.35",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.15",
+    "httpx>=0.28",
+    "seavix-ports",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["work"]
