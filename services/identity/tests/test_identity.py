@@ -14,17 +14,17 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.main import app  # noqa: E402
 
 
-def test_healthz():
+def test_healthz(arun):
     client = TestClient(app)
     resp = client.get("/healthz")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok", "service": "identity"}
 
 
-def test_org_created_event_published_via_bus():
+def test_org_created_event_published_via_bus(arun):
     """Org creation must publish a domain event through the EventBus port.
 
-    Single asyncio.run() for the whole scenario: pooled asyncpg connections
+    Single event loop for the whole scenario (shared test loop, see conftest): pooled asyncpg connections
     must not be shared across event loops.
     """
     from sqlalchemy import text
@@ -51,7 +51,7 @@ def test_org_created_event_published_via_bus():
             ).one()
         return org, row
 
-    org, row = asyncio.run(scenario())
+    org, row = arun(scenario())
 
     # handler received exactly one envelope-shaped event
     assert len(received) == 1
