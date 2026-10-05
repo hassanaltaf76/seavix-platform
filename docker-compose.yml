@@ -1,0 +1,59 @@
+# SeaVix local dev infrastructure.
+# Rule: infra only here. Services run as plain processes (uvicorn), NOT containers.
+name: seavix-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: seavix
+      POSTGRES_PASSWORD: dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seavix"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  openfga-migrate:
+    image: openfga/openfga:latest
+    command: migrate
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://seavix:dev@postgres:5432/openfga?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  openfga:
+    image: openfga/openfga:latest
+    command: run
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://seavix:dev@postgres:5432/openfga?sslmode=disable
+    ports:
+      - "18080:8080"    # HTTP API — host 8080 is occupied by an unrelated local daemon; use localhost:18080
+      - "8081:8081"     # gRPC (unused day 1)
+    depends_on:
+      openfga-migrate:
+        condition: service_completed_successfully
+
+  firebase-auth:
+    # No official emulator image; node + firebase-tools is the standard workaround.
+    image: node:20-alpine
+    working_dir: /fb
+    command: sh -c "npm install --silent firebase-tools@latest && ./node_modules/.bin/firebase emulators:start --only auth --project seavix-dev"
+    ports:
+      - "9099:9099"     # Auth API (point SDK here via FIREBASE_AUTH_EMULATOR_HOST)
+      - "4000:4000"     # Emulator UI (browser, handy for creating test users)
+    volumes:
+      - ./firebase.json:/fb/firebase.json
+      - fbdata:/root/.cache/firebase
+
+volumes:
+  pgdata:
+  fbdata:
