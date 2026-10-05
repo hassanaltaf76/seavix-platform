@@ -8,17 +8,27 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from .config import blob_root, identity_base_url
-from .rfq import LOCATION_TYPES, SURVEY_TYPES, RateLimiter, save_rfq
+from .config import blob_root, identity_base_url, work_base_url
+from .ratelimit import RateLimiter
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 limiter = RateLimiter(limit=5, window_seconds=3600)
 
+SURVEY_TYPES = ("pre-purchase", "condition", "bunker", "loading-discharging")
+LOCATION_TYPES = ("terminal", "STS", "anchorage", "OPL", "repair-berth", "dry-dock")
+
 
 async def _identity_get(path: str) -> httpx.Response:
     async with httpx.AsyncClient(base_url=identity_base_url(), timeout=10.0) as c:
         return await c.get(path)
+
+
+async def _post_public_rfq(payload: dict) -> httpx.Response:
+    """RFQ intake lives in the work service (spine). Scaffold-grade direct
+    HTTP call; a service-mesh/queue belongs to a later slice."""
+    async with httpx.AsyncClient(base_url=work_base_url(), timeout=10.0) as c:
+        return await c.post("/api/public/rfqs", json=payload)
 
 
 # ---------------------------------------------------------------- landing
@@ -111,6 +121,7 @@ async def rfq_submit(
     vessel_imo: str = Form(...),
     survey_type: str = Form(...),
     location_type: str = Form(...),
+    contact_email: str = Form(""),  # validated below for a clean form error
     preferred_date: str = Form(""),
     scope: str = Form(""),
     website: str = Form(""),  # honeypot: must stay empty (real users never see it)
@@ -130,19 +141,40 @@ async def rfq_submit(
     if resp.status_code != 200 or resp.json()["profile_status"] != "live":
         raise HTTPException(status_code=404, detail="organization not available")
 
-    try:
-        save_rfq(slug, vessel_imo.strip(), survey_type, location_type,
-                 preferred_date or None, scope or None)
-    except ValueError as exc:
+    if not contact_email.strip():
         return templates.TemplateResponse(request, "rfq_form.html", {
                 "request": request,
                 "slug": slug,
                 "org_name": resp.json()["name"],
                 "survey_types": SURVEY_TYPES,
                 "location_types": LOCATION_TYPES,
-                "error": str(exc),
+                "error": "contact email is required",
             },
             status_code=400,
+        )
+
+    work_resp = await _post_public_rfq({
+        "org_slug": slug,
+        "contact_email": contact_email.strip(),
+        "vessel_imo": vessel_imo.strip() or None,
+        "survey_type": survey_type,
+        "location_type": location_type,
+        "preferred_date": preferred_date or None,
+        "scope_notes": scope or None,
+    })
+    if work_resp.status_code != 201:
+        error = work_resp.json().get("detail", "could not submit RFQ")
+        if isinstance(error, list):
+            error = "; ".join(str(e.get("msg", e)) for e in error)
+        return templates.TemplateResponse(request, "rfq_form.html", {
+                "request": request,
+                "slug": slug,
+                "org_name": resp.json()["name"],
+                "survey_types": SURVEY_TYPES,
+                "location_types": LOCATION_TYPES,
+                "error": str(error),
+            },
+            status_code=400 if work_resp.status_code in (400, 404, 422) else 502,
         )
     return templates.TemplateResponse(request, "rfq_thanks.html", {"request": request})
 

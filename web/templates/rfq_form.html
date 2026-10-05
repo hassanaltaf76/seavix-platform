@@ -18,6 +18,9 @@
     {% for t in location_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
   </select>
 
+  <label for="contact_email">Your email</label>
+  <input id="contact_email" name="contact_email" type="email" required>
+
   <label for="preferred_date">Preferred date</label>
   <input id="preferred_date" name="preferred_date" type="date">
 

@@ -6,7 +6,7 @@ import uuid
 import httpx
 
 os.environ.setdefault(
-    "DATABASE_URL",
+    "REGISTRY_DATABASE_URL",
     "postgresql+asyncpg://seavix:dev@localhost:5432/seavix_registry",
 )
 

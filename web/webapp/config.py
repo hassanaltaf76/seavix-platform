@@ -15,6 +15,10 @@ def identity_base_url() -> str:
     return os.environ.get("IDENTITY_BASE_URL", "http://localhost:8001")
 
 
+def work_base_url() -> str:
+    return os.environ.get("WORK_SERVICE_URL", "http://localhost:8004")
+
+
 def blob_root() -> Path:
     """Shared with the identity service's LocalBlobStore root.
 
@@ -22,7 +26,3 @@ def blob_root() -> Path:
     dev media serving see the same files. var/ is gitignored.
     """
     return Path(os.environ.get("SEAVIX_BLOB_ROOT", PLATFORM_ROOT / "var" / "blobs"))
-
-
-def rfq_db_path() -> Path:
-    return Path(os.environ.get("SEAVIX_RFQ_DB", PLATFORM_ROOT / "var" / "web.db"))

@@ -1,20 +1,18 @@
-"""Public web app tests — identity service stubbed at the HTTP boundary.
+"""Public web app tests — service boundaries stubbed at the HTTP helpers.
 
-Honeypot and rate-limit tests never reach identity (honeypot short-circuits
-before the org lookup; the limiter trips first), so a stubbed _identity_get
-keeps these tests hermetic. End-to-end with live services was verified
-manually (reports/12-public-web-app.md).
+_identity_get (identity service) and _post_public_rfq (work service) are
+stubbed; honeypot and rate-limit tests never reach either (honeypot
+short-circuits, limiter trips first). End-to-end with live services is
+verified manually and in task 19 (reports/18-absorb-sqlite-rfq.md).
 """
 import asyncio
-import os
-import sqlite3
 
 import httpx
 import pytest
 
 from webapp import pages
 from webapp.main import app
-from webapp.rfq import RateLimiter
+from webapp.ratelimit import RateLimiter
 
 LIVE_ORG = {
     "slug": "harbor-surveys",
@@ -28,45 +26,62 @@ LIVE_ORG = {
 
 
 class StubResp:
-    def __init__(self, status_code, payload):
+    def __init__(self, status_code, payload=None):
         self.status_code = status_code
-        self._payload = payload
+        self._payload = payload or {}
 
     def json(self):
         return self._payload
 
 
-@pytest.fixture()
-def web(monkeypatch, tmp_path):
-    monkeypatch.setenv("SEAVIX_RFQ_DB", str(tmp_path / "web.db"))
-    fresh_limiter = RateLimiter(limit=5, window_seconds=3600)
-    monkeypatch.setattr(pages, "limiter", fresh_limiter)
-    monkeypatch.setattr(
-        pages, "_identity_get",
-        lambda path: _stub(path),
-    )
-
-    async def _client():
-        transport = httpx.ASGITransport(app=app)
-        return httpx.AsyncClient(transport=transport, base_url="http://web")
-
-    return _client
-
-
-async def _stub(path: str) -> StubResp:
+async def _stub_identity(path: str) -> StubResp:
     slug = path.rsplit("/", 1)[-1]
     if slug == LIVE_ORG["slug"]:
         return StubResp(200, LIVE_ORG)
     return StubResp(404, {"detail": "organization not found"})
 
 
+@pytest.fixture()
+def web(monkeypatch):
+    fresh_limiter = RateLimiter(limit=5, window_seconds=3600)
+    monkeypatch.setattr(pages, "limiter", fresh_limiter)
+    monkeypatch.setattr(pages, "_identity_get", _stub_identity)
+
+    posted: list[dict] = []
+
+    async def fake_post(payload: dict) -> StubResp:
+        posted.append(payload)
+        if payload["org_slug"] == LIVE_ORG["slug"] and payload["contact_email"]:
+            return StubResp(201, {"id": "rfq-1", "status": "open"})
+        return StubResp(400, {"detail": "invalid RFQ"})
+
+    monkeypatch.setattr(pages, "_post_public_rfq", fake_post)
+
+    async def _client():
+        transport = httpx.ASGITransport(app=app)
+        return httpx.AsyncClient(transport=transport, base_url="http://web")
+
+    return {"client": _client, "posted": posted}
+
+
 def _run(coro):
     return asyncio.run(coro)
 
 
+def _rfq_data():
+    return {
+        "vessel_imo": "9074729",
+        "survey_type": "condition",
+        "location_type": "anchorage",
+        "contact_email": "charterer@example.com",
+        "preferred_date": "2026-11-01",
+        "scope": "Annual condition survey",
+    }
+
+
 def test_landing_and_register_form_render(web):
     async def scenario():
-        async with (await web()) as c:
+        async with (await web["client"]()) as c:
             landing = await c.get("/")
             assert landing.status_code == 200
             assert "SeaVix" in landing.text
@@ -82,7 +97,7 @@ def test_landing_and_register_form_render(web):
 
 def test_profile_page_renders_and_hides_email(web):
     async def scenario():
-        async with (await web()) as c:
+        async with (await web["client"]()) as c:
             resp = await c.get(f"/p/{LIVE_ORG['slug']}")
             assert resp.status_code == 200
             assert LIVE_ORG["name"] in resp.text
@@ -95,7 +110,7 @@ def test_profile_page_renders_and_hides_email(web):
 
 def test_non_live_and_unknown_profiles_show_friendly_page(web):
     async def scenario():
-        async with (await web()) as c:
+        async with (await web["client"]()) as c:
             unknown = await c.get("/p/does-not-exist")
             assert unknown.status_code == 404
             assert "Profile not available" in unknown.text
@@ -114,56 +129,49 @@ def test_non_live_and_unknown_profiles_show_friendly_page(web):
     _run(scenario())
 
 
-def test_honeypot_rejects_bots(web, tmp_path):
+def test_honeypot_never_reaches_work_service(web):
     async def scenario():
-        async with (await web()) as c:
+        async with (await web["client"]()) as c:
             resp = await c.post(
                 f"/p/{LIVE_ORG['slug']}/rfq",
-                data={
-                    "vessel_imo": "9074729",
-                    "survey_type": "condition",
-                    "location_type": "OPL",
-                    "website": "http://spam.example",  # bot filled the trap
-                },
+                data={**_rfq_data(), "website": "http://spam.example"},  # bot trap
             )
             assert resp.status_code == 200  # fake success
             assert "Thank you" in resp.text
 
     _run(scenario())
-    db = sqlite3.connect(tmp_path / "web.db")
-    table = db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='rfq'"
-    ).fetchone()
-    # honeypot must persist nothing — often the db file/table is never created
-    assert table is None or db.execute("SELECT count(*) FROM rfq").fetchone()[0] == 0
+    assert web["posted"] == []  # nothing was forwarded to the work service
 
 
-def _rfq_data():
-    return {
-        "vessel_imo": "9074729",
-        "survey_type": "condition",
-        "location_type": "anchorage",
-        "preferred_date": "2026-11-01",
-        "scope": "Annual condition survey",
-    }
-
-
-def test_rfq_persists_and_thanks(web, tmp_path):
+def test_rfq_forwards_to_work_service(web):
     async def scenario():
-        async with (await web()) as c:
+        async with (await web["client"]()) as c:
             resp = await c.post(f"/p/{LIVE_ORG['slug']}/rfq", data=_rfq_data())
             assert resp.status_code == 200
             assert "Thank you" in resp.text
 
     _run(scenario())
-    db = sqlite3.connect(tmp_path / "web.db")
-    rows = db.execute("SELECT org_slug, survey_type FROM rfq").fetchall()
-    assert rows == [(LIVE_ORG["slug"], "condition")]
+    (payload,) = web["posted"]
+    assert payload["org_slug"] == LIVE_ORG["slug"]
+    assert payload["contact_email"] == "charterer@example.com"
+    assert payload["survey_type"] == "condition"
+    assert payload["vessel_imo"] == "9074729"
+
+
+def test_work_service_rejection_renders_form_error(web):
+    async def scenario():
+        async with (await web["client"]()) as c:
+            bad = {**_rfq_data(), "contact_email": ""}  # fails work validation
+            resp = await c.post(f"/p/{LIVE_ORG['slug']}/rfq", data=bad)
+            assert resp.status_code == 400
+            assert "error" in resp.text.lower()
+
+    _run(scenario())
 
 
 def test_rate_limit_trips_on_sixth_submission(web):
     async def scenario():
-        async with (await web()) as c:
+        async with (await web["client"]()) as c:
             codes = []
             for _ in range(6):
                 resp = await c.post(f"/p/{LIVE_ORG['slug']}/rfq", data=_rfq_data())
@@ -172,3 +180,5 @@ def test_rate_limit_trips_on_sixth_submission(web):
             assert codes[5] == 429
 
     _run(scenario())
+    # limiter tripped before the 6th forward: exactly 5 calls reached work
+    assert len(web["posted"]) == 5

@@ -29,9 +29,14 @@ def port() -> int:
 
 
 def database_url() -> str:
+    # Service-specific var wins (tests for multiple Postgres services share one
+    # pytest process, so a single shared DATABASE_URL env would collide).
     return os.environ.get(
-        "DATABASE_URL",
-        "postgresql+asyncpg://seavix:dev@localhost:5432/seavix_registry",
+        "REGISTRY_DATABASE_URL",
+        os.environ.get(
+            "DATABASE_URL",
+            "postgresql+asyncpg://seavix:dev@localhost:5432/seavix_registry",
+        ),
     )
 
 
