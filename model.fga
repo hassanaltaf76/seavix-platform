@@ -1,0 +1,27 @@
+# SeaVix authorization model (OpenFGA schema 1.1)
+#
+# Design choices (kept simple on purpose):
+# - `organization` is the tenancy boundary: users are attached via `member` / `owner`.
+# - `grant` is an access grant inside an organization. A grant is scoped to its
+#   organization through the `parent_org` relation (tuple: organization:<id> parent_org grant:<id>).
+# - The access LEVEL is the relation name itself: `full`, `report_only`, `readonly`.
+#   Tuple shape: user:<uid> <level> grant:<id>   e.g.  user:alice full grant:g-1
+#   This keeps one grant type with three flat roles; no unions/exclusions day 1.
+# - A Check is therefore: can user:<uid> <level> grant:<id>?
+
+model
+  schema 1.1
+
+type user
+
+type organization
+  relations
+    define member: [user]
+    define owner: [user]
+
+type grant
+  relations
+    define parent_org: [organization]
+    define full: [user]
+    define report_only: [user]
+    define readonly: [user]
