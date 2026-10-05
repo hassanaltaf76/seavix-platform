@@ -54,6 +54,7 @@ def domain_event(event_type: str, aggregate: str, aggregate_id: str,
 # ---------------------------------------------------------------- blobs
 
 class BlobStore(Protocol):
+    async def put(self, key: str, data: bytes) -> str: ...
     async def presign_upload(self, key: str, ttl_seconds: int = 900) -> str: ...
     async def presign_download(self, key: str, ttl_seconds: int = 900) -> str: ...
 
@@ -62,6 +63,12 @@ class BlobStore(Protocol):
 class LocalBlobStore:
     """Dev implementation: files under ./var/blobs, URLs are local paths."""
     root: Path = Path("./var/blobs")
+
+    async def put(self, key: str, data: bytes) -> str:
+        dest = self.root / key
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+        return f"local://{dest}"
 
     async def presign_upload(self, key: str, ttl_seconds: int = 900) -> str:
         dest = self.root / key

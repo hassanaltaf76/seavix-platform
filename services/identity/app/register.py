@@ -42,6 +42,25 @@ async def _create_firebase_user(email: str, password: str) -> dict:
     return body
 
 
+def _grant_owner_tuple(firebase_uid: str, org_id: str) -> None:
+    """Record org ownership in the authorization store via the AuthzClient port.
+
+    Async helper fired-and-forgotten by the endpoint after commit.
+    """
+    import asyncio
+
+    from seavix_ports import AuthzClient
+
+    async def _write() -> None:
+        authz = AuthzClient.from_env()
+        await authz.write_tuples(
+            [{"user": f"user:{firebase_uid}", "relation": "owner",
+              "object": f"organization:{org_id}"}]
+        )
+
+    asyncio.get_running_loop().create_task(_write())
+
+
 @router.post("/api/register", status_code=201)
 async def register(payload: RegisterRequest, request: Request) -> RegisterResponse:
     async with SessionLocal() as session:
@@ -95,6 +114,8 @@ async def register(payload: RegisterRequest, request: Request) -> RegisterRespon
             {"uid": user_id, "org": org_id},
         )
         await session.commit()
+
+    _grant_owner_tuple(fb["localId"], org_id)
 
     await request.app.state.event_bus.publish(
         "org.registered",
