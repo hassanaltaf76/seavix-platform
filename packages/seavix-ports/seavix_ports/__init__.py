@@ -102,6 +102,86 @@ class FirebaseAuthProvider:
         )
 
 
+# ---------------------------------------------------------------- authz
+
+@dataclass(frozen=True)
+class AuthzTuple:
+    user: str
+    relation: str
+    object: str
+
+
+class AuthzPort(Protocol):
+    async def check(self, user: str, relation: str, object: str) -> bool: ...
+    async def write_tuples(self, tuples: list) -> None: ...
+    async def delete_tuples(self, tuples: list) -> None: ...
+
+
+@dataclass
+class AuthzClient:
+    """OpenFGA HTTP implementation.
+
+    Talks to the OpenFGA HTTP API at http_addr (current OpenFGA serves the
+    API WITHOUT the /v1 prefix: /stores/{id}/check, /stores/{id}/write).
+    Deletes go through POST /write with a "deletes" key — the dedicated
+    /delete endpoint does not exist (verified: undefined_endpoint).
+
+    Prod swap: same class against the managed OpenFGA endpoint, or a
+    different implementation of AuthzPort — services never call HTTP directly.
+    """
+
+    store_id: str
+    http_addr: str = "localhost:18080"
+
+    @classmethod
+    def from_env(cls) -> "AuthzClient":
+        import os
+
+        store_id = os.environ.get("OPENFGA_STORE_ID")
+        if not store_id:
+            raise KeyError("missing env var: OPENFGA_STORE_ID")
+        return cls(
+            store_id=store_id,
+            http_addr=os.environ.get("OPENFGA_HTTP_ADDR", "localhost:18080"),
+        )
+
+    async def check(self, user: str, relation: str, object: str) -> bool:
+        body = await self._post(
+            f"/stores/{self.store_id}/check",
+            {"tuple_key": {"user": user, "relation": relation, "object": object}},
+        )
+        return bool(body["allowed"])
+
+    async def write_tuples(self, tuples: list) -> None:
+        await self._post(
+            f"/stores/{self.store_id}/write",
+            {"writes": {"tuple_keys": [self._norm(t) for t in tuples]}},
+        )
+
+    async def delete_tuples(self, tuples: list) -> None:
+        await self._post(
+            f"/stores/{self.store_id}/write",
+            {"deletes": {"tuple_keys": [self._norm(t) for t in tuples]}},
+        )
+
+    # -- helpers
+    @staticmethod
+    def _norm(t) -> dict:
+        if isinstance(t, AuthzTuple):
+            return {"user": t.user, "relation": t.relation, "object": t.object}
+        return {"user": t["user"], "relation": t["relation"], "object": t["object"]}
+
+    async def _post(self, path: str, payload: dict) -> dict:
+        import httpx
+
+        async with httpx.AsyncClient(
+            base_url=f"http://{self.http_addr}", timeout=10.0
+        ) as client:
+            resp = await client.post(path, json=payload)
+            resp.raise_for_status()
+            return resp.json() if resp.content else {}
+
+
 # ---------------------------------------------------------------- secrets
 
 class SecretsProvider(Protocol):
