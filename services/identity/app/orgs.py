@@ -6,6 +6,7 @@ rule (task 1) provable: org.created is published via the port on creation.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -15,19 +16,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from seavix_ports import domain_event
 
 
+def _generate_slug(name: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "org"
+    return f"{base}-{uuid.uuid4().hex[:6]}"
+
+
 async def create_organization(
     session: AsyncSession,
     bus: Any,
     name: str,
     org_type: str,
+    slug: str | None = None,
 ) -> dict:
     org_id = str(uuid.uuid4())
+    slug = slug or _generate_slug(name)
     await session.execute(
         text(
-            "INSERT INTO organization (id, name, type, created_at) "
-            "VALUES (:id, :name, :type, now())"
+            "INSERT INTO organization (id, name, type, slug, created_at) "
+            "VALUES (:id, :name, :type, :slug, now())"
         ),
-        {"id": org_id, "name": name, "type": org_type},
+        {"id": org_id, "name": name, "type": org_type, "slug": slug},
     )
     await session.commit()
 
@@ -40,4 +48,4 @@ async def create_organization(
             {"name": name, "type": org_type},
         ),
     )
-    return {"id": org_id, "name": name, "type": org_type}
+    return {"id": org_id, "name": name, "type": org_type, "slug": slug}

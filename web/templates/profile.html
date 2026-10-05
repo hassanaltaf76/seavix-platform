@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ org.name }} — SeaVix{% endblock %}
+{% block content %}
+<article class="profile">
+  <header class="profile-header">
+    {% if org.logo_url %}
+      <img class="logo" src="{{ org.logo_url }}" alt="{{ org.name }} logo">
+    {% else %}
+      <div class="logo placeholder" aria-hidden="true"></div>
+    {% endif %}
+    <div>
+      <h1>{{ org.name }}</h1>
+      {% if org.about %}<p class="about">{{ org.about }}</p>{% endif %}
+      <ul class="facts">
+        {% if org.website %}<li>Website: <a href="{{ org.website }}" rel="nofollow">{{ org.website }}</a></li>{% endif %}
+        {% if org.phone %}<li>Phone: {{ org.phone }}</li>{% endif %}
+      </ul>
+    </div>
+  </header>
+  <p><a class="button" href="/p/{{ org.slug }}/rfq">Raise an RFQ</a></p>
+</article>
+{% endblock %}

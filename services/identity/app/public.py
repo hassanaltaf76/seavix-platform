@@ -31,6 +31,7 @@ async def get_public_org(slug: str) -> PublicOrgResponse:
     if row is None:
         raise HTTPException(status_code=404, detail="organization not found")
     return PublicOrgResponse(
+        slug=slug,
         name=row["name"],
         about=row["about"],
         website=row["website"],

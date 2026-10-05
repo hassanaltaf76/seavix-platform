@@ -3,7 +3,9 @@ name = "seavix-platform"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
+    "seavix-identity",
     "seavix-ports",
+    "seavix-web",
 ]
 
 [dependency-groups]
@@ -16,7 +18,10 @@ dev = [
 members = [
     "packages/*",
     "services/*",
+    "web",
 ]
 
 [tool.uv.sources]
 seavix-ports = { workspace = true }
+seavix-identity = { workspace = true }
+seavix-web = { workspace = true }

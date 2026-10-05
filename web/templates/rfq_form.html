@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Raise an RFQ — {{ org_name }}{% endblock %}
+{% block content %}
+<h1>Request a quotation from {{ org_name }}</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="/p/{{ slug }}/rfq" class="form">
+  <label for="vessel_imo">Vessel IMO number</label>
+  <input id="vessel_imo" name="vessel_imo" required
+         pattern="[0-9]{7}" title="7-digit IMO number">
+
+  <label for="survey_type">Survey type</label>
+  <select id="survey_type" name="survey_type" required>
+    {% for t in survey_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+  </select>
+
+  <label for="location_type">Location type</label>
+  <select id="location_type" name="location_type" required>
+    {% for t in location_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+  </select>
+
+  <label for="preferred_date">Preferred date</label>
+  <input id="preferred_date" name="preferred_date" type="date">
+
+  <label for="scope">Scope of work</label>
+  <textarea id="scope" name="scope" rows="5"
+            placeholder="Describe the survey scope, cargo, port restrictions…"></textarea>
+
+  {# Honeypot: hidden from humans, bots fill it. Must stay empty. #}
+  <div class="hp" aria-hidden="true">
+    <label for="website">Website<input id="website" name="website" type="text" tabindex="-1" autocomplete="off"></label>
+  </div>
+
+  <button type="submit">Submit RFQ</button>
+</form>
+{% endblock %}

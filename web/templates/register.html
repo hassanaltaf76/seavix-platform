@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Register — SeaVix{% endblock %}
+{% block content %}
+<h1>Register</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="/register" class="form">
+  <label>Account type</label>
+  <div class="radio-row">
+    <label><input type="radio" name="account_kind" value="survey_company"
+        {% if form.get('account_kind', 'survey_company') == 'survey_company' %}checked{% endif %}>
+        Survey company</label>
+    <label><input type="radio" name="account_kind" value="client"
+        {% if form.get('account_kind') == 'client' %}checked{% endif %}>
+        Client</label>
+  </div>
+
+  <label for="org_name">Organization name</label>
+  <input id="org_name" name="org_name" required maxlength="200"
+         value="{{ form.get('org_name', '') }}">
+
+  <label for="org_type">Organization type</label>
+  <input id="org_type" name="org_type" required maxlength="50"
+         placeholder="e.g. marine, cargo, technical"
+         value="{{ form.get('org_type', '') }}">
+
+  <label for="slug">Public slug</label>
+  <input id="slug" name="slug" required minlength="2" maxlength="64"
+         pattern="[a-z0-9-]+" title="lowercase letters, digits and dashes"
+         value="{{ form.get('slug', '') }}">
+  <small>Your public page will be /p/your-slug</small>
+
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email" required
+         value="{{ form.get('email', '') }}">
+
+  <label for="password">Password</label>
+  <input id="password" name="password" type="password" required minlength="6">
+
+  <button type="submit">Create account</button>
+</form>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Profile unavailable — SeaVix{% endblock %}
+{% block content %}
+<h1>Profile not available</h1>
+<p>Sorry — the company profile <strong>{{ slug }}</strong> isn't public
+   {% if reason == 'draft' %}yet (it's still a draft).
+   {% elif reason == 'suspended' %}(it has been suspended).
+   {% else %}(we couldn't find it).{% endif %}</p>
+<p><a href="/">Back to SeaVix</a></p>
+{% endblock %}

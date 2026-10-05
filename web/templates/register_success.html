@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Welcome — SeaVix{% endblock %}
+{% block content %}
+<h1>Welcome aboard</h1>
+<p>Your {% if account_kind == 'survey_company' %}survey company{% else %}client
+   account{% endif %} <strong>{{ slug }}</strong> was created.</p>
+<p>Your public profile starts as a <em>draft</em>. Add your profile details and
+   set it live to start receiving RFQs.</p>
+<p><a href="/p/{{ slug }}">Preview your public page</a> (visible once live).</p>
+{% endblock %}
