@@ -7,6 +7,7 @@ members = [
     "seavix-identity",
     "seavix-platform",
     "seavix-ports",
+    "seavix-registry",
     "seavix-web",
 ]
 
@@ -1168,6 +1169,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "seavix-identity" },
     { name = "seavix-ports" },
+    { name = "seavix-registry" },
     { name = "seavix-web" },
 ]
 
@@ -1182,6 +1184,7 @@ dev = [
 requires-dist = [
     { name = "seavix-identity", editable = "services/identity" },
     { name = "seavix-ports", editable = "packages/seavix-ports" },
+    { name = "seavix-registry", editable = "services/registry" },
     { name = "seavix-web", editable = "web" },
 ]
 
@@ -1205,6 +1208,29 @@ dependencies = [
 requires-dist = [
     { name = "firebase-admin", specifier = ">=7.0.0" },
     { name = "httpx", specifier = ">=0.28" },
+]
+
+[[package]]
+name = "seavix-registry"
+version = "0.1.0"
+source = { editable = "services/registry" }
+dependencies = [
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "seavix-ports" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.15" },
+    { name = "asyncpg", specifier = ">=0.30" },
+    { name = "fastapi", specifier = ">=0.130" },
+    { name = "seavix-ports", editable = "packages/seavix-ports" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
+    { name = "uvicorn", specifier = ">=0.35" },
 ]
 
 [[package]]
