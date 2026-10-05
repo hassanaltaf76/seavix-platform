@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from seavix_ports import InMemoryEventBus
 
+from . import public, register
 from .orgs import create_organization
 
 
@@ -19,6 +20,8 @@ def create_app() -> FastAPI:
     async def healthz() -> dict:
         return {"status": "ok", "service": "identity"}
 
+    app.include_router(register.router)
+    app.include_router(public.router)
     return app
 
 
