@@ -1,12 +1,8 @@
-{% extends "base.html" %}
-{% block title %}Verify your email — SeaVix{% endblock %}
-{% block breadcrumbs %}
-<li><a href="/">Home</a></li>
-<li><a href="/register">Register</a></li>
-<li aria-current="page">Verify your email</li>
-{% endblock %}
+{% extends "base.html" %}{% block title %}Verify your email — SeaVix{% endblock %}
+{% block breadcrumbs %}<li><a href="/">Home</a></li><li><a href="/register">Register</a></li><li aria-current="page">Verify your email</li>{% endblock %}
+{% block blade_title %}<h1>Verify your email</h1>{% endblock %}
+{% block blade_close %}<a class="sv-blade-close" href="/register" aria-label="Close blade and go back">×</a>{% endblock %}
 {% block content %}
-<div class="sv-blade-head"><h1>Verify your email</h1></div>
 <p>We sent a 6-digit verification code to <strong>{{ email }}</strong>.
    In local dev the code is in the identity service log
    (<code>DEV-OTP email={{ email }} purpose=verify_email</code>).</p>
@@ -26,5 +22,4 @@
           hx-post="/register/verify/resend"
           hx-vals='{"email": "{{ email }}"}'
           hx-swap="none">Resend code</button>
-</form>
-{% endblock %}
+</form>{% endblock %}

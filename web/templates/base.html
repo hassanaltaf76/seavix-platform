@@ -12,18 +12,22 @@
   <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
-  <a class="sv-skip" href="#blade">Skip to content</a>
+<body x-data="{ railCollapsed: false }">
+  <a class="sv-skip" href="#blade-body">Skip to content</a>
 
-  <header class="sv-chrome">
-    <div class="sv-chrome-brand">
-      <a href="/" aria-label="SeaVix home">
-        <img src="/static/brand/seavix-logo.png" alt="SeaVix">
-      </a>
-    </div>
-    <nav class="sv-chrome-nav" aria-label="Account">
+  <header class="sv-topbar">
+    <button class="sv-burger" type="button"
+            aria-label="Toggle navigation" aria-expanded="true"
+            x-on:click="railCollapsed = !railCollapsed"
+            x-bind:aria-expanded="!railCollapsed.toString()">☰</button>
+    <form class="sv-search" method="get" action="/search" role="search">
+      <input type="search" name="q" value="{{ q if q is defined else '' }}"
+             placeholder="Search vessels, jobs, organizations…"
+             aria-label="Global search">
+    </form>
+    <nav class="sv-topnav" aria-label="Account">
       {% if ctx is defined and ctx %}
-        <a href="{{ home if home is defined else '/org/home' }}">Your account</a>
+        <a href="/org/home">Your account</a>
         <form method="post" action="/logout" class="sv-inline-form">
           <button type="submit" class="sv-link-btn">Sign out</button>
         </form>
@@ -34,31 +38,71 @@
     </nav>
   </header>
 
-  <nav class="sv-crumbs" aria-label="Breadcrumb">
-    <ol>
-      {% block breadcrumbs %}<li aria-current="page">Home</li>{% endblock %}
-    </ol>
-  </nav>
+  <div class="sv-shell" x-bind:class="railCollapsed ? 'sv-rail-collapsed' : ''">
+    <nav class="sv-rail" aria-label="Services">
+      <div class="sv-rail-logo">
+        <a href="/" aria-label="SeaVix home"><img src="/static/brand/seavix-logo.png" alt="SeaVix"></a>
+        <span class="sv-rail-label">SeaVix</span>
+      </div>
 
-  <main class="sv-canvas">
-    <section class="sv-blade sv-blade--browse" aria-label="Browse">
-      {% block browse %}
-        <h2>SeaVix</h2>
+      <div class="sv-rail-section sv-rail-fav">
+        <h2 class="sv-rail-label">Favorites</h2>
         <ul>
-          <li><a href="/">Home</a></li>
-          <li><a href="/register">Register your company</a></li>
-          <li><a href="/login">Sign in</a></li>
+          {% block rail_favorites %}
+            <li><a href="/"><span class="sv-glyph" aria-hidden="true">★</span><span class="sv-rail-label">Home</span></a></li>
+            <li><a href="/login"><span class="sv-glyph" aria-hidden="true">★</span><span class="sv-rail-label">Sign in</span></a></li>
+          {% endblock %}
         </ul>
-      {% endblock %}
-    </section>
+      </div>
 
-    <section class="sv-blade sv-blade--slide" id="blade" aria-label="Content">
-      {% block content %}{% endblock %}
-      <footer class="site-footer">
-        <p>SeaVix — marine survey coordination. Local dev build.</p>
-      </footer>
-    </section>
-  </main>
+      <div class="sv-rail-section">
+        <h2 class="sv-rail-label">All services</h2>
+        <ul>
+          {% block rail_services %}
+            <li><a href="/"><span class="sv-glyph" aria-hidden="true">⌂</span><span class="sv-rail-label">Home</span></a></li>
+            <li><a href="/register"><span class="sv-glyph" aria-hidden="true">＋</span><span class="sv-rail-label">Register your company</span></a></li>
+            <li><a href="/login"><span class="sv-glyph" aria-hidden="true">➜</span><span class="sv-rail-label">Sign in</span></a></li>
+          {% endblock %}
+        </ul>
+      </div>
+
+      <div class="sv-rail-tenant">
+        <span class="sv-glyph" aria-hidden="true">◉</span>
+        <span class="sv-rail-label">
+          {% if ctx is defined and ctx and ctx.memberships %}
+            <strong>{{ ctx.memberships[0].slug }}</strong>
+          {% else %}
+            Public browsing
+          {% endif %}
+        </span>
+      </div>
+    </nav>
+
+    <main class="sv-blades" aria-label="Blades">
+      {% block blades %}
+        <section class="sv-blade" aria-label="Content">
+          <header class="sv-blade-header">
+            <nav class="sv-blade-crumbs" aria-label="Breadcrumb">
+              <ol>
+                {% block breadcrumbs %}<li aria-current="page">Home</li>{% endblock %}
+              </ol>
+            </nav>
+            <div class="sv-blade-titlebar">
+              {% block blade_title %}<h1>SeaVix</h1>{% endblock %}
+              {% block blade_close %}{% endblock %}
+            </div>
+          </header>
+          {% block blade_tabs %}{% endblock %}
+          <div class="sv-blade-body" id="blade-body">
+            {% block content %}{% endblock %}
+            <footer class="site-footer">
+              <p>SeaVix — marine survey coordination. Local dev build.</p>
+            </footer>
+          </div>
+        </section>
+      {% endblock %}
+    </main>
+  </div>
 
   <script defer src="/static/vendor/htmx.min.js"></script>
   <script defer src="/static/vendor/alpine.min.js"></script>

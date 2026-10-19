@@ -1,12 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Profile unavailable — SeaVix{% endblock %}
-{% block breadcrumbs %}
-<li><a href="/">Home</a></li>
-<li><a href="/">Companies</a></li>
-<li aria-current="page">Not available</li>
-{% endblock %}
+{% block breadcrumbs %}<li><a href="/">Home</a></li><li><a href="/">Companies</a></li><li aria-current="page">Not available</li>{% endblock %}
+{% block blade_title %}<h1>Profile not available</h1>{% endblock %}
+{% block blade_close %}<a class="sv-blade-close" href="/" aria-label="Close blade and go back">×</a>{% endblock %}
 {% block content %}
-<div class="sv-blade-head"><h1>Profile not available</h1></div>
 <p>Sorry — the company profile <strong>{{ slug }}</strong> isn't public
    {% if reason == 'draft' %}yet (it's still a draft).
    {% elif reason == 'suspended' %}(it has been suspended).

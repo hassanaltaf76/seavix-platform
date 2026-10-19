@@ -1,24 +1,25 @@
-{% extends "base.html" %}
-{% block title %}Your account — SeaVix{% endblock %}
-{% block breadcrumbs %}
-<li><a href="/">Home</a></li>
-<li aria-current="page">Your account</li>
+{% extends "base.html" %}{% block title %}Your account — SeaVix{% endblock %}
+{% set active = "home" %}
+{% block breadcrumbs %}<li><a href="/">Home</a></li><li aria-current="page">Your account</li>{% endblock %}
+{% block blade_title %}<h1>Your account</h1>{% endblock %}
+{% block blade_close %}<a class="sv-blade-close" href="/" aria-label="Close blade and go back">×</a>{% endblock %}
+{% block rail_favorites %}
+<li><a href="/org/home"{% if active == 'home' %} aria-current="page"{% endif %}><span class="sv-glyph" aria-hidden="true">★</span><span class="sv-rail-label">Overview</span></a></li>
+{% if membership and membership.org_type == 'survey_company' %}
+<li><a href="/org/profile"{% if active == 'profile' %} aria-current="page"{% endif %}><span class="sv-glyph" aria-hidden="true">★</span><span class="sv-rail-label">Company profile</span></a></li>
+{% endif %}
 {% endblock %}
-{% block browse %}
-<h2>Your account</h2>
-<ul>
-  <li><a href="/org/home" aria-current="page">Overview</a></li>
-  {% if membership and membership.org_type == 'survey_company' %}
-  <li><a href="/org/profile">Company profile</a></li>
-  {% if org and org.profile_status == 'live' %}
-  <li><a href="/p/{{ membership.slug }}">Public page</a></li>
-  {% endif %}
-  {% endif %}
-  <li><a href="/">SeaVix home</a></li>
-</ul>
+{% block rail_services %}
+<li><a href="/"><span class="sv-glyph" aria-hidden="true">⌂</span><span class="sv-rail-label">SeaVix home</span></a></li>
+{% if membership and membership.org_type == 'survey_company' and org and org.profile_status == 'live' %}
+<li><a href="/p/{{ membership.slug }}"><span class="sv-glyph" aria-hidden="true">▣</span><span class="sv-rail-label">Public page</span></a></li>
+{% endif %}
+{% if membership %}
+<li><a href="/org/home"><span class="sv-glyph" aria-hidden="true">◉</span><span class="sv-rail-label">{{ membership.slug }}</span></a></li>
+{% endif %}
 {% endblock %}
+
 {% block content %}
-<div class="sv-blade-head"><h1>Your account</h1></div>
 <p>Signed in as {{ ctx.user.email }}
    {% if not ctx.email_verified %}(unverified){% endif %}</p>
 
@@ -28,7 +29,6 @@
   <p>Roles: {{ membership.roles|join(", ") }}</p>
 </section>
 {% else %}
-<p>No organization membership is attached to this account yet.</p>
+<div class="sv-empty">No organization membership is attached to this account yet.</div>
 {% endif %}
-{{ keepalive | safe }}
-{% endblock %}
+{{ keepalive | safe }}{% endblock %}

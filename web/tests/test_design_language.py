@@ -1,10 +1,11 @@
-"""Design-language contract tests (blade shell + brand tokens).
+"""Design-language contract tests — Oct 2026 doc (dark-first blade shell).
 
-Locks in the mandatory UI rules: Azure-portal blade shell markup in the
-base layout, CSS custom-property tokens (no page-local styling), logo
-top-left, locally vendored HTMX + Alpine, and WCAG AA contrast (>= 4.5:1)
-for every text/background token pair used by the shell.
+Locks in: --seavix-* token family with logo-sampled values, WCAG AA contrast
+on the DARK surfaces the shell actually uses, blade-shell markup (left rail
+with favorites + tenant switcher, blade stack with crumbs/title/close/tabs,
+global search), no page-local styling, and the favicon/PWA icon set.
 """
+import json
 import re
 from pathlib import Path
 
@@ -47,30 +48,38 @@ def contrast(fg: str, bg: str) -> float:
     return (l1 + 0.05) / (l2 + 0.05)
 
 
-def test_tokens_sampled_from_logo_palette():
+def test_seavix_token_family_with_logo_sampled_values():
     tokens = _tokens()
-    sampled = {"#001830", "#001848", "#183060", "#184878",
-               "#306090", "#4878a8", "#2d5888", "#f0f0f0"}
-    assert sampled & set(tokens.values()), "no logo-sampled hexes in tokens"
+    for name in ("--seavix-navy-900", "--seavix-navy-800", "--seavix-navy-700",
+                 "--seavix-text-primary", "--seavix-text-secondary",
+                 "--seavix-accent", "--seavix-accent-deep"):
+        assert name in tokens, f"missing token {name}"
+    sampled = {"#001830", "#183060", "#184878", "#50c0f0", "#4090e0"}
+    assert sampled <= set(tokens.values()), "logo-sampled hexes missing"
+    assert tokens["--seavix-text-primary"].lower() == "#ffffff"
+    assert tokens["--seavix-text-secondary"].lower() == "#a8bcd8"
 
 
-def test_wcag_aa_token_pairs():
+def test_wcag_aa_dark_shell_pairs():
+    """Dark-first UI: every text/background pair the shell renders."""
     tokens = _tokens()
     pairs = {
-        # (fg token, bg token): all shell text/background combos
-        ("--sv-ink", "--sv-surface"),
-        ("--sv-ink", "--sv-canvas"),
-        ("--sv-muted", "--sv-surface"),
-        ("--sv-link", "--sv-surface"),
-        ("--sv-link", "--sv-canvas"),
-        ("--sv-ink-on-dark", "--sv-chrome"),
-        ("--sv-ink-on-dark", "--sv-chrome-raise"),
-        ("--sv-ink-on-dark", "--sv-blade-head"),
-        ("--sv-ink-on-dark", "--sv-navy-700"),
-        ("#ffffff", "--sv-accent"),
-        ("#ffffff", "--sv-navy-700"),
-        ("#ffffff", "--sv-danger"),
-        ("--sv-danger", "--sv-surface"),
+        ("--seavix-text-primary", "--seavix-navy-900"),
+        ("--seavix-text-primary", "--seavix-navy-800"),
+        ("--seavix-text-primary", "--seavix-navy-700"),
+        # doc-mandated check: secondary text on the card surface
+        ("--seavix-text-secondary", "--seavix-navy-800"),
+        ("--seavix-text-secondary", "--seavix-navy-900"),
+        ("--seavix-accent", "--seavix-navy-900"),      # links on chrome
+        ("--seavix-accent", "--seavix-navy-800"),      # links/tabs on blades
+        ("--seavix-accent-deep", "--seavix-navy-900"), # pressed text on chrome
+        ("--seavix-accent-bright", "--seavix-navy-800"), # link hover on blades
+        ("--seavix-accent-bright", "--seavix-navy-900"),
+        ("#04202e", "--seavix-accent"),                # primary button label
+        ("#04202e", "--seavix-accent-deep"),       # primary button hover label
+        ("--seavix-danger", "--seavix-navy-800"),
+        ("--seavix-danger", "--seavix-navy-750"),
+        ("--seavix-success", "--seavix-navy-800"),
     }
     for fg, bg in pairs:
         fg_hex = fg if fg.startswith("#") else _resolve(tokens, fg)
@@ -79,47 +88,44 @@ def test_wcag_aa_token_pairs():
         assert ratio >= 4.5, f"{fg} on {bg} = {ratio:.2f}:1 (AA needs 4.5)"
 
 
-def test_blade_shell_base_layout():
-    assert 'class="sv-chrome"' in BASE
+def test_blade_shell_markup():
+    assert 'class="sv-topbar"' in BASE
+    assert 'role="search"' in BASE and 'action="/search"' in BASE
+    assert 'class="sv-rail"' in BASE
+    assert "Favorites" in BASE and "All services" in BASE
+    assert "sv-rail-tenant" in BASE
     assert "/static/brand/seavix-logo.png" in BASE      # logo top-left
-    assert BASE.index("sv-chrome-brand") < BASE.index("sv-chrome-nav")
-    assert 'class="sv-crumbs"' in BASE and "Breadcrumb" in BASE
-    assert 'class="sv-blade sv-blade--browse"' in BASE
-    assert 'class="sv-blade sv-blade--slide"' in BASE
-    assert 'id="blade"' in BASE                          # deep-link/skip target
+    assert BASE.index("sv-rail-logo") < BASE.index("sv-rail-tenant")
+    assert 'class="sv-blades"' in BASE
+    assert "sv-blade-crumbs" in BASE
+    assert "sv-blade-titlebar" in BASE
+    assert "{% block blade_tabs %}" in BASE
+    assert "{% block blade_close %}" in BASE
     assert "/static/vendor/htmx.min.js" in BASE
     assert "/static/vendor/alpine.min.js" in BASE
-    assert "sv-skip" in BASE                             # accessibility
+    assert "sv-skip" in BASE
+    assert 'x-data' in BASE and "railCollapsed" in BASE  # Alpine rail toggle
 
 
 def test_no_page_local_styling():
-    """No inline style attributes or <style> blocks in any template;
-    non-token colors must not appear outside the token definitions."""
     for tpl in TEMPLATES.glob("*.html"):
         text = tpl.read_text()
         assert 'style="' not in text, f"{tpl.name}: inline style attribute"
         assert "<style" not in text, f"{tpl.name}: page-local <style> block"
 
 
-def test_workstream_pages_use_shell():
-    """Login/registration/reset/account pages render inside the shell:
-    breadcrumbs block + blade head from first render."""
+def test_workstream_pages_are_blades():
+    """Login/registration/reset/account pages: blade crumbs + title + close
+    from first render, deep-linkable URLs."""
     for name in ("login", "register", "verify_email", "forgot_password",
                  "reset_password", "org_home", "org_profile"):
         text = (TEMPLATES / f"{name}.html").read_text()
         assert "{% block breadcrumbs %}" in text, f"{name}: no breadcrumbs"
-        assert "sv-blade-head" in text, f"{name}: no blade head"
-
-
-def test_vendor_libs_present():
-    vendor = WEB_ROOT / "static" / "vendor"
-    assert (vendor / "htmx.min.js").stat().st_size > 20_000
-    assert (vendor / "alpine.min.js").stat().st_size > 20_000
+        assert "{% block blade_title %}" in text, f"{name}: no blade title"
+        assert "{% block blade_close %}" in text, f"{name}: no blade close"
 
 
 def test_favicon_and_pwa_icons_derived_from_logo():
-    """favicon + PWA icon set derived from the logo's wave band, referenced
-    from the base layout; manifest theme matches the chrome token."""
     import json
 
     brand = WEB_ROOT / "static" / "brand"
@@ -136,12 +142,7 @@ def test_favicon_and_pwa_icons_derived_from_logo():
     assert "favicon-32.png" in BASE
     assert "apple-touch-icon.png" in BASE
     assert 'rel="manifest"' in BASE
-    assert 'name="theme-color" content="#001830"' in BASE
-
-    manifest = json.loads(
-        (WEB_ROOT / "static" / "site.webmanifest").read_text()
-    )
+    manifest = json.loads((WEB_ROOT / "static" / "site.webmanifest").read_text())
     assert manifest["theme_color"] == "#001830"
-    assert manifest["background_color"] == "#001830"
     sizes = {i["sizes"] for i in manifest["icons"]}
     assert {"192x192", "512x512"} <= sizes

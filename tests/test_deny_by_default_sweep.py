@@ -87,6 +87,8 @@ WEB_PUBLIC = {
     "/reset-password",
     "/register/verify",
     "/register/verify/resend",
+    # global search — stub until the resource index exists (design §1)
+    "/search",
     # no-op without a valid cookie (identity 401 -> {"ok": false})
     "/session/refresh",
 }

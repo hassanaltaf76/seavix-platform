@@ -1,15 +1,10 @@
-{% extends "base.html" %}
-{% block title %}Welcome — SeaVix{% endblock %}
-{% block breadcrumbs %}
-<li><a href="/">Home</a></li>
-<li><a href="/register">Register</a></li>
-<li aria-current="page">Welcome</li>
-{% endblock %}
+{% extends "base.html" %}{% block title %}Welcome — SeaVix{% endblock %}
+{% block breadcrumbs %}<li><a href="/">Home</a></li><li><a href="/register">Register</a></li><li aria-current="page">Welcome</li>{% endblock %}
+{% block blade_title %}<h1>Welcome aboard</h1>{% endblock %}
+{% block blade_close %}<a class="sv-blade-close" href="/" aria-label="Close blade and go back">×</a>{% endblock %}
 {% block content %}
-<div class="sv-blade-head"><h1>Welcome aboard</h1></div>
 <p>Your {% if account_kind == 'survey_company' %}survey company{% else %}client
    account{% endif %} <strong>{{ slug }}</strong> was created.</p>
 <p>Your public profile starts as a <em>draft</em>. Add your profile details and
    set it live to start receiving RFQs.</p>
-<p><a href="/p/{{ slug }}">Preview your public page</a> (visible once live).</p>
-{% endblock %}
+<p><a href="/p/{{ slug }}">Preview your public page</a> (visible once live).</p>{% endblock %}

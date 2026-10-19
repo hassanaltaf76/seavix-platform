@@ -40,6 +40,17 @@ async def landing(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "landing.html", {"request": request})
 
 
+# ---------------------------------------------------------------- search
+
+@router.get("/search", response_class=HTMLResponse)
+@public_route
+async def search(request: Request, q: str = ""):
+    """Global search (design language §1). STUB: the cross-resource index
+    (vessels, jobs, organizations) is not built yet — the stub must stay
+    visible until the index lands."""
+    return templates.TemplateResponse(request, "search.html", {"request": request, "q": q})
+
+
 # ---------------------------------------------------------------- register
 
 @router.get("/register", response_class=HTMLResponse)

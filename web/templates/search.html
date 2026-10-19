@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block title %}Search — SeaVix{% endblock %}
+{% block breadcrumbs %}<li><a href="/">Home</a></li><li aria-current="page">Search</li>{% endblock %}
+{% block blade_title %}<h1>Search</h1>{% endblock %}
+{% block blade_close %}<a class="sv-blade-close" href="/" aria-label="Close blade and go back">×</a>{% endblock %}
+{% block content %}
+{% if q %}<p class="notice">You searched for <strong>{{ q }}</strong>.</p>{% endif %}
+<div class="sv-empty">
+  <p>Global search is not wired up yet.</p>
+  <p>TODO: build the resource index (vessels by name/IMO, jobs, organizations)
+     so the top-bar search returns results here.</p>
+</div>{% endblock %}
