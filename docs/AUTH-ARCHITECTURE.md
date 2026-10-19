@@ -203,3 +203,11 @@ exists: enable the real provider per §d, flip the callback to
 `IdentityPlatformOIDCProvider`, and re-run the same tests unchanged —
 they assert the plumbing contract, which is identical on both sides of
 the exchange.
+
+## Design note — social login deliberately out of scope
+
+Social login (Google/Facebook/Apple "Sign in with" consumer IdPs) is
+DELIBERATELY out of scope — SeaVix buyers are businesses; registration is
+email+password+OTP, and enterprise tenants use the IdP registry (workforce
+federation). Adding a consumer IdP later would be a registry entry, not a
+new architecture.
