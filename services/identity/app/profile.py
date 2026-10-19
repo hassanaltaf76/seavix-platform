@@ -133,6 +133,18 @@ async def set_profile_status(payload: StatusUpdate, request: Request) -> dict:
                 status_code=400,
                 detail="only survey_company organizations can go live",
             )
+        if payload.status == "live":
+            verified = (
+                await session.execute(
+                    text("SELECT email_verified FROM app_user WHERE firebase_uid = :uid"),
+                    {"uid": user.uid},
+                )
+            ).scalar_one()
+            if not verified:
+                raise HTTPException(
+                    status_code=403,
+                    detail="verify your email address before going live",
+                )
         await session.execute(
             text("UPDATE organization SET profile_status = :s WHERE id = :id"),
             {"s": payload.status, "id": org_id},

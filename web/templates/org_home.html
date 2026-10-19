@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Your account — SeaVix{% endblock %}
+{% block content %}
+<h1>Your account</h1>
+<p>Signed in as {{ ctx.email }}
+   {% if not ctx.email_verified %}(unverified){% endif %}</p>
+
+{% if membership %}
+<section class="card">
+  <h2>{{ membership.slug }} · {{ membership.type }}</h2>
+  <p>Role: {{ membership.role }}</p>
+  {% if org and org.profile_status == 'live' %}
+  <p><a href="/p/{{ membership.slug }}">Public page</a></p>
+  {% endif %}
+</section>
+{% else %}
+<p>No organization membership is attached to this account yet.</p>
+{% endif %}
+
+<form method="post" action="/logout">
+  <button type="submit" class="secondary">Sign out</button>
+</form>
+{{ keepalive | safe }}
+{% endblock %}

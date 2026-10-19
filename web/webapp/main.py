@@ -10,6 +10,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from .pages import router as pages_router
+from .auth_pages import router as auth_pages_router
+from .org_pages import router as org_pages_router
 
 WEB_ROOT = Path(__file__).resolve().parent.parent
 
@@ -23,6 +25,8 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "web"}
 
     app.include_router(pages_router)
+    app.include_router(auth_pages_router)
+    app.include_router(org_pages_router)
     return app
 
 

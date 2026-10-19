@@ -8,7 +8,8 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from .config import blob_root, identity_base_url, work_base_url
+from .config import blob_root, work_base_url
+from .identity_client import identity_request
 from .ratelimit import RateLimiter
 
 router = APIRouter()
@@ -20,8 +21,7 @@ LOCATION_TYPES = ("terminal", "STS", "anchorage", "OPL", "repair-berth", "dry-do
 
 
 async def _identity_get(path: str) -> httpx.Response:
-    async with httpx.AsyncClient(base_url=identity_base_url(), timeout=10.0) as c:
-        return await c.get(path)
+    return await identity_request("GET", path)
 
 
 async def _post_public_rfq(payload: dict) -> httpx.Response:
@@ -63,10 +63,17 @@ async def register_submit(
         "email": email,
         "account_kind": account_kind,
     }
-    async with httpx.AsyncClient(base_url=identity_base_url(), timeout=10.0) as c:
-        resp = await c.post("/api/register", json={**form, "password": password})
+    resp = await identity_request("POST", "/api/register", json={**form, "password": password})
     if resp.status_code == 201:
-        return templates.TemplateResponse(request, "register_success.html", {"request": request, "slug": slug, "account_kind": account_kind},
+        # Email verification is required before the profile can go live;
+        # send the first code immediately and move the user to the code step.
+        await identity_request(
+            "POST", "/api/register/verify/send", json={"email": email.lower()}
+        )
+        return templates.TemplateResponse(
+            request,
+            "verify_email.html",
+            {"request": request, "email": email.lower(), "error": None},
         )
     if resp.status_code == 409:
         detail = resp.json().get("detail", {})

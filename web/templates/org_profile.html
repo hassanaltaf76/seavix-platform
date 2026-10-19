@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Your company — SeaVix{% endblock %}
+{% block content %}
+<h1>{{ membership.slug }}</h1>
+<p>Signed in as {{ ctx.email }}
+   {% if not ctx.email_verified %}(unverified){% endif %} · role {{ membership.role }}</p>
+
+{% if org %}
+<section class="card">
+  <h2>Public profile</h2>
+  <p>Status: <strong>{{ org.profile_status }}</strong></p>
+  {% if org.about %}<p>{{ org.about }}</p>{% endif %}
+  <p><a href="/p/{{ membership.slug }}">View public page</a></p>
+</section>
+{% endif %}
+
+{% if not ctx.email_verified %}
+<p class="error">Verify your email before going live — the verification gate
+   blocks profile publication.</p>
+{% endif %}
+
+<form method="post" action="/logout">
+  <button type="submit" class="secondary">Sign out</button>
+</form>
+{{ keepalive | safe }}
+{% endblock %}

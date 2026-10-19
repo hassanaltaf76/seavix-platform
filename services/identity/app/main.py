@@ -4,12 +4,16 @@ Run (per Makefile): uv run uvicorn app.main:app --port $PORT --reload
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI
 
 from seavix_ports import InMemoryEventBus
 
-from . import internal, profile, public, register
+from . import authn, internal, profile, public, register
 from .orgs import create_organization
+
+logging.basicConfig(level=logging.INFO)  # route app INFO logs (DEV-OTP etc.) to console
 
 
 def create_app() -> FastAPI:
@@ -21,6 +25,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "identity"}
 
     app.include_router(register.router)
+    app.include_router(authn.router)
     app.include_router(public.router)
     app.include_router(profile.router)
     app.include_router(internal.router)

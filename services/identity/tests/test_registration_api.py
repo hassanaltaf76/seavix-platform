@@ -137,7 +137,24 @@ def test_profile_update_logo_and_draft_to_live(arun):
             )
             assert txt.status_code == 415
 
-            # draft -> live
+            # draft -> live requires a verified email (registration gate)
+            live = await c.post(
+                "/api/orgs/me/profile-status",
+                headers=auth,
+                json={"status": "live"},
+            )
+            assert live.status_code == 403
+
+            await c.post("/api/register/verify/send", json={"email": email})
+            code = (
+                await c.get("/api/dev/last-otp", params={"email": email})
+            ).json()["code"]
+            ok = await c.post(
+                "/api/register/verify/confirm",
+                json={"email": email, "code": code},
+            )
+            assert ok.status_code == 200
+
             live = await c.post(
                 "/api/orgs/me/profile-status",
                 headers=auth,

@@ -14,6 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from seavix_ports import AuthzClient, AuthenticatedUser, FirebaseAuthProvider
 
+from . import sessions
+
+SESSION_HEADER = "X-Seavix-Session"
+
 
 def _ensure_firebase() -> None:
     import firebase_admin
@@ -27,17 +31,32 @@ def _ensure_firebase() -> None:
 
 
 async def current_user(request: Request) -> AuthenticatedUser:
+    """Resolve the caller from a Bearer token OR the web session header.
+
+    Bearer: Firebase ID token via the AuthProvider port (machines, tests).
+    X-Seavix-Session: opaque session id issued only after the email-OTP
+    challenge (D1) — the web app's HttpOnly cookie maps to this header.
+    """
     header = request.headers.get("authorization", "")
-    if not header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="missing bearer token")
-    _ensure_firebase()
-    provider = FirebaseAuthProvider(
-        project_id=os.environ.get("FIREBASE_PROJECT_ID", "seavix-dev")
-    )
-    try:
-        return await provider.verify_token(header.removeprefix("Bearer ").strip())
-    except Exception:
-        raise HTTPException(status_code=401, detail="invalid token") from None
+    if header.startswith("Bearer "):
+        _ensure_firebase()
+        provider = FirebaseAuthProvider(
+            project_id=os.environ.get("FIREBASE_PROJECT_ID", "seavix-dev")
+        )
+        try:
+            return await provider.verify_token(header.removeprefix("Bearer ").strip())
+        except Exception:
+            raise HTTPException(status_code=401, detail="invalid token") from None
+
+    sid = request.headers.get(SESSION_HEADER, "").strip()
+    if sid:
+        from .db import SessionLocal
+
+        async with SessionLocal() as session:
+            ctx = await sessions.load_session(session, sid)
+        return AuthenticatedUser(uid=ctx["firebase_uid"], email=ctx["email"])
+
+    raise HTTPException(status_code=401, detail="missing credentials")
 
 
 async def my_org_id(session: AsyncSession, uid: str) -> str:

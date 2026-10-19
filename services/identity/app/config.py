@@ -45,4 +45,40 @@ def blob_root() -> Path:
     return Path(os.environ.get("SEAVIX_BLOB_ROOT", _PLATFORM_ROOT / "var" / "blobs"))
 
 
+# ------------------------------------------------------------- authN (D1)
+
+def otp_ttl_seconds() -> int:
+    return int(os.environ.get("SEAVIX_OTP_TTL_SECONDS", "600"))  # 10 min
+
+
+def otp_pepper() -> str:
+    """Server-side pepper for the at-rest OTP hash.
+
+    Dev default is public and intentionally weak — prod must inject a real
+    secret via the SecretsProvider/env (SEAVIX_OTP_PEPPER).
+    """
+    return os.environ.get("SEAVIX_OTP_PEPPER", "dev-otp-pepper")
+
+
+def otp_send_limit_per_hour() -> int:
+    return int(os.environ.get("SEAVIX_OTP_SEND_LIMIT", "5"))
+
+
+def otp_attempt_limit() -> int:
+    return int(os.environ.get("SEAVIX_OTP_ATTEMPT_LIMIT", "5"))
+
+
+def session_ttl_seconds() -> int:
+    return int(os.environ.get("SEAVIX_SESSION_TTL_SECONDS", str(12 * 3600)))
+
+
+def dev_otp_endpoint_enabled() -> bool:
+    """Dev-only last-code endpoint (D1 dev readability fallback).
+
+    Off by default; enabled explicitly in dev/test via
+    SEAVIX_DEV_OTP_ENDPOINT=1. Never enable in prod.
+    """
+    return os.environ.get("SEAVIX_DEV_OTP_ENDPOINT", "") == "1"
+
+
 load_dotenv()
