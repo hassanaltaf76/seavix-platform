@@ -10,6 +10,10 @@ contract, and the favicon/PWA icon set. 31b: the post-auth rail is
 logo + company link only (no favorites/services/home items) and the profile
 blade is the public-page editor (framing "Your public page — seavix.ai/<slug>"
 + view-public-page link, services description, logo upload, slug + hint).
+31b-7: breadcrumbs are the blade navigation — the crumb trail roots at org
+home ("Home > Profile"), × closes to its parent crumb (org home at top
+level), and no post-auth chrome link (crumbs, ×, logo) drops a signed-in
+user onto the public landing.
 """
 import json
 import re
@@ -153,6 +157,26 @@ def test_blade_shell_is_post_auth_only():
         # 31b: no favorites/services/home rail items on any page
         assert "All services" not in text, f"{tpl.name}: services section"
         assert "SeaVix home" not in text, f"{tpl.name}: home menu item"
+
+
+def test_blade_navigation_never_drops_to_public_landing():
+    """31b-7: breadcrumbs ARE the blade navigation. The crumb trail roots at
+    org home (never the public landing), × closes to its parent crumb (org
+    home at top level), and the post-auth rail logo goes to org home too."""
+    # zero public-landing links in the post-auth chrome
+    assert 'href="/"' not in BASE
+    assert 'href="/org/home"' in BASE  # rail logo → org home
+    home = (TEMPLATES / "org_home.html").read_text()
+    profile = (TEMPLATES / "org_profile.html").read_text()
+    # crumb trail: "Home" root (org home), child crumbs under it
+    assert "<li aria-current=\"page\">Home</li>" in home
+    assert '<li><a href="/org/home">Home</a></li>' in profile
+    assert "<li aria-current=\"page\">Profile</li>" in profile
+    # × closes to the parent crumb; a top-level blade closes to ORG HOME
+    assert 'class="sv-blade-close" href="/org/home"' in home
+    assert 'class="sv-blade-close" href="/org/home"' in profile
+    assert 'href="/"' not in home
+    assert 'href="/"' not in profile
 
 
 def test_no_text_wordmark_next_to_logo():

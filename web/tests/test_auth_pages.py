@@ -115,6 +115,22 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 assert "All services" not in home.text
                 assert "SeaVix home" not in home.text
                 assert 'href="/org/profile"' in home.text
+                # 31b-7: the rendered blade never links the public landing,
+                # and × closes to the parent crumb — following it lands on
+                # org home
+                assert 'href="/"' not in home.text
+                close = re.search(r'class="sv-blade-close" href="([^"]+)"', home.text)
+                assert close and close.group(1) == "/org/home"
+                landing = await w.get(close.group(1))
+                assert landing.status_code == 200
+                assert "Your account" in landing.text
+                # org home is the top-level blade: crumb root "Home", and
+                # its × also closes to org home (never "/")
+                assert "<li aria-current=\"page\">Home</li>" in landing.text
+                top_close = re.search(
+                    r'class="sv-blade-close" href="([^"]+)"', landing.text
+                )
+                assert top_close and top_close.group(1) == "/org/home"
 
                 # logout clears the cookie and kills the session
                 w.cookies.set(SESSION_COOKIE, sid)
