@@ -102,6 +102,8 @@ WEB_PROTECTED = {
     "/org/home",
     # 31e: signed-in "resend verification email" action (POST only)
     "/org/verification/resend",
+    # 31f: port-picker combobox backend (proxies the registry)
+    "/org/ports/search",
 }
 
 

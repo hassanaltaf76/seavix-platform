@@ -42,5 +42,8 @@ class PublicOrgResponse(BaseModel):
     phone: str | None
     logo_url: str | None
     profile_status: str
+    # ports of operation as UN/LOCODE codes (31f); the web app resolves
+    # names against the registry for rendering
+    ports: list[str] = []
 
     model_config = {"extra": "forbid"}

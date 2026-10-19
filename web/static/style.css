@@ -267,9 +267,9 @@ a:hover { color: var(--seavix-accent-bright); }
 .sv-blade-titlebar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
 }
+.sv-blade-actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
 .sv-blade-titlebar h1 {
   font-size: 1.08rem;
   margin: 0.25rem 0;
@@ -481,6 +481,67 @@ h2 { font-size: 1.08rem; }
   text-decoration: underline;
 }
 .notice .sv-link-btn { margin-left: 0.4rem; }
+
+/* 31f: profile view mode = WYSIWYG public preview */
+.sv-preview { border: 1px dashed var(--seavix-border); }
+.sv-preview-hint {
+  color: var(--seavix-text-secondary);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+/* 31f: ports of operation */
+.sv-org-ports { margin: 0.6rem 0; }
+.sv-port { white-space: nowrap; }
+
+.sv-port-picker { margin: 1rem 0; max-width: 560px; }
+.sv-port-picker input#port-search { width: 100%; box-sizing: border-box; }
+.sv-port-results {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  border: 1px solid var(--seavix-border);
+  border-radius: var(--seavix-radius);
+  background: var(--seavix-navy-900);
+  max-height: 240px;
+  overflow-y: auto;
+}
+.sv-port-results button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--seavix-radius);
+  cursor: pointer;
+  color: var(--seavix-text-primary);
+  font-family: inherit;
+  font-size: 0.92rem;
+}
+.sv-port-results button:hover { background: var(--seavix-navy-750); }
+.sv-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
+.sv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--seavix-navy-750);
+  border: 1px solid var(--seavix-border);
+  border-radius: 999px;
+  padding: 0.15rem 0.35rem 0.15rem 0.7rem;
+  font-size: 0.88rem;
+}
+.sv-chip-x {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--seavix-text-secondary);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.1rem 0.3rem;
+  border-radius: 50%;
+}
+.sv-chip-x:hover { color: var(--seavix-danger); }
 
 /* ===================================================== PUBLIC LAYOUT
    Landing + public org pages: white canvas, minimal chrome. */

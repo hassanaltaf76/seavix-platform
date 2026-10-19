@@ -378,21 +378,26 @@ def test_profile_settings_slug_update(arun, id_asgi):
                 sid = _extract_cookie(ok)
                 w.cookies.set(SESSION_COOKIE, sid)
 
-                page = await w.get("/org/profile")
+                # the editor lives in edit mode (31f view/edit split)
+                page = await w.get("/org/profile?view=edit")
                 assert page.status_code == 200
                 assert placeholder in page.text
                 assert "set it now or come back later" in page.text
                 assert 'name="about"' in page.text
 
-                # save description + slug together
+                # save description + slug together (PRG back to view mode)
                 saved = await w.post(
                     "/org/profile",
-                    data={"slug": new_slug, "about": "Independent surveyors."},
+                    data={"slug": new_slug, "about": "Independent surveyors.",
+                          "ports": []},
+                    follow_redirects=False,
                 )
-                assert saved.status_code == 200
-                assert "Saved." in saved.text
-                assert new_slug in saved.text
-                assert f"seavix.ai/{new_slug}" in saved.text
+                assert saved.status_code == 303
+                assert saved.headers["location"] == "/org/profile?saved=1"
+                saved_page = await w.get(saved.headers["location"])
+                assert "Saved." in saved_page.text
+                assert new_slug in saved_page.text
+                assert f"seavix.ai/{new_slug}" in saved_page.text
 
                 # the org is now reachable under the new root URL, with about
                 pub = await idc.get(f"/api/orgs/{new_slug}")
@@ -430,11 +435,14 @@ def test_profile_settings_slug_update(arun, id_asgi):
                 assert "Independent surveyors." in page_live.text
                 assert "Raise an RFQ" in page_live.text
 
-                # profile blade now offers the public page in a new tab
+                # view mode now IS the public page content (31f preview);
+                # the "Live page" tab opens the real thing in this blade
                 editor = await w.get("/org/profile")
                 assert editor.status_code == 200
-                assert "View public page" in editor.text
-                assert f'href="/{new_slug}" target="_blank"' in editor.text
+                assert "sv-preview" in editor.text
+                assert "Independent surveyors." in editor.text
+                assert f'href="/{new_slug}"' in editor.text
+                assert "Live page" in editor.text
 
                 # legacy /p/<slug> redirects to the root URL
                 legacy = await w.get(f"/p/{new_slug}", follow_redirects=False)

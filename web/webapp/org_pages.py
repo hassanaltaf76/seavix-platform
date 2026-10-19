@@ -1,6 +1,11 @@
 """Authenticated org pages. The deny-by-default middleware guarantees a
 resolved AuthContext here — require_auth reads it from the request scope
 (no second identity round-trip).
+
+31f: the profile blade is a VIEW/EDIT pair. View mode renders the org's
+public page through the SAME content partial as /<slug> (WYSIWYG by
+construction); edit mode (org.profile.edit) carries the Save button that
+persists about + slug + ports of operation in one PUT.
 """
 from __future__ import annotations
 
@@ -21,6 +26,7 @@ from seavix_ports import AuthContext, MembershipContext, require_auth
 
 from .auth import SESSION_HEADER, home_for, session_id_from
 from .identity_client import identity_request
+from .registry_client import registry_request, resolve_ports
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -45,6 +51,15 @@ async def _org_summary(slug: str) -> dict | None:
     return resp.json() if resp.status_code == 200 else None
 
 
+async def _org_with_ports(org: dict | None) -> dict | None:
+    """Public org summary with ports resolved to registry names — the one
+    shape the shared content partial renders (31f)."""
+    if org is None:
+        return None
+    resolved = await resolve_ports(org.get("ports") or [])
+    return {**org, "ports": resolved}
+
+
 def _redirect(target: str):
     return RedirectResponse(target, status_code=303)
 
@@ -66,62 +81,112 @@ def _blade_not_found(request: Request, ctx: AuthContext) -> HTMLResponse:
     )
 
 
+def _view_context(ctx, membership, org, saved: bool) -> dict:
+    return {
+        "request": None, "ctx": ctx, "membership": membership, "org": org,
+        "keepalive": _KEEPALIVE, "mode": "view",
+        "can_edit": _has(membership, ORG_PROFILE_EDIT), "saved": saved,
+    }
+
+
+def _edit_context(ctx, membership, org, *, slug_error=None, port_error=None,
+                  logo_saved=False, logo_error=None) -> dict:
+    return {
+        "request": None, "ctx": ctx, "membership": membership, "org": org,
+        "keepalive": _KEEPALIVE, "mode": "edit",
+        "can_edit": _has(membership, ORG_PROFILE_EDIT),
+        "slug_error": slug_error, "port_error": port_error,
+        "logo_saved": logo_saved, "logo_error": logo_error,
+    }
+
+
+def _render(request: Request, template: str, ctx: dict,
+            status_code: int = 200) -> HTMLResponse:
+    ctx["request"] = request
+    return templates.TemplateResponse(request, template, ctx,
+                                      status_code=status_code)
+
+
 @router.get("/org/profile", response_class=HTMLResponse)
-async def org_profile(request: Request, ctx: AuthContext = Depends(require_auth)):
+async def org_profile(
+    request: Request,
+    view: str = "",
+    saved: str = "",
+    ctx: AuthContext = Depends(require_auth),
+):
     membership = _first_membership(ctx)
     if membership is None:
         return _redirect("/org/home")
     if membership.org_type != "survey_company":
         return _redirect(home_for(membership.org_type))
     # 31e: the blade requires org.profile.view. Without it this route is a
-    # 404 (not 403), and the rail company cell that links here is hidden
-    # (base.html checks the same permission — visibility is
-    # permission-driven, never role-name-driven).
+    # 404 (not 403), and the rail company cell that links here is hidden.
     if not _has(membership, ORG_PROFILE_VIEW):
         return _blade_not_found(request, ctx)
-    org = await _org_summary(membership.slug)
-    return templates.TemplateResponse(
-        request,
-        "org_profile.html",
-        {"request": request, "ctx": ctx, "membership": membership, "org": org,
-         "keepalive": _KEEPALIVE, "slug_saved": False, "slug_error": None,
-         "logo_saved": False, "logo_error": None},
-    )
+    org = await _org_with_ports(await _org_summary(membership.slug))
+    # 31f view/edit split: ?view=edit opens the editor (edit permission
+    # required); anything else renders the WYSIWYG public preview.
+    if view == "edit" and _has(membership, ORG_PROFILE_EDIT):
+        return _render(request, "org_profile.html",
+                       _edit_context(ctx, membership, org))
+    return _render(request, "org_profile.html",
+                   _view_context(ctx, membership, org, saved == "1"))
 
 
-@router.post("/org/profile", response_class=HTMLResponse)
+@router.get("/org/ports/search")
+async def org_ports_search(request: Request, q: str = "",
+                           ctx: AuthContext = Depends(require_auth)):
+    """Alpine combobox backend for the port picker: proxies the registry
+    port search (name / UN/LOCODE / country). Reference data — any signed-in
+    member may query it; only edit mode surfaces it."""
+    resp = await registry_request("GET", "/ports", params={"search": q})
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="registry unavailable")
+    return resp.json()
+
+
+@router.post("/org/profile")
 async def org_profile_update(
     request: Request,
     slug: str = Form(...),
     about: str = Form(""),
+    ports: list[str] = Form([]),
     ctx: AuthContext = Depends(require_auth),
 ):
-    """Public page editor: services description + page slug. Proxies the
-    identity profile update; re-renders inline with the field-level error
-    on conflict. 31e: edits require org.profile.edit — a view-only member
-    (or anyone without the permission) gets the same 404 as the blade."""
+    """Edit-mode Save: services description + page slug + ports of
+    operation in one PUT. Proxies the identity profile update; unknown
+    port codes are rejected against the registry before any write; field
+    errors re-render edit mode inline. 31e: edits require
+    org.profile.edit — otherwise the same 404 as the blade."""
     membership = _first_membership(ctx)
     if membership is None or membership.org_type != "survey_company":
         raise HTTPException(status_code=403, detail="not available")
     if not _has(membership, ORG_PROFILE_EDIT):
         return _blade_not_found(request, ctx)
+
+    codes = [p.strip().upper() for p in ports if p.strip()]
+    org = await _org_with_ports(await _org_summary(membership.slug))
+    resolved = await resolve_ports(codes)
+    known = {p["code"] for p in resolved}
+    unknown = [c for c in codes if c not in known]
+    if unknown:
+        return _render(
+            request, "org_profile.html",
+            {**_edit_context(ctx, membership, org,
+                             port_error=f"unknown port: {unknown[0]}"),
+             "org": {**(org or {}), "ports": resolved}},
+            status_code=422,
+        )
+
     sid = session_id_from(request)
     resp = await identity_request(
         "PUT", "/api/orgs/me/profile",
-        json={"slug": slug.strip(), "about": about.strip() or None},
+        json={"slug": slug.strip(), "about": about.strip() or None,
+              "ports": codes},
         headers={SESSION_HEADER: sid} if sid else {},
     )
     if resp.status_code == 200:
-        new_slug = resp.json().get("slug", membership.slug)
-        org = await _org_summary(new_slug)
-        membership = _refresh_membership(ctx, new_slug)
-        return templates.TemplateResponse(
-            request,
-            "org_profile.html",
-            {"request": request, "ctx": ctx, "membership": membership,
-             "org": org, "keepalive": _KEEPALIVE, "slug_saved": True,
-             "slug_error": None, "logo_saved": False, "logo_error": None},
-        )
+        return _redirect("/org/profile?saved=1")
     slug_error = "could not save — try again"
     if resp.status_code == 409:
         detail = resp.json().get("detail", {})
@@ -134,13 +199,10 @@ async def org_profile_update(
         slug_error = ("that address is reserved — pick another"
                       if "reserved" in msg else
                       "use 2-64 lowercase letters, digits and dashes")
-    org = await _org_summary(membership.slug)
-    return templates.TemplateResponse(
-        request,
-        "org_profile.html",
-        {"request": request, "ctx": ctx, "membership": membership, "org": org,
-         "keepalive": _KEEPALIVE, "slug_saved": False,
-         "slug_error": slug_error, "logo_saved": False, "logo_error": None},
+    return _render(
+        request, "org_profile.html",
+        {**_edit_context(ctx, membership, org, slug_error=slug_error),
+         "org": {**(org or {}), "ports": resolved}},
         status_code=resp.status_code if resp.status_code in (409, 422) else 502,
     )
 
@@ -152,7 +214,7 @@ async def org_profile_logo(
     ctx: AuthContext = Depends(require_auth),
 ):
     """Logo upload proxies to the identity service (org.logo.upload enforced
-    there); re-renders the editor with the outcome. 31e: the route itself
+    there); re-renders EDIT mode with the outcome. 31e: the route itself
     pre-checks org.logo.upload — without it, the same 404 as the blade."""
     membership = _first_membership(ctx)
     if membership is None or membership.org_type != "survey_company":
@@ -166,29 +228,15 @@ async def org_profile_logo(
                         await file.read(), file.content_type)},
         headers={SESSION_HEADER: sid} if sid else {},
     )
-    org = await _org_summary(membership.slug)
+    org = await _org_with_ports(await _org_summary(membership.slug))
     logo_error = None
     if resp.status_code != 200:
         logo_error = resp.json().get("detail", "could not upload — try again")
-    return templates.TemplateResponse(
-        request,
-        "org_profile.html",
-        {"request": request, "ctx": ctx, "membership": membership, "org": org,
-         "keepalive": _KEEPALIVE, "slug_saved": False, "slug_error": None,
-         "logo_saved": resp.status_code == 200, "logo_error": logo_error},
+    return _render(
+        request, "org_profile.html",
+        _edit_context(ctx, membership, org,
+                      logo_saved=resp.status_code == 200, logo_error=logo_error),
         status_code=200 if resp.status_code == 200 else 502,
-    )
-
-
-def _refresh_membership(ctx: AuthContext, slug: str) -> MembershipContext:
-    """MembershipContext is frozen; rebuild with the fresh slug."""
-    m = ctx.memberships[0]
-    return MembershipContext(
-        org_id=m.org_id,
-        slug=slug,
-        org_type=m.org_type,
-        roles=m.roles,
-        permissions=m.permissions,
     )
 
 

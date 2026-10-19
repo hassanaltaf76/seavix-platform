@@ -3,8 +3,13 @@
 {% block breadcrumbs %}<li><a href="/org/home">Home</a></li><li aria-current="page">Profile</li>{% endblock %}
 {% block blade_title %}<h1>Your public page</h1>{% endblock %}
 {% block blade_close %}<a class="sv-blade-close" href="/org/home" aria-label="Close blade and go back">×</a>{% endblock %}
+{% block blade_actions %}
+  {% if mode == "view" and can_edit %}
+  <a class="button" href="/org/profile?view=edit">Edit</a>
+  {% endif %}
+{% endblock %}
 {% block blade_tabs %}<nav class="sv-blade-tabs" aria-label="Profile sections">
-  <a href="/org/profile" aria-current="page">Public page</a>
+  <a href="/org/profile"{% if mode == "view" %} aria-current="page"{% endif %}>Public page</a>
   {% if org and org.profile_status == 'live' %}<a href="/{{ org.slug }}">Live page</a>{% endif %}
 </nav>{% endblock %}
 
@@ -15,27 +20,29 @@
      <button type="submit" class="sv-tag sv-tag-warn"
              title="Click to resend the verification email">unverified — resend</button>
    </form>
-   {% endif %} ·
-   Roles: {{ membership.roles|join(", ") }}</p>
+   {% endif %}</p>
 
-{% if org %}
-<section class="card">
-  <h2>Your public page — seavix.ai/{{ org.slug }}</h2>
-  {% if org.profile_status == 'live' %}
-  <p><a class="button" href="/{{ org.slug }}" target="_blank" rel="noopener">View public page</a></p>
-  {% else %}
-  <p class="notice">Your page is <strong>{{ org.profile_status }}</strong> — only
-     live profiles are visible at this address.</p>
-  {% endif %}
+{% if saved %}<p class="notice success" role="status">Saved.</p>{% endif %}
+
+{% if mode == "view" %}
+{#- 31f: WYSIWYG preview — the SAME content partial the public page at
+    /<slug> renders, fed the same resolved org shape. -#}
+<section class="card sv-preview">
+  <p class="sv-preview-hint">This is exactly what visitors see at
+     seavix.ai/{{ org.slug }}{% if org and org.profile_status != 'live' %} —
+     your page is <strong>{{ org.profile_status }}</strong>, so it is not
+     public yet{% endif %}.</p>
+  {% if org %}{% include "_public_org_content.html" %}{% endif %}
 </section>
+
+{% else %}
+{#- EDIT MODE (org.profile.edit) — the 31d view-edit-save Save button
+    persists about + slug + ports in one PUT. -#}
+{% if org %}
+<p><a href="/org/profile">← Back to preview</a></p>
 
 <section class="card">
   <h2>What visitors see</h2>
-  {% if org.logo_url %}
-  <p><img class="logo" src="{{ org.logo_url }}" alt="Your current logo"></p>
-  {% endif %}
-
-  {% if 'org.profile.edit' in membership.permissions %}
   <form method="post" action="/org/profile" class="sv-form">
     <label for="about">Describe your services — this appears on your public page</label>
     <textarea id="about" name="about" rows="6">{{ org.about or "" }}</textarea>
@@ -47,17 +54,54 @@
     <small>This becomes your public page address: seavix.ai/&lt;slug&gt; —
            set it now or come back later.</small>
     {% if slug_error %}<p class="sv-field-error" role="alert">{{ slug_error }}</p>{% endif %}
-    <p><button type="submit">Save public page</button>
-       {% if slug_saved %}<strong class="sv-saved">Saved.</strong>{% endif %}</p>
+
+    <div class="sv-port-picker"
+         x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false,
+                   async search() {
+                     const frag = this.q.trim();
+                     if (!frag) { this.results = []; this.open = false; return; }
+                     const resp = await fetch("/org/ports/search?q=" + encodeURIComponent(frag));
+                     if (resp.ok) {
+                       this.results = (await resp.json()).ports;
+                       this.open = this.results.length > 0;
+                     }
+                   },
+                   add(port) {
+                     if (!this.selected.some(p => p.code === port.code)) this.selected.push(port);
+                     this.q = ""; this.results = []; this.open = false;
+                   },
+                   remove(code) { this.selected = this.selected.filter(p => p.code !== code); } }'>
+      <label for="port-search">Ports of operation — search by port name,
+             UN/LOCODE or country</label>
+      <input id="port-search" x-model="q" @input.debounce.300ms="search()"
+             @focus="search()" @keydown.escape="open = false" autocomplete="off"
+             placeholder="e.g. Al Fujayrah, AEFJR or AE"
+             role="combobox" aria-expanded="open" aria-controls="port-results">
+      <ul id="port-results" class="sv-port-results" x-show="open"
+          @click.outside="open = false" role="listbox">
+        <template x-for="port in results" :key="port.code">
+          <li><button type="button" role="option" @click="add(port)"
+                x-text="port.name + &quot; (&quot; + port.code + &quot; · &quot; + port.country + &quot;)&quot;"></button></li>
+        </template>
+      </ul>
+      <div class="sv-chips">
+        <template x-for="port in selected" :key="port.code">
+          <span class="sv-chip"><span x-text="port.name"></span>
+            <button type="button" class="sv-chip-x" @click="remove(port.code)"
+                    :aria-label="&quot;Remove &quot; + port.name">×</button>
+          </span>
+        </template>
+        <template x-for="port in selected" :key="'hidden-' + port.code">
+          <input type="hidden" name="ports" :value="port.code">
+        </template>
+      </div>
+      {% if port_error %}<p class="sv-field-error" role="alert">{{ port_error }}</p>{% endif %}
+      <small>Add as many ports as you serve — they appear as "Ports we
+             serve" on your public page.</small>
+    </div>
+
+    <p><button type="submit">Save public page</button></p>
   </form>
-  {% else %}
-  {#- 31e: view-only members (org.profile.view without org.profile.edit) get
-      the blade read-only — NO edit form, no Edit button. -#}
-  <p>{{ org.about or "No description yet." }}</p>
-  <p>Public page address: <strong>seavix.ai/{{ org.slug }}</strong></p>
-  <p class="notice">You have view-only access to this page — ask an owner or
-     admin to make changes.</p>
-  {% endif %}
 </section>
 
 {% if 'org.logo.upload' in membership.permissions %}
@@ -72,6 +116,7 @@
        {% if logo_saved %}<strong class="sv-saved">Logo updated.</strong>{% endif %}</p>
   </form>
 </section>
+{% endif %}
 {% endif %}
 {% endif %}
 

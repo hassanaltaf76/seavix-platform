@@ -22,6 +22,7 @@ LIVE_ORG = {
     "phone": "+1 555 0100",
     "logo_url": None,
     "profile_status": "live",
+    "ports": [],  # empty short-circuits the registry lookup (31f)
 }
 
 

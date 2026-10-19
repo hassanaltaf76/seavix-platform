@@ -30,8 +30,18 @@ async def get_public_org(slug: str) -> PublicOrgResponse:
                 {"slug": slug},
             )
         ).mappings().first()
-    if row is None:
-        raise HTTPException(status_code=404, detail="organization not found")
+        if row is None:
+            raise HTTPException(status_code=404, detail="organization not found")
+        ports = (
+            await session.execute(
+                text(
+                    "SELECT port_code FROM org_port WHERE org_id = "
+                    "(SELECT id FROM organization WHERE slug = :slug) "
+                    "ORDER BY port_code"
+                ),
+                {"slug": slug},
+            )
+        ).scalars().all()
     return PublicOrgResponse(
         slug=slug,
         name=row["name"],
@@ -41,4 +51,5 @@ async def get_public_org(slug: str) -> PublicOrgResponse:
         phone=row["phone"],
         logo_url=f"/media/{row['logo_blob_key']}" if row["logo_blob_key"] else None,
         profile_status=row["profile_status"],
+        ports=list(ports),
     )

@@ -122,24 +122,38 @@ def test_profile_blade_rbac_matrix(arun, id_asgi):
                     # rail cell present and links to the blade
                     assert 'href="/org/profile"' in home.text, name
                     if can_edit:
-                        # full editor: forms render
-                        assert 'name="about"' in blade.text, name
-                        assert 'name="slug"' in blade.text, name
-                        assert 'action="/org/profile/logo"' in blade.text, name
+                        # 31f view mode: WYSIWYG preview + Edit button; the
+                        # forms live in edit mode (?view=edit)
+                        assert "sv-preview" in blade.text, name
+                        assert 'href="/org/profile?view=edit"' in blade.text, name
                         assert "Edit your public page" in home.text, name
-                        # and saving works
+                        assert 'name="about"' not in blade.text, name
+                        editor = await w.get("/org/profile?view=edit")
+                        assert editor.status_code == 200, (name, editor.text[:300])
+                        assert 'name="about"' in editor.text, name
+                        assert 'name="slug"' in editor.text, name
+                        assert 'action="/org/profile/logo"' in editor.text, name
+                        assert 'sv-port-picker' in editor.text, name
+                        # Save persists via PRG back to view mode
                         saved = await w.post(
                             "/org/profile",
-                            data={"slug": f"{name}-saved-{u}", "about": "hi"},
+                            data={"slug": f"{name}-saved-{u}", "about": "hi",
+                                  "ports": []},
+                            follow_redirects=False,
                         )
-                        assert saved.status_code == 200, (name, saved.text[:300])
-                        assert "Saved." in saved.text, name
+                        assert saved.status_code == 303, (name, saved.text[:300])
+                        assert saved.headers["location"] == "/org/profile?saved=1"
+                        followed = await w.get(saved.headers["location"])
+                        assert "Saved." in followed.text, name
+                        assert f"{name}-saved-{u}" in followed.text, name
                     else:
-                        # view-only: read-only blade, NO form, NO Edit button
+                        # view-only: view mode WITHOUT the Edit button, and
+                        # forcing ?view=edit still renders the preview
+                        assert "sv-preview" in blade.text, name
+                        assert 'href="/org/profile?view=edit"' not in blade.text, name
                         assert 'name="about"' not in blade.text, name
-                        assert 'name="slug"' not in blade.text, name
-                        assert 'action="/org/profile/logo"' not in blade.text, name
-                        assert "view-only access" in blade.text, name
+                        forced = await w.get("/org/profile?view=edit")
+                        assert 'name="about"' not in forced.text, name
                         # org-home link is labelled by capability
                         assert "View your public page" in home.text, name
                         assert "Edit your public page" not in home.text, name
@@ -189,11 +203,16 @@ def test_rail_cell_is_permission_driven_not_role_name_driven(arun, id_asgi):
                 assert 'href="/org/profile"' in home.text
                 blade = await w.get("/org/profile")
                 assert blade.status_code == 200
-                # view permission only: read-only, no edit form
-                assert "view-only access" in blade.text
+                # view permission only: WYSIWYG preview, NO Edit button, no
+                # form — and forcing ?view=edit still renders the preview
+                assert "sv-preview" in blade.text
+                assert 'href="/org/profile?view=edit"' not in blade.text
                 assert 'name="about"' not in blade.text
+                forced = await w.get("/org/profile?view=edit")
+                assert 'name="about"' not in forced.text
                 post = await w.post(
-                    "/org/profile", data={"slug": f"y-{u}", "about": "nope"}
+                    "/org/profile", data={"slug": f"y-{u}", "about": "nope",
+                                          "ports": []}
                 )
                 assert post.status_code == 404
 

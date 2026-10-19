@@ -66,6 +66,11 @@ class ProfileUpdate(BaseModel):
     website: str | None = None
     phone: str | None = None
     slug: str | None = None  # optional: set/change the public page slug
+    # Ports of operation (task 31f): UN/LOCODE codes, cross-service
+    # reference to registry.port — existence is validated by the web app
+    # against the registry; identity validates the code FORMAT and owns
+    # persistence. None = leave the org's ports untouched.
+    ports: list[str] | None = None
 
     @field_validator("slug")
     @classmethod
@@ -77,6 +82,23 @@ class ProfileUpdate(BaseModel):
         if v is not None and v in RESERVED_SLUGS:
             raise ValueError(f"slug {v!r} is a reserved word")
         return v
+
+    @field_validator("ports")
+    @classmethod
+    def port_codes(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        out: list[str] = []
+        for raw in v:
+            code = raw.strip()
+            if not re.fullmatch(r"[A-Z]{5}", code):
+                raise ValueError(
+                    f"port code {raw!r} is not a UN/LOCODE "
+                    "(exactly 5 uppercase letters/digits)"
+                )
+            if code not in out:
+                out.append(code)
+        return out
 
 
 class StatusUpdate(BaseModel):
@@ -125,6 +147,20 @@ async def update_profile(
                 "id": org_id,
             },
         )
+        if payload.ports is not None:
+            # full replace: the Save button always submits the complete
+            # chip list, so DELETE + INSERT is the whole semantics
+            await session.execute(
+                text("DELETE FROM org_port WHERE org_id = :id"), {"id": org_id}
+            )
+            if payload.ports:
+                await session.execute(
+                    text(
+                        "INSERT INTO org_port (org_id, port_code) "
+                        "VALUES (:id, :code) ON CONFLICT DO NOTHING"
+                    ),
+                    [{"id": org_id, "code": c} for c in payload.ports],
+                )
         await session.commit()
     return {"org_id": org_id, **payload.model_dump()}
 

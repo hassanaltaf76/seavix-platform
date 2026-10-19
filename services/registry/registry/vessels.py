@@ -6,7 +6,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import text
+from sqlalchemy import ARRAY, Text, bindparam, text
 
 from .db import SessionLocal
 
@@ -124,15 +124,40 @@ async def upsert_vessel(payload: VesselIn) -> dict:
 async def search_ports(
     search: str = Query("", max_length=100),
 ) -> dict:
+    """Combobox search for the profile port picker: matches name, UN/LOCODE
+    or country (31f). Ranking: exact country code, then name, then code —
+    so "SG" surfaces Singapore before code fragments like GBASG."""
     async with SessionLocal() as session:
         rows = (
             await session.execute(
                 text(
                     "SELECT code, name, country FROM port "
                     "WHERE name ILIKE :frag OR code ILIKE :frag "
-                    "ORDER BY name LIMIT 50"
+                    "OR country ILIKE :frag "
+                    "ORDER BY (country = :exact) DESC, "
+                    "(name ILIKE :frag) DESC, (code ILIKE :frag) DESC, name "
+                    "LIMIT 50"
                 ),
-                {"frag": f"%{search}%"},
+                {"frag": f"%{search}%", "exact": search.strip().upper()},
             )
         ).mappings().all()
     return {"ports": [dict(r) for r in rows]}
+
+
+@router.get("/ports/lookup")
+async def lookup_ports(
+    codes: str = Query("", max_length=600),
+) -> dict:
+    """Resolve UN/LOCODEs to port rows in REQUEST order (31f). Unknown codes
+    are omitted; the caller (web app) flags them. Powers the public page's
+    "Ports we serve" section and the blade preview."""
+    wanted = [c.strip().upper() for c in codes.split(",") if c.strip()][:100]
+    if not wanted:
+        return {"ports": []}
+    async with SessionLocal() as session:
+        stmt = text(
+            "SELECT code, name, country FROM port WHERE code = ANY(:codes)"
+        ).bindparams(bindparam("codes", type_=ARRAY(Text)))
+        rows = (await session.execute(stmt, {"codes": wanted})).mappings().all()
+    by_code = {r["code"]: dict(r) for r in rows}
+    return {"ports": [by_code[c] for c in wanted if c in by_code]}

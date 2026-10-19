@@ -301,29 +301,34 @@ def test_verify_templates_have_no_password_fields():
 
 def test_profile_settings_public_slug_section():
     """31b: the profile blade is the public-page editor — framing with the
-    root-level URL, services description, slug + hint, logo upload."""
+    root-level URL, services description, slug + hint, logo upload. 31f:
+    the editor lives in edit mode; view mode is the WYSIWYG preview."""
     text = (TEMPLATES / "org_profile.html").read_text()
     assert 'name="slug"' in text
     assert 'name="about"' in text
     assert "seavix.ai/" in text
     assert "seavix.ai/p/" not in text  # profiles moved to the root URL
     assert "Your public page" in text
-    assert "View public page" in text
-    assert 'target="_blank"' in text
+    # the live page opens from the view-mode tab (31f replaced the 31b
+    # "View public page" new-tab button with the preview itself)
+    assert '{% if org and org.profile_status == ' in text
+    assert ">Live page</a>" in text
+    assert 'href="/org/profile?view=edit"' in text  # Edit button
     assert "Describe your services" in text
     assert 'action="/org/profile/logo"' in text
     assert 'name="file"' in text
     assert "set it now or come back later" in text
+    assert ">Save public page</button>" in text  # 31d view-edit-save
 
 
 def test_profile_blade_is_permission_gated_31e():
     """31e: the blade template renders edit surfaces ONLY when the
-    membership holds the permission — view-only members get a read-only
-    blade with NO form and NO Edit button."""
+    membership holds the permission — view-only members get the preview
+    with NO edit chrome (the handler decides `mode`; the template gates
+    the logo card on org.logo.upload)."""
     text = (TEMPLATES / "org_profile.html").read_text()
-    assert "'org.profile.edit' in membership.permissions" in text
     assert "'org.logo.upload' in membership.permissions" in text
-    assert "view-only access" in text
+    assert "mode == \"view\" and can_edit" in text  # Edit button gating
     home = (TEMPLATES / "org_home.html").read_text()
     # the rail company cell is permission-gated, never role-name-driven
     assert "'org.profile.view' in ctx.memberships[0].permissions" in BASE
@@ -333,6 +338,46 @@ def test_profile_blade_is_permission_gated_31e():
     assert "'org.profile.view' in membership.permissions" in home
     assert "Edit your public page" in home
     assert "View your public page" in home
+
+
+def test_profile_view_mode_is_public_preview_31f():
+    """31f: view mode includes the SAME content partial as the public page
+    at /<slug> — WYSIWYG by construction. Both templates must reference
+    the shared partial and nothing else renders org content."""
+    partial = (TEMPLATES / "_public_org_content.html").read_text()
+    profile = (TEMPLATES / "profile.html").read_text()
+    blade = (TEMPLATES / "org_profile.html").read_text()
+    assert '{% include "_public_org_content.html" %}' in profile
+    assert '{% include "_public_org_content.html" %}' in blade
+    # the org content lives ONLY in the partial now
+    assert "sv-org-header" not in profile
+    assert "sv-org-header" not in blade
+    # the ports section lives in the shared partial
+    assert "Ports we serve" in partial
+    assert "org.ports" in partial
+    # blade structure: view mode preview, edit chrome behind mode == edit
+    assert 'class="card sv-preview"' in blade
+    assert '{% if mode == "view" %}' in blade
+
+
+def test_port_picker_markup_31f():
+    """31f: the edit-mode port picker is an Alpine combobox wired to the
+    registry search endpoint, with removable chips persisted as repeated
+    hidden `ports` fields on Save."""
+    text = (TEMPLATES / "org_profile.html").read_text()
+    assert 'id="port-search"' in text
+    assert 'x-model="q"' in text
+    assert "@input.debounce.300ms" in text
+    assert 'fetch("/org/ports/search?q="' in text
+    assert 'role="combobox"' in text
+    assert 'x-show="open"' in text
+    assert "@click.outside" in text
+    assert 'name="ports"' in text  # hidden inputs carry the selection
+    assert "remove(port.code)" in text
+    assert "add(port)" in text
+    # multi-select is unlimited: no max/cap attributes on the picker
+    picker = re.search(r'class="sv-port-picker"(.*?)</div>\s*{% if port_error', text, re.S)
+    assert picker and "max" not in picker.group(1)
 
 
 def test_verification_resend_action_wired_31e():

@@ -83,8 +83,66 @@ def test_search_fragment(arun):
             assert f"Aurora {frag}" in names
             assert "Unrelated Name" not in names
 
-            ports = await c.get("/ports", params={"search": "fujairah"})
+            # the official UN/LOCODE name is "Al Fujayrah" (the 31f import
+            # superseded the old hand-seeded "Fujairah" label)
+            ports = await c.get("/ports", params={"search": "fujayrah"})
             assert any(p["code"] == "AEFJR" for p in ports.json()["ports"])
+            # country search: exact country code ranks first (31f)
+            ports_sg = await c.get("/ports", params={"search": "SG"})
+            assert ports_sg.json()["ports"][0]["country"] == "SG"
+
+    arun(scenario())
+
+
+def test_ports_search_by_name_code_and_country(arun):
+    """31f combobox backend: search matches name, UN/LOCODE or country."""
+    async def scenario():
+        from sqlalchemy import text as sql
+
+        from registry.db import SessionLocal
+
+        async with SessionLocal() as s:
+            await s.execute(
+                sql(
+                    "INSERT INTO port (code, name, country) VALUES "
+                    "(:code, :name, :country) ON CONFLICT (code) DO NOTHING"
+                ),
+                [
+                    {"code": "AEFJR", "name": "Al Fujayrah", "country": "AE"},
+                    {"code": "SGSIN", "name": "Singapore", "country": "SG"},
+                    {"code": "NLRTM", "name": "Rotterdam", "country": "NL"},
+                ],
+            )
+            await s.commit()
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+            by_name = await c.get("/ports", params={"search": "rotterdam"})
+            assert any(p["code"] == "NLRTM" for p in by_name.json()["ports"])
+            by_code = await c.get("/ports", params={"search": "aefjr"})
+            assert any(p["code"] == "AEFJR" for p in by_code.json()["ports"])
+            by_country = await c.get("/ports", params={"search": "SG"})
+            codes = [p["code"] for p in by_country.json()["ports"]]
+            assert "SGSIN" in codes
+            assert "NLRTM" not in codes  # ILIKE on country only for SG
+
+    arun(scenario())
+
+
+def test_ports_lookup_request_order_and_unknown_omitted(arun):
+    """31f: bulk code resolution preserves request order and drops codes
+    the registry does not know."""
+    async def scenario():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+            r = await c.get(
+                "/ports/lookup", params={"codes": "SGSIN,XXXXX,NLRTM,AEFJR"}
+            )
+            ports = r.json()["ports"]
+            assert [p["code"] for p in ports] == ["SGSIN", "NLRTM", "AEFJR"]
+            assert all("name" in p and "country" in p for p in ports)
+            empty = await c.get("/ports/lookup", params={"codes": ""})
+            assert empty.json() == {"ports": []}
 
     arun(scenario())
 

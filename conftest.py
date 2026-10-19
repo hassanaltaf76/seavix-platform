@@ -18,6 +18,13 @@ os.environ.setdefault(
     "DATABASE_URL",
     "postgresql+asyncpg://seavix:dev@localhost:5432/seavix_identity",
 )
+# The registry service shares the pytest process when web tests run its
+# app in-process — bind it to its own database BEFORE first import
+# (first-import-wins; notable fix #11).
+os.environ.setdefault(
+    "REGISTRY_DATABASE_URL",
+    "postgresql+asyncpg://seavix:dev@localhost:5432/seavix_registry",
+)
 # The platform .env may carry real DEV_SMTP_* credentials for manual QA.
 # Tests must stay hermetic on LogMailSender: blank them here (setdefault
 # semantics in the services' .env loaders mean these real-env values win).

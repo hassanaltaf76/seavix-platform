@@ -1,0 +1,28 @@
+{#- Shared public-org content (task 31f): rendered by /<slug> AND by the
+    profile blade's view mode, so the preview is WYSIWYG by construction.
+    Expects `org` with name/about/website/phone/logo_url/slug and `ports`
+    as RESOLVED rows [{code, name, country}] (the web app resolves names
+    via the registry before rendering). -#}
+<article>
+  <header class="sv-org-header">
+    {% if org.logo_url %}
+      <img class="logo" src="{{ org.logo_url }}" alt="{{ org.name }} logo">
+    {% else %}
+      <div class="logo placeholder" aria-hidden="true"></div>
+    {% endif %}
+    <div>
+      <h1>{{ org.name }}</h1>
+      {% if org.about %}<p class="about">{{ org.about }}</p>{% endif %}
+    </div>
+  </header>
+  <ul class="sv-org-facts">
+    {% if org.website %}<li>Website: <a href="{{ org.website }}" rel="nofollow">{{ org.website }}</a></li>{% endif %}
+    {% if org.phone %}<li>Phone: {{ org.phone }}</li>{% endif %}
+  </ul>
+  {% if org.ports %}
+  <p class="sv-org-ports"><strong>Ports we serve:</strong>
+    {% for p in org.ports %}<span class="sv-port" title="{{ p.code }} — {{ p.country }}">{{ p.name }}</span>{% if not loop.last %}<span class="sv-port-sep" aria-hidden="true"> · </span>{% endif %}{% endfor %}
+  </p>
+  {% endif %}
+  <p><a class="button" href="/{{ org.slug }}/rfq">Raise an RFQ</a></p>
+</article>

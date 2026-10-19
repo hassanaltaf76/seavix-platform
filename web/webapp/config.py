@@ -19,6 +19,10 @@ def work_base_url() -> str:
     return os.environ.get("WORK_SERVICE_URL", "http://localhost:8004")
 
 
+def registry_base_url() -> str:
+    return os.environ.get("REGISTRY_BASE_URL", "http://localhost:8003")
+
+
 def blob_root() -> Path:
     """Shared with the identity service's LocalBlobStore root.
 
