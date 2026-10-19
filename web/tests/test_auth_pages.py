@@ -107,12 +107,24 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 w.cookies.set(SESSION_COOKIE, sid)
                 home = await w.get("/org/profile")
                 assert home.status_code == 200
-                assert email in home.text
                 assert slug in home.text
                 # 31b: profile blade is the public-page editor
                 assert "Your public page" in home.text
                 assert f"seavix.ai/{slug}" in home.text  # root-level framing
                 assert "View public page" not in home.text  # draft: not live yet
+                # 31e (amended): the blade is a public-content surface — no
+                # account email, no verification state in the blade body
+                body = re.search(
+                    r'<div class="sv-blade-body".*', home.text, re.S
+                ).group(0)
+                assert email not in body
+                assert "unverified" not in body
+                assert "/org/verification/resend" not in body
+                # ...while the signed-in account menu carries the tag
+                topnav = re.search(
+                    r'<nav class="sv-topnav".*?</nav>', home.text, re.S
+                ).group(0)
+                assert "unverified — resend" in topnav
                 # rail: company name present, zero favorites/services/home items
                 assert "Favorites" not in home.text
                 assert "All services" not in home.text
@@ -127,6 +139,7 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 landing = await w.get(close.group(1))
                 assert landing.status_code == 200
                 assert "Your account" in landing.text
+                assert email in landing.text  # org home IS the account surface
                 # org home is the top-level blade: crumb root "Home", and
                 # its × also closes to org home (never "/")
                 assert "<li aria-current=\"page\">Home</li>" in landing.text

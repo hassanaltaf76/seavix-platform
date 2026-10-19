@@ -4,16 +4,11 @@
 {% block blade_title %}<h1>Your account</h1>{% endblock %}
 {% block blade_close %}<a class="sv-blade-close" href="/org/home" aria-label="Close blade and go back">×</a>{% endblock %}
 {% block content %}
-<p>Signed in as {{ ctx.user.email }}
-   {% if not ctx.email_verified %}
-   <form method="post" action="/org/verification/resend" class="sv-inline-form">
-     <button type="submit" class="sv-tag sv-tag-warn"
-             title="Click to resend the verification email">unverified — resend</button>
-   </form>
-   {% endif %}</p>
+<p>Signed in as {{ ctx.user.email }}</p>
 
-{#- 31e: gentle activation banner, MASTER account only (the registration-
-    created owner membership) and only while the email is unverified. -#}
+{#- 31e (amended): verification state lives in the signed-in ACCOUNT MENU
+    (base.html, subtle actionable tag) and HERE on org home as the master-
+    account activation banner. The profile blade carries none of it. -#}
 {% if membership and "owner" in membership.roles and not ctx.email_verified %}
 <div class="notice" role="status">Verify your email to activate your public page.
   <form method="post" action="/org/verification/resend" class="sv-inline-form">

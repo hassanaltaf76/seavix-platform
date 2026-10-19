@@ -22,6 +22,15 @@
             x-bind:aria-expanded="!railCollapsed.toString()">☰</button>
     <nav class="sv-topnav" aria-label="Account">
       {% if ctx is defined and ctx %}
+        {#- 31e (amended): the unverified tag lives HERE — the signed-in
+            account menu — subtle and actionable. It must never render on
+            the company profile blade or its public preview. -#}
+        {% if not ctx.email_verified %}
+        <form method="post" action="/org/verification/resend" class="sv-inline-form">
+          <button type="submit" class="sv-tag sv-tag-warn"
+                  title="Click to resend the verification email">unverified — resend</button>
+        </form>
+        {% endif %}
         <a href="/org/home">Your account</a>
         <form method="post" action="/logout" class="sv-inline-form">
           <button type="submit" class="sv-link-btn">Sign out</button>

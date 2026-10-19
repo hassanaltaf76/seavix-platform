@@ -255,7 +255,8 @@ async def org_home(request: Request, resent: str = "", ctx: AuthContext = Depend
 @router.post("/org/verification/resend")
 async def resend_verification(request: Request, ctx: AuthContext = Depends(require_auth)):
     """31e: the signed-in "Resend verification email" action behind the
-    unverified tag (org home + profile blade). Goes through the identity
+    unverified tag in the ACCOUNT MENU (base.html) — never on the profile
+    blade, which is a public-content surface. Goes through the identity
     verification-link pipeline — itself rate-limited like every other send
     (shared per-email 5/hour window, 429 mapped to ?resent=limited). PRG
     back to org home with the outcome in the query string."""

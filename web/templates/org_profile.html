@@ -14,13 +14,11 @@
 </nav>{% endblock %}
 
 {% block content %}
-<p>Signed in as {{ ctx.user.email }}
-   {% if not ctx.email_verified %}
-   <form method="post" action="/org/verification/resend" class="sv-inline-form">
-     <button type="submit" class="sv-tag sv-tag-warn"
-             title="Click to resend the verification email">unverified — resend</button>
-   </form>
-   {% endif %}</p>
+{#- 31e (amended per owner feedback): the profile blade is a PUBLIC-CONTENT
+    surface — no account email line, no tag, and no go-live notice may
+    render here: on a public-content surface account state misreads as
+    company state. It lives in the signed-in account menu (base.html)
+    and the master banner on org home. -#}
 
 {% if saved %}<p class="notice success" role="status">Saved.</p>{% endif %}
 
@@ -120,8 +118,4 @@
 {% endif %}
 {% endif %}
 
-{% if not ctx.email_verified %}
-<p class="notice">Verify your email before going live — the verification gate
-   blocks profile publication.</p>
-{% endif %}
 {{ keepalive | safe }}{% endblock %}

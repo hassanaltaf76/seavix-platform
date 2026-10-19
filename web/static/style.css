@@ -449,7 +449,9 @@ h2 { font-size: 1.08rem; }
 }
 .notice.success { border-left-color: var(--seavix-success); }
 
-/* 31e verification UX: the unverified tag IS the resend action */
+/* 31e verification UX (amended): the unverified tag IS the resend action,
+   and it lives in the signed-in ACCOUNT MENU — never on the profile blade
+   (a public-content surface) or its preview. */
 .sv-tag {
   display: inline-block;
   font-size: 0.78rem;

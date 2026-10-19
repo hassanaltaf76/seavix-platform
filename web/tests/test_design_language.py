@@ -381,20 +381,33 @@ def test_port_picker_markup_31f():
 
 
 def test_verification_resend_action_wired_31e():
-    """31e: the unverified tag IS the resend action on both blades, the
-    master-account banner sits on org home, and the blade 404 exists."""
-    for name in ("org_home", "org_profile"):
-        text = (TEMPLATES / f"{name}.html").read_text()
-        assert 'action="/org/verification/resend"' in text, name
-        assert "sv-tag-warn" in text, name
-        assert "unverified — resend" in text, name
+    """31e (amended): the unverified tag + resend live in the signed-in
+    ACCOUNT MENU (base.html) and the master banner on org home. The
+    profile blade, its edit mode and the shared public partial carry
+    ZERO verification or account state."""
+    base = BASE
+    assert 'action="/org/verification/resend"' in base
+    assert "sv-tag-warn" in base
+    assert "unverified — resend" in base
+    assert 'aria-label="Account"' in base  # the tag sits in the account menu
+
     home = (TEMPLATES / "org_home.html").read_text()
     assert "Verify your email to activate your public page." in home
     assert '"owner" in membership.roles' in home
     assert 'method="post" action="/org/verification/resend"' in home
-    not_found = (TEMPLATES / "org_not_found.html").read_text()
-    assert '{% extends "base.html" %}' in not_found
-    assert "isn't available" in not_found
+
+    # the blade is a public-content surface: NO verification state, NO
+    # account email line, NO roles — in either mode
+    blade = (TEMPLATES / "org_profile.html").read_text()
+    for banned in ("/org/verification/resend", "unverified",
+                   "Verify your email", "Signed in as", "email_verified",
+                   "membership.roles"):
+        assert banned not in blade, f"blade leaks account state: {banned!r}"
+
+    # the shared public partial (blade preview == /<slug>) is account-free
+    partial = (TEMPLATES / "_public_org_content.html").read_text()
+    for banned in ("unverified", "verification", "ctx.user", "membership"):
+        assert banned not in partial, f"public partial leaks account state: {banned!r}"
 
 
 def test_favicon_and_pwa_icons_derived_from_logo():
