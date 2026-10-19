@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Check your email — SeaVix{% endblock %}
+{% block breadcrumbs %}
+<li><a href="/">Home</a></li>
+<li><a href="/login">Sign in</a></li>
+<li aria-current="page">Check your email</li>
+{% endblock %}
 {% block content %}
-<h1>Check your email</h1>
+<div class="sv-blade-head"><h1>Check your email</h1></div>
 <p>We sent a 6-digit sign-in code to <strong>{{ email }}</strong>.
    In local dev the code is in the identity service log
    (<code>DEV-OTP email={{ email }}</code>).</p>

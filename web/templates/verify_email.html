@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Verify your email — SeaVix{% endblock %}
+{% block breadcrumbs %}
+<li><a href="/">Home</a></li>
+<li><a href="/register">Register</a></li>
+<li aria-current="page">Verify your email</li>
+{% endblock %}
 {% block content %}
-<h1>Verify your email</h1>
+<div class="sv-blade-head"><h1>Verify your email</h1></div>
 <p>We sent a 6-digit verification code to <strong>{{ email }}</strong>.
    In local dev the code is in the identity service log
    (<code>DEV-OTP email={{ email }} purpose=verify_email</code>).</p>
@@ -13,8 +18,13 @@
          pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code">
   <button type="submit">Verify</button>
 </form>
-<form method="post" action="/register/verify/resend" class="form">
+<form method="post" action="/register/verify/resend" class="form"
+      x-data="{ sent: false }">
   <input type="hidden" name="email" value="{{ email }}">
-  <button type="submit" class="secondary">Resend code</button>
+  <button type="submit" class="secondary"
+          x-bind:disabled="sent" x-on:htmx:after-request="sent = true"
+          hx-post="/register/verify/resend"
+          hx-vals='{"email": "{{ email }}"}'
+          hx-swap="none">Resend code</button>
 </form>
 {% endblock %}

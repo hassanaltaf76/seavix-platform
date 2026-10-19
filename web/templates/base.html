@@ -7,18 +7,54 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header class="site-header">
-    <a class="brand" href="/">SeaVix</a>
-    <nav>
-      <a href="/register">Register your company</a>
-      <a href="/login">Sign in</a>
+  <a class="sv-skip" href="#blade">Skip to content</a>
+
+  <header class="sv-chrome">
+    <div class="sv-chrome-brand">
+      <a href="/" aria-label="SeaVix home">
+        <img src="/static/brand/seavix-logo.png" alt="SeaVix">
+      </a>
+    </div>
+    <nav class="sv-chrome-nav" aria-label="Account">
+      {% if ctx is defined and ctx %}
+        <a href="{{ home if home is defined else '/org/home' }}">Your account</a>
+        <form method="post" action="/logout" class="sv-inline-form">
+          <button type="submit" class="sv-link-btn">Sign out</button>
+        </form>
+      {% else %}
+        <a href="/register">Register your company</a>
+        <a href="/login">Sign in</a>
+      {% endif %}
     </nav>
   </header>
-  <main class="container">
-    {% block content %}{% endblock %}
+
+  <nav class="sv-crumbs" aria-label="Breadcrumb">
+    <ol>
+      {% block breadcrumbs %}<li aria-current="page">Home</li>{% endblock %}
+    </ol>
+  </nav>
+
+  <main class="sv-canvas">
+    <section class="sv-blade sv-blade--browse" aria-label="Browse">
+      {% block browse %}
+        <h2>SeaVix</h2>
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/register">Register your company</a></li>
+          <li><a href="/login">Sign in</a></li>
+        </ul>
+      {% endblock %}
+    </section>
+
+    <section class="sv-blade sv-blade--slide" id="blade" aria-label="Content">
+      {% block content %}{% endblock %}
+      <footer class="site-footer">
+        <p>SeaVix — marine survey coordination. Local dev build.</p>
+      </footer>
+    </section>
   </main>
-  <footer class="site-footer">
-    <p>SeaVix — marine survey coordination. Local dev build.</p>
-  </footer>
+
+  <script defer src="/static/vendor/htmx.min.js"></script>
+  <script defer src="/static/vendor/alpine.min.js"></script>
 </body>
 </html>

@@ -1,24 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Your account — SeaVix{% endblock %}
+{% block breadcrumbs %}
+<li><a href="/">Home</a></li>
+<li aria-current="page">Your account</li>
+{% endblock %}
+{% block browse %}
+<h2>Your account</h2>
+<ul>
+  <li><a href="/org/home" aria-current="page">Overview</a></li>
+  {% if membership and membership.org_type == 'survey_company' %}
+  <li><a href="/org/profile">Company profile</a></li>
+  {% if org and org.profile_status == 'live' %}
+  <li><a href="/p/{{ membership.slug }}">Public page</a></li>
+  {% endif %}
+  {% endif %}
+  <li><a href="/">SeaVix home</a></li>
+</ul>
+{% endblock %}
 {% block content %}
-<h1>Your account</h1>
+<div class="sv-blade-head"><h1>Your account</h1></div>
 <p>Signed in as {{ ctx.user.email }}
    {% if not ctx.email_verified %}(unverified){% endif %}</p>
 
 {% if membership %}
 <section class="card">
   <h2>{{ membership.slug }} · {{ membership.org_type }}</h2>
-  <p>Role: {{ membership.roles|join(", ") }}</p>
-  {% if org and org.profile_status == 'live' %}
-  <p><a href="/p/{{ membership.slug }}">Public page</a></p>
-  {% endif %}
+  <p>Roles: {{ membership.roles|join(", ") }}</p>
 </section>
 {% else %}
 <p>No organization membership is attached to this account yet.</p>
 {% endif %}
-
-<form method="post" action="/logout">
-  <button type="submit" class="secondary">Sign out</button>
-</form>
 {{ keepalive | safe }}
 {% endblock %}

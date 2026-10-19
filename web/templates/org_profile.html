@@ -1,26 +1,41 @@
 {% extends "base.html" %}
 {% block title %}Your company — SeaVix{% endblock %}
+{% block breadcrumbs %}
+<li><a href="/">Home</a></li>
+<li><a href="/org/home">Your account</a></li>
+<li aria-current="page">Company profile</li>
+{% endblock %}
+{% block browse %}
+<h2>Your account</h2>
+<ul>
+  <li><a href="/org/home">Overview</a></li>
+  {% if membership and membership.org_type == 'survey_company' %}
+  <li><a href="/org/profile" aria-current="page">Company profile</a></li>
+  {% if org and org.profile_status == 'live' %}
+  <li><a href="/p/{{ membership.slug }}">Public page</a></li>
+  {% endif %}
+  {% endif %}
+  <li><a href="/">SeaVix home</a></li>
+</ul>
+{% endblock %}
 {% block content %}
-<h1>{{ membership.slug }}</h1>
+<div class="sv-blade-head"><h1>{{ membership.slug }}</h1></div>
 <p>Signed in as {{ ctx.user.email }}
-   {% if not ctx.email_verified %}(unverified){% endif %} · role {{ membership.roles|join(", ") }}</p>
+   {% if not ctx.email_verified %}(unverified){% endif %} ·
+   Roles: {{ membership.roles|join(", ") }}</p>
 
 {% if org %}
 <section class="card">
   <h2>Public profile</h2>
   <p>Status: <strong>{{ org.profile_status }}</strong></p>
-  {% if org.about %}<p>{{ org.about }}</p>{% endif %}
+  {% if org.about %}<p class="about">{{ org.about }}</p>{% endif %}
   <p><a href="/p/{{ membership.slug }}">View public page</a></p>
 </section>
 {% endif %}
 
 {% if not ctx.email_verified %}
-<p class="error">Verify your email before going live — the verification gate
+<p class="notice">Verify your email before going live — the verification gate
    blocks profile publication.</p>
 {% endif %}
-
-<form method="post" action="/logout">
-  <button type="submit" class="secondary">Sign out</button>
-</form>
 {{ keepalive | safe }}
 {% endblock %}

@@ -1,8 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Email verified — SeaVix{% endblock %}
+{% block breadcrumbs %}
+<li><a href="/">Home</a></li>
+<li><a href="/register">Register</a></li>
+<li><a href="/login">Verify your email</a></li>
+<li aria-current="page">Verified</li>
+{% endblock %}
 {% block content %}
-<h1>Email verified</h1>
-<p>Your email address is verified. You can now publish your company profile
-   and sign in.</p>
+<div class="sv-blade-head"><h1>Email verified</h1></div>
+<p class="notice success">Your email address is verified. You can now publish
+   your company profile and sign in.</p>
 <p><a class="button" href="/login">Sign in</a></p>
 {% endblock %}

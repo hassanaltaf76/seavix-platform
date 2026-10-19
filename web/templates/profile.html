@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ org.name }} — SeaVix{% endblock %}
+{% block breadcrumbs %}
+<li><a href="/">Home</a></li>
+<li><a href="/">Companies</a></li>
+<li aria-current="page">{{ org.name }}</li>
+{% endblock %}
 {% block content %}
+<div class="sv-blade-head"><h1>{{ org.name }}</h1></div>
 <article class="profile">
   <header class="profile-header">
     {% if org.logo_url %}
@@ -9,7 +15,6 @@
       <div class="logo placeholder" aria-hidden="true"></div>
     {% endif %}
     <div>
-      <h1>{{ org.name }}</h1>
       {% if org.about %}<p class="about">{{ org.about }}</p>{% endif %}
       <ul class="facts">
         {% if org.website %}<li>Website: <a href="{{ org.website }}" rel="nofollow">{{ org.website }}</a></li>{% endif %}

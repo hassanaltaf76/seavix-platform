@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Raise an RFQ — {{ org_name }}{% endblock %}
+{% block breadcrumbs %}
+<li><a href="/">Home</a></li>
+<li><a href="/p/{{ slug }}">{{ org_name }}</a></li>
+<li aria-current="page">Raise an RFQ</li>
+{% endblock %}
 {% block content %}
-<h1>Request a quotation from {{ org_name }}</h1>
+<div class="sv-blade-head"><h1>Request a quotation from {{ org_name }}</h1></div>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 <form method="post" action="/p/{{ slug }}/rfq" class="form">
   <label for="vessel_imo">Vessel IMO number</label>

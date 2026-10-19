@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Welcome — SeaVix{% endblock %}
+{% block breadcrumbs %}
+<li><a href="/">Home</a></li>
+<li><a href="/register">Register</a></li>
+<li aria-current="page">Welcome</li>
+{% endblock %}
 {% block content %}
-<h1>Welcome aboard</h1>
+<div class="sv-blade-head"><h1>Welcome aboard</h1></div>
 <p>Your {% if account_kind == 'survey_company' %}survey company{% else %}client
    account{% endif %} <strong>{{ slug }}</strong> was created.</p>
 <p>Your public profile starts as a <em>draft</em>. Add your profile details and
