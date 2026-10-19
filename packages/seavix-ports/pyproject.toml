@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "SeaVix ports — the interfaces that keep GCP out of service code."
 requires-python = ">=3.14"
 dependencies = [
+    "fastapi>=0.130",
     "firebase-admin>=7.0.0",
     "httpx>=0.28",
 ]

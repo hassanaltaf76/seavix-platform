@@ -32,4 +32,4 @@ seavix-registry = { workspace = true }
 seavix-work = { workspace = true }
 
 [tool.pytest.ini_options]
-testpaths = ["packages", "services", "web"]
+testpaths = ["packages", "services", "web", "tests"]

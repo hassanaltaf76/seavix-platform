@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import httpx
+from seavix_ports import public_route
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -34,6 +35,7 @@ async def _post_public_rfq(payload: dict) -> httpx.Response:
 # ---------------------------------------------------------------- landing
 
 @router.get("/", response_class=HTMLResponse)
+@public_route
 async def landing(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "landing.html", {"request": request})
 
@@ -41,12 +43,14 @@ async def landing(request: Request) -> HTMLResponse:
 # ---------------------------------------------------------------- register
 
 @router.get("/register", response_class=HTMLResponse)
+@public_route
 async def register_form(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "register.html", {"request": request, "error": None, "form": {}}
     )
 
 
 @router.post("/register", response_class=HTMLResponse)
+@public_route
 async def register_submit(
     request: Request,
     org_name: str = Form(...),
@@ -87,6 +91,7 @@ async def register_submit(
 # ---------------------------------------------------------------- profiles
 
 @router.get("/p/{slug}", response_class=HTMLResponse)
+@public_route
 async def public_profile(request: Request, slug: str) -> HTMLResponse:
     resp = await _identity_get(f"/api/orgs/{slug}")
     if resp.status_code != 200:
@@ -104,6 +109,7 @@ async def public_profile(request: Request, slug: str) -> HTMLResponse:
 # ---------------------------------------------------------------- RFQ
 
 @router.get("/p/{slug}/rfq", response_class=HTMLResponse)
+@public_route
 async def rfq_form(request: Request, slug: str) -> HTMLResponse:
     resp = await _identity_get(f"/api/orgs/{slug}")
     if resp.status_code != 200 or resp.json()["profile_status"] != "live":
@@ -122,6 +128,7 @@ async def rfq_form(request: Request, slug: str) -> HTMLResponse:
 
 
 @router.post("/p/{slug}/rfq", response_class=HTMLResponse)
+@public_route
 async def rfq_submit(
     request: Request,
     slug: str,
@@ -189,6 +196,7 @@ async def rfq_submit(
 # ---------------------------------------------------------------- dev media
 
 @router.get("/media/{key:path}")
+@public_route
 async def media(key: str) -> FileResponse:
     """Dev-only: stream blobs stored by LocalBlobStore from var/blobs.
 

@@ -1203,12 +1203,14 @@ name = "seavix-ports"
 version = "0.1.0"
 source = { editable = "packages/seavix-ports" }
 dependencies = [
+    { name = "fastapi" },
     { name = "firebase-admin" },
     { name = "httpx" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "fastapi", specifier = ">=0.130" },
     { name = "firebase-admin", specifier = ">=7.0.0" },
     { name = "httpx", specifier = ">=0.28" },
 ]

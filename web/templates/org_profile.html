@@ -2,8 +2,8 @@
 {% block title %}Your company — SeaVix{% endblock %}
 {% block content %}
 <h1>{{ membership.slug }}</h1>
-<p>Signed in as {{ ctx.email }}
-   {% if not ctx.email_verified %}(unverified){% endif %} · role {{ membership.role }}</p>
+<p>Signed in as {{ ctx.user.email }}
+   {% if not ctx.email_verified %}(unverified){% endif %} · role {{ membership.roles|join(", ") }}</p>
 
 {% if org %}
 <section class="card">

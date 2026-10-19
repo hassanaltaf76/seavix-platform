@@ -2,13 +2,13 @@
 {% block title %}Your account — SeaVix{% endblock %}
 {% block content %}
 <h1>Your account</h1>
-<p>Signed in as {{ ctx.email }}
+<p>Signed in as {{ ctx.user.email }}
    {% if not ctx.email_verified %}(unverified){% endif %}</p>
 
 {% if membership %}
 <section class="card">
-  <h2>{{ membership.slug }} · {{ membership.type }}</h2>
-  <p>Role: {{ membership.role }}</p>
+  <h2>{{ membership.slug }} · {{ membership.org_type }}</h2>
+  <p>Role: {{ membership.roles|join(", ") }}</p>
   {% if org and org.profile_status == 'live' %}
   <p><a href="/p/{{ membership.slug }}">Public page</a></p>
   {% endif %}

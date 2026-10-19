@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from seavix_ports import public_route
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -31,6 +32,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templa
 # ------------------------------------------------------------------- login
 
 @router.get("/login", response_class=HTMLResponse)
+@public_route
 async def login_form(request: Request):
     ctx = await session_context(request)
     if ctx is not None:
@@ -42,6 +44,7 @@ async def login_form(request: Request):
 
 
 @router.post("/login", response_class=HTMLResponse)
+@public_route
 async def login_submit(
     request: Request,
     email: str = Form(...),
@@ -70,6 +73,7 @@ async def login_submit(
 
 
 @router.post("/login/otp", response_class=HTMLResponse)
+@public_route
 async def login_otp_submit(
     request: Request,
     email: str = Form(...),
@@ -97,6 +101,7 @@ async def login_otp_submit(
 
 
 @router.get("/login/otp", response_class=HTMLResponse)
+@public_route
 async def login_otp_form(request: Request, email: str = "") -> HTMLResponse:
     """Direct GET renders the code form (e.g. back-button); the challenge
     itself only starts via POST /login."""
@@ -109,6 +114,7 @@ async def login_otp_form(request: Request, email: str = "") -> HTMLResponse:
 # ------------------------------------------------------------------ logout
 
 @router.post("/logout")
+@public_route
 async def logout(request: Request) -> RedirectResponse:
     sid = session_id_from(request)
     if sid:
@@ -123,6 +129,7 @@ async def logout(request: Request) -> RedirectResponse:
 # ------------------------------------------------------------ session ping
 
 @router.post("/session/refresh")
+@public_route
 async def session_refresh(request: Request) -> dict:
     """Keep-alive: extends the sliding session.
 
@@ -144,6 +151,7 @@ async def session_refresh(request: Request) -> dict:
 # ---------------------------------------------------------- password reset
 
 @router.get("/forgot-password", response_class=HTMLResponse)
+@public_route
 async def forgot_form(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request, "forgot_password.html", {"request": request, "sent": False}
@@ -151,6 +159,7 @@ async def forgot_form(request: Request) -> HTMLResponse:
 
 
 @router.post("/forgot-password", response_class=HTMLResponse)
+@public_route
 async def forgot_submit(request: Request, email: str = Form(...)) -> HTMLResponse:
     await identity_request(
         "POST", "/api/auth/reset/start", json={"email": email.lower()}
@@ -164,6 +173,7 @@ async def forgot_submit(request: Request, email: str = Form(...)) -> HTMLRespons
 
 
 @router.get("/reset-password", response_class=HTMLResponse)
+@public_route
 async def reset_form(request: Request, oob_code: str = "") -> HTMLResponse:
     if not oob_code:
         return templates.TemplateResponse(
@@ -178,6 +188,7 @@ async def reset_form(request: Request, oob_code: str = "") -> HTMLResponse:
 
 
 @router.post("/reset-password", response_class=HTMLResponse)
+@public_route
 async def reset_submit(
     request: Request,
     oob_code: str = Form(...),
@@ -202,6 +213,7 @@ async def reset_submit(
 # ------------------------------------------------- registration verification
 
 @router.post("/register/verify", response_class=HTMLResponse)
+@public_route
 async def register_verify_submit(
     request: Request,
     email: str = Form(...),
@@ -226,6 +238,7 @@ async def register_verify_submit(
 
 
 @router.post("/register/verify/resend", response_class=HTMLResponse)
+@public_route
 async def register_verify_resend(request: Request, email: str = Form(...)) -> HTMLResponse:
     resp = await identity_request(
         "POST", "/api/register/verify/send", json={"email": email.lower()}

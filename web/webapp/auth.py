@@ -1,20 +1,45 @@
 """Web-side session handling.
 
 The browser holds an opaque session id in the `seavix_session` HttpOnly
-SameSite=Lax cookie. User context is resolved per request from the identity
-service (which validates against its server-side session table), so logout
-and member deactivation take effect immediately.
+SameSite=Lax cookie. The deny-by-default middleware resolves every protected
+request through the identity service (see WebAuthLoader); the resolved
+AuthContext is available in request.scope["seavix.auth"] via require_auth.
+Logout and member deactivation therefore take effect immediately.
 """
 from __future__ import annotations
 
 from fastapi import Request
 from fastapi.responses import RedirectResponse
+from seavix_ports import (
+    AUTH_SESSION_HEADER,
+    AuthContext,
+    context_from_dict,
+)
 
 from .identity_client import identity_request
 
 SESSION_COOKIE = "seavix_session"
-SESSION_HEADER = "X-Seavix-Session"
+SESSION_HEADER = AUTH_SESSION_HEADER
 SESSION_MAX_AGE = 12 * 3600  # matches identity SEAVIX_SESSION_TTL_SECONDS
+
+
+class WebAuthLoader:
+    """Credential -> AuthContext via the identity service's
+    /api/internal/auth-context endpoint (web never touches identity's DB)."""
+
+    async def load_from_bearer(self, token: str) -> AuthContext | None:
+        return await self._fetch({"Authorization": f"Bearer {token}"})
+
+    async def load_from_session(self, session_id: str) -> AuthContext | None:
+        return await self._fetch({SESSION_HEADER: session_id})
+
+    async def _fetch(self, headers: dict) -> AuthContext | None:
+        resp = await identity_request(
+            "GET", "/api/internal/auth-context", headers=headers
+        )
+        if resp.status_code != 200:
+            return None
+        return context_from_dict(resp.json())
 
 
 def session_id_from(request: Request) -> str | None:

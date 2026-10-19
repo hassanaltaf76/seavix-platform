@@ -13,6 +13,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+from .authn import (  # noqa: F401
+    SCOPE_KEY,
+    SESSION_HEADER as AUTH_SESSION_HEADER,
+    AuthContext,
+    AuthContextLoader,
+    AuthMiddleware,
+    MembershipContext,
+    context_from_dict,
+    context_to_dict,
+    is_public,
+    iter_leaf_routes,
+    optional_auth,
+    public_route,
+    require_auth,
+)
+
 
 # ---------------------------------------------------------------- events
 

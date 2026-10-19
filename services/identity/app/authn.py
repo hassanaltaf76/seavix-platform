@@ -16,7 +16,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 
-from seavix_ports import AuthenticatedUser, FirebaseAuthProvider, domain_event
+from seavix_ports import (AuthenticatedUser, FirebaseAuthProvider,
+                          domain_event, public_route)
 
 from . import otp, sessions
 from .db import SessionLocal
@@ -95,6 +96,7 @@ class SessionRefresh(BaseModel):
 # ------------------------------------------------------------ login (D1)
 
 @router.post("/api/auth/login/start")
+@public_route
 async def login_start(payload: EmailPassword, request: Request) -> dict:
     """Factor 1: email+password. On success issues the email OTP (factor 2).
 
@@ -127,6 +129,7 @@ async def login_start(payload: EmailPassword, request: Request) -> dict:
 
 
 @router.post("/api/auth/login/verify")
+@public_route
 async def login_verify(payload: OtpChallenge, request: Request) -> dict:
     """Factor 2: the OTP. Only here is a session issued (D1 enforcement)."""
     async with SessionLocal() as session:
@@ -160,6 +163,7 @@ async def login_verify(payload: OtpChallenge, request: Request) -> dict:
 # ------------------------------------------------- registration verification
 
 @router.post("/api/register/verify/send")
+@public_route
 async def register_verify_send(payload: ResetStart, request: Request) -> dict:
     async with SessionLocal() as session:
         user = (
@@ -178,6 +182,7 @@ async def register_verify_send(payload: ResetStart, request: Request) -> dict:
 
 
 @router.post("/api/register/verify/confirm")
+@public_route
 async def register_verify_confirm(payload: OtpChallenge, request: Request) -> dict:
     async with SessionLocal() as session:
         await otp.verify_code(session, payload.email, "verify_email", payload.code)
@@ -201,6 +206,7 @@ async def register_verify_confirm(payload: OtpChallenge, request: Request) -> di
 # ------------------------------------------------------------ password reset
 
 @router.post("/api/auth/reset/start")
+@public_route
 async def reset_start(payload: ResetStart, request: Request) -> dict:
     """Firebase password-reset link. In dev the emulator neither sends email
     nor returns the link on the REST response, so the latest oobLink is
@@ -242,6 +248,7 @@ async def _latest_reset_link(email: str) -> str | None:
 
 
 @router.post("/api/auth/reset/finish")
+@public_route
 async def reset_finish(payload: ResetFinish) -> dict:
     fb = await _firebase_post(
         "/accounts:resetPassword",
@@ -303,6 +310,7 @@ async def delete_session(request: Request) -> dict:
 # ------------------------------------------------------------- dev OTP peek
 
 @router.get("/api/dev/last-otp")
+@public_route
 async def dev_last_otp(email: str, request: Request) -> dict:
     """DEV ONLY (SEAVIX_DEV_OTP_ENDPOINT=1): the last code sent to an email.
 

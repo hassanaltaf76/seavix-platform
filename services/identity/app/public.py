@@ -8,6 +8,7 @@ not-available page for non-live profiles.
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
+from seavix_ports import public_route
 from sqlalchemy import text
 
 from .db import SessionLocal
@@ -17,6 +18,7 @@ router = APIRouter()
 
 
 @router.get("/api/orgs/{slug}")
+@public_route
 async def get_public_org(slug: str) -> PublicOrgResponse:
     async with SessionLocal() as session:
         row = (

@@ -14,7 +14,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import text
 
-from seavix_ports import domain_event
+from seavix_ports import domain_event, public_route
 
 from .db import SessionLocal
 from .schemas import RegisterRequest, RegisterResponse
@@ -62,6 +62,7 @@ def _grant_owner_tuple(firebase_uid: str, org_id: str) -> None:
 
 
 @router.post("/api/register", status_code=201)
+@public_route
 async def register(payload: RegisterRequest, request: Request) -> RegisterResponse:
     async with SessionLocal() as session:
         if (
