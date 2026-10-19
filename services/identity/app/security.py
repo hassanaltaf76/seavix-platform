@@ -93,6 +93,24 @@ async def require_owner(uid: str, org_id: str) -> None:
         raise HTTPException(status_code=403, detail="owner role required")
 
 
+def my_membership(ctx: AuthContext) -> MembershipContext | None:
+    """Scaffold assumes one org per user — the first membership decides."""
+    return ctx.memberships[0] if ctx.memberships else None
+
+
+def require_permission(ctx: AuthContext, permission: str) -> MembershipContext:
+    """Intra-org RBAC gate (identity DB). Effective permissions of the
+    membership are the UNION of its roles; no deny overrides an allow."""
+    membership = my_membership(ctx)
+    if membership is None:
+        raise HTTPException(status_code=403, detail="no organization membership")
+    if permission not in membership.permissions:
+        raise HTTPException(
+            status_code=403, detail=f"permission {permission} required"
+        )
+    return membership
+
+
 # ------------------------------------------------------ AuthContext (task 21)
 
 class IdentityAuthLoader:
@@ -141,30 +159,47 @@ class IdentityAuthLoader:
             ).mappings().first()
             if row is None:
                 return None
+            app_user_id = str(row["id"])
             memberships = (
                 await session.execute(
                     text(
-                        "SELECT m.org_id, m.role, o.slug, o.type "
+                        "SELECT m.org_id, o.slug, o.type "
                         "FROM membership m JOIN organization o ON o.id = m.org_id "
                         "WHERE m.user_id = :uid ORDER BY m.org_id"
                     ),
-                    {"uid": str(row["id"])},
+                    {"uid": app_user_id},
                 )
             ).mappings().all()
+
+            built_memberships = []
+            for m in memberships:
+                role_rows = (
+                    await session.execute(
+                        text(
+                            "SELECT r.name, r.permissions FROM membership_role mr "
+                            "JOIN role r ON r.id = mr.role_id "
+                            "WHERE mr.user_id = :uid AND mr.org_id = :org "
+                            "ORDER BY r.name"
+                        ),
+                        {"uid": app_user_id, "org": str(m["org_id"])},
+                    )
+                ).mappings().all()
+                roles = tuple(r["name"] for r in role_rows)
+                effective: set[str] = set()
+                for r in role_rows:
+                    effective |= set(r["permissions"])
+                built_memberships.append(
+                    MembershipContext(
+                        org_id=str(m["org_id"]),
+                        slug=m["slug"],
+                        org_type=m["type"],
+                        roles=roles,
+                        permissions=frozenset(effective),
+                    )
+                )
+
         return AuthContext(
             user=AuthenticatedUser(uid=user.uid, email=user.email),
             email_verified=bool(row["email_verified"]),
-            memberships=tuple(
-                # Task 22 replaces the legacy membership.role text with
-                # role-table resolution; permissions stay a union (deny
-                # never overrides allow at this layer).
-                MembershipContext(
-                    org_id=str(m["org_id"]),
-                    slug=m["slug"],
-                    org_type=m["type"],
-                    roles=(m["role"],),
-                    permissions=frozenset(),
-                )
-                for m in memberships
-            ),
+            memberships=tuple(built_memberships),
         )

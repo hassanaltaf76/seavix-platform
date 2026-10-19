@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from seavix_ports import AuthMiddleware, InMemoryEventBus, public_route
 
-from . import authn, internal, profile, public, register
+from . import authn, internal, profile, public, rbac, register
 from .orgs import create_organization
 from .security import IdentityAuthLoader
 
@@ -39,6 +39,7 @@ def create_app() -> FastAPI:
 
     app.include_router(register.router)
     app.include_router(authn.router)
+    app.include_router(rbac.router)
     app.include_router(public.router)
     app.include_router(profile.router)
     app.include_router(internal.router)

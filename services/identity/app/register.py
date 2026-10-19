@@ -17,6 +17,7 @@ from sqlalchemy import text
 from seavix_ports import domain_event, public_route
 
 from .db import SessionLocal
+from .rbac import assign_roles, role_id_by_name, seed_default_roles
 from .schemas import RegisterRequest, RegisterResponse
 
 router = APIRouter()
@@ -114,6 +115,10 @@ async def register(payload: RegisterRequest, request: Request) -> RegisterRespon
             ),
             {"uid": user_id, "org": org_id},
         )
+        # Default RBAC roles for the new org (D2) + owner binding.
+        await seed_default_roles(session, org_id)
+        owner_role_id = await role_id_by_name(session, org_id, "owner")
+        await assign_roles(session, user_id, org_id, [owner_role_id])
         await session.commit()
 
     _grant_owner_tuple(fb["localId"], org_id)

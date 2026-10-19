@@ -57,17 +57,33 @@ async def _memberships(session, user_id: str) -> list[dict]:
     rows = (
         await session.execute(
             text(
-                "SELECT m.org_id, m.role, o.slug, o.type FROM membership m "
+                "SELECT m.org_id, o.slug, o.type FROM membership m "
                 "JOIN organization o ON o.id = m.org_id WHERE m.user_id = :uid "
                 "ORDER BY m.org_id"
             ),
             {"uid": user_id},
         )
     ).mappings().all()
-    return [
-        {"org_id": str(r["org_id"]), "role": r["role"], "slug": r["slug"], "type": r["type"]}
-        for r in rows
-    ]
+    out = []
+    for r in rows:
+        role_rows = (
+            await session.execute(
+                text(
+                    "SELECT r.name FROM membership_role mr JOIN role r ON r.id = mr.role_id "
+                    "WHERE mr.user_id = :uid AND mr.org_id = :org ORDER BY r.name"
+                ),
+                {"uid": user_id, "org": str(r["org_id"])},
+            )
+        ).mappings().all()
+        out.append(
+            {
+                "org_id": str(r["org_id"]),
+                "roles": [x["name"] for x in role_rows],
+                "slug": r["slug"],
+                "type": r["type"],
+            }
+        )
+    return out
 
 
 class EmailPassword(BaseModel):

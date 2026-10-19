@@ -197,12 +197,16 @@ def test_client_org_cannot_go_live_and_bad_status_400(arun):
     arun(scenario())
 
 
-def test_non_owner_gets_403(arun):
-    """Deny path: registration writes an owner tuple; deleting it via the
-    AuthzClient port leaves the membership row but no owner grant — the
-    role check must then 403."""
+def test_member_without_permission_gets_403(arun):
+    """Deny path: registration still writes the OpenFGA owner tuple (cross-org
+    grant layer), but intra-org route access is now RBAC — stripping the
+    membership's role assignments leaves the membership row but no
+    permissions, so profile edit must 403."""
     async def scenario():
         from seavix_ports import AuthzClient
+        from sqlalchemy import text as sql
+
+        from app.db import SessionLocal
 
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
@@ -225,16 +229,29 @@ def test_non_owner_gets_403(arun):
             assert await authz.check(f"user:{uid}", "owner",
                                      f"organization:{org_id}") is True
 
-            # revoke ownership, membership row remains
-            await authz.delete_tuples(
-                [{"user": f"user:{uid}", "relation": "owner",
-                  "object": f"organization:{org_id}"}]
-            )
+            # strip ALL role assignments (membership row remains, now with
+            # an empty permission union)
+            async with SessionLocal() as s:
+                app_user = (
+                    await s.execute(
+                        sql("SELECT id FROM app_user WHERE firebase_uid = :uid"),
+                        {"uid": uid},
+                    )
+                ).scalar_one()
+                await s.execute(
+                    sql(
+                        "DELETE FROM membership_role WHERE user_id = :uid AND org_id = :org"
+                    ),
+                    {"uid": str(app_user), "org": org_id},
+                )
+                await s.commit()
+
             r = await c.put(
                 "/api/orgs/me/profile",
                 headers={"Authorization": f"Bearer {token}"},
                 json={"about": "should not be allowed"},
             )
             assert r.status_code == 403
+            assert "org.profile.edit" in r.json()["detail"]
 
     arun(scenario())

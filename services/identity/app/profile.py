@@ -1,23 +1,26 @@
-"""Profile-management endpoints (bearer token, owner role via AuthzClient port).
+"""Profile-management endpoints — intra-org RBAC via the identity DB
+(effective permissions = union across the membership's roles).
 
-- PUT  /api/orgs/me/profile        about/website/phone
-- POST /api/orgs/me/logo           multipart png|jpeg|webp, <=2MB
-- POST /api/orgs/me/profile-status {status: live|draft}, survey_company only
+- PUT  /api/orgs/me/profile        org.profile.edit
+- POST /api/orgs/me/logo           org.logo.upload
+- POST /api/orgs/me/profile-status org.profile.publish (+ verified email)
 """
 from __future__ import annotations
 
 import re
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import BaseModel
+from seavix_ports import AuthContext, require_auth
 from sqlalchemy import text
 
 from seavix_ports import LocalBlobStore, domain_event
 
 from .config import blob_root
 from .db import SessionLocal
-from .security import current_user, my_org_id, require_owner
+from .permissions import Permission
+from .security import require_permission
 
 router = APIRouter()
 
@@ -60,12 +63,12 @@ async def _publish(request: Request, event_type: str, org_id: str, payload: dict
 
 @router.put("/api/orgs/me/profile")
 async def update_profile(
-    payload: ProfileUpdate, request: Request
+    payload: ProfileUpdate, request: Request,
+    ctx: AuthContext = Depends(require_auth),
 ) -> dict:
-    user = await current_user(request)
+    membership = require_permission(ctx, Permission.ORG_PROFILE_EDIT.value)
+    org_id = membership.org_id
     async with SessionLocal() as session:
-        org_id = await my_org_id(session, user.uid)
-        await require_owner(user.uid, org_id)
         await session.execute(
             text(
                 "UPDATE organization SET about = :about, website = :website, "
@@ -83,8 +86,12 @@ async def update_profile(
 
 
 @router.post("/api/orgs/me/logo")
-async def upload_logo(request: Request, file: UploadFile) -> dict:
-    user = await current_user(request)
+async def upload_logo(
+    request: Request, file: UploadFile,
+    ctx: AuthContext = Depends(require_auth),
+) -> dict:
+    membership = require_permission(ctx, Permission.ORG_LOGO_UPLOAD.value)
+    org_id = membership.org_id
     data = await file.read()
     if len(data) > MAX_LOGO_BYTES:
         raise HTTPException(status_code=413, detail="logo must be <= 2MB")
@@ -95,9 +102,6 @@ async def upload_logo(request: Request, file: UploadFile) -> dict:
         )
 
     async with SessionLocal() as session:
-        org_id = await my_org_id(session, user.uid)
-        await require_owner(user.uid, org_id)
-
         ext = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[mime]
         base = re.sub(r"\.(png|jpe?g|webp)$", "", _safe_filename(file.filename or "logo"), flags=re.I)
         key = f"logos/{org_id}/{uuid.uuid4().hex[:8]}-{base}{ext}"
@@ -114,14 +118,16 @@ async def upload_logo(request: Request, file: UploadFile) -> dict:
 
 
 @router.post("/api/orgs/me/profile-status")
-async def set_profile_status(payload: StatusUpdate, request: Request) -> dict:
-    user = await current_user(request)
+async def set_profile_status(
+    payload: StatusUpdate, request: Request,
+    ctx: AuthContext = Depends(require_auth),
+) -> dict:
+    membership = require_permission(ctx, Permission.ORG_PROFILE_PUBLISH.value)
+    org_id = membership.org_id
     if payload.status not in ("live", "draft"):
         raise HTTPException(status_code=400, detail="status must be live|draft")
 
     async with SessionLocal() as session:
-        org_id = await my_org_id(session, user.uid)
-        await require_owner(user.uid, org_id)
         org = (
             await session.execute(
                 text("SELECT type, slug FROM organization WHERE id = :id"),
@@ -137,7 +143,7 @@ async def set_profile_status(payload: StatusUpdate, request: Request) -> dict:
             verified = (
                 await session.execute(
                     text("SELECT email_verified FROM app_user WHERE firebase_uid = :uid"),
-                    {"uid": user.uid},
+                    {"uid": ctx.user.uid},
                 )
             ).scalar_one()
             if not verified:
