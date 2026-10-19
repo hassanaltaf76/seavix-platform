@@ -1,9 +1,12 @@
-"""Design-language contract tests — Oct 2026 doc (dark-first blade shell).
+"""Design-language contract tests — Oct 2026 v3 (global LIGHT theme).
 
-Locks in: --seavix-* token family with logo-sampled values, WCAG AA contrast
-on the DARK surfaces the shell actually uses, blade-shell markup (left rail
-with favorites + tenant switcher, blade stack with crumbs/title/close/tabs,
-global search), no page-local styling, and the favicon/PWA icon set.
+Locks in: --seavix-* token family with the light values (bg #FFFFFF, surface
+#F5F7FA, border #E2E8F0, ink #12233D, secondary #55677E, accent #1E88E5,
+accent-hover #1565C0, navy primary #142E4A), WCAG AA contrast on the LIGHT
+surfaces, the three-layout system (base_public / base_auth / blade shell),
+zero search markup, no text wordmark next to the logo, the register form
+contract (org-type select + confirm password + no slug), the OTP screen
+contract, and the favicon/PWA icon set.
 """
 import json
 import re
@@ -12,7 +15,16 @@ from pathlib import Path
 WEB_ROOT = Path(__file__).resolve().parents[2] / "web"
 STYLE = (WEB_ROOT / "static" / "style.css").read_text()
 BASE = (WEB_ROOT / "templates" / "base.html").read_text()
+BASE_PUBLIC = (WEB_ROOT / "templates" / "base_public.html").read_text()
+BASE_AUTH = (WEB_ROOT / "templates" / "base_auth.html").read_text()
 TEMPLATES = WEB_ROOT / "templates"
+
+AUTH_TEMPLATES = ("login", "register", "forgot_password", "reset_password",
+                  "login_otp", "verify_email", "verify_email_confirm",
+                  "verify_email_done")
+PUBLIC_TEMPLATES = ("landing", "profile", "profile_unavailable",
+                    "rfq_form", "rfq_thanks")
+BLADE_TEMPLATES = ("org_home", "org_profile")
 
 
 def _tokens() -> dict[str, str]:
@@ -48,54 +60,68 @@ def contrast(fg: str, bg: str) -> float:
     return (l1 + 0.05) / (l2 + 0.05)
 
 
-def test_seavix_token_family_with_logo_sampled_values():
+def test_seavix_token_family_with_light_values():
     tokens = _tokens()
-    for name in ("--seavix-navy-900", "--seavix-navy-800", "--seavix-navy-700",
-                 "--seavix-text-primary", "--seavix-text-secondary",
-                 "--seavix-accent", "--seavix-accent-deep"):
+    for name in ("--seavix-navy-900", "--seavix-navy-800", "--seavix-navy-750",
+                 "--seavix-navy-700", "--seavix-text-primary",
+                 "--seavix-text-secondary", "--seavix-accent",
+                 "--seavix-accent-deep", "--seavix-primary",
+                 "--seavix-primary-hover", "--seavix-on-primary",
+                 "--seavix-border"):
         assert name in tokens, f"missing token {name}"
-    sampled = {"#001830", "#183060", "#184878", "#50c0f0", "#4090e0"}
-    assert sampled <= set(tokens.values()), "logo-sampled hexes missing"
-    assert tokens["--seavix-text-primary"].lower() == "#ffffff"
-    assert tokens["--seavix-text-secondary"].lower() == "#a8bcd8"
+    expected = {
+        "--seavix-navy-900": "#ffffff",
+        "--seavix-navy-750": "#f5f7fa",
+        "--seavix-navy-700": "#e2e8f0",
+        "--seavix-text-primary": "#12233d",
+        "--seavix-text-secondary": "#55677e",
+        "--seavix-accent": "#1e88e5",
+        "--seavix-accent-deep": "#1565c0",
+        "--seavix-border": "#e2e8f0",
+        "--seavix-primary": "#142e4a",
+        "--seavix-on-primary": "#ffffff",
+    }
+    for name, hex_value in expected.items():
+        assert _resolve(tokens, name) == hex_value, (
+            f"{name}: expected {hex_value}, got {tokens[name]}"
+        )
 
 
-def test_wcag_aa_dark_shell_pairs():
-    """Dark-first UI: every text/background pair the shell renders."""
+def test_wcag_aa_light_surface_pairs():
+    """Global light theme: every text/background pair the layouts render."""
     tokens = _tokens()
     pairs = {
-        ("--seavix-text-primary", "--seavix-navy-900"),
-        ("--seavix-text-primary", "--seavix-navy-800"),
-        ("--seavix-text-primary", "--seavix-navy-700"),
-        # doc-mandated check: secondary text on the card surface
-        ("--seavix-text-secondary", "--seavix-navy-800"),
+        ("--seavix-text-primary", "--seavix-navy-900"),   # ink on white
+        ("--seavix-text-primary", "--seavix-navy-800"),   # ink on white blades
+        ("--seavix-text-primary", "--seavix-navy-750"),   # ink on surface
         ("--seavix-text-secondary", "--seavix-navy-900"),
-        ("--seavix-accent", "--seavix-navy-900"),      # links on chrome
-        ("--seavix-accent", "--seavix-navy-800"),      # links/tabs on blades
-        ("--seavix-accent-deep", "--seavix-navy-900"), # pressed text on chrome
-        ("--seavix-accent-bright", "--seavix-navy-800"), # link hover on blades
-        ("--seavix-accent-bright", "--seavix-navy-900"),
-        ("#04202e", "--seavix-accent"),                # primary button label
-        ("#04202e", "--seavix-accent-deep"),       # primary button hover label
-        ("--seavix-danger", "--seavix-navy-800"),
-        ("--seavix-danger", "--seavix-navy-750"),
-        ("--seavix-success", "--seavix-navy-800"),
+        ("--seavix-text-secondary", "--seavix-navy-750"),
+        ("--seavix-text-secondary", "--seavix-navy-700"), # on hover wash
+        ("--seavix-accent-deep", "--seavix-navy-900"),    # links on white
+        ("--seavix-accent-deep", "--seavix-navy-750"),    # links on surface
+        ("--seavix-accent-bright", "--seavix-navy-900"),  # link hover
+        ("--seavix-on-primary", "--seavix-primary"),      # primary button
+        ("--seavix-on-primary", "--seavix-primary-hover"),
+        ("--seavix-danger", "--seavix-navy-900"),
+        ("--seavix-danger", "--seavix-danger-bg"),
+        ("--seavix-success", "--seavix-navy-900"),
+        ("--seavix-success", "--seavix-success-bg"),
+        ("--seavix-accent", "--seavix-navy-900"),         # focus ring (UI 3:1)
     }
     for fg, bg in pairs:
         fg_hex = fg if fg.startswith("#") else _resolve(tokens, fg)
         bg_hex = bg if bg.startswith("#") else _resolve(tokens, bg)
+        floor = 3.0 if fg == "--seavix-accent" else 4.5  # non-text UI component
         ratio = contrast(fg_hex, bg_hex)
-        assert ratio >= 4.5, f"{fg} on {bg} = {ratio:.2f}:1 (AA needs 4.5)"
+        assert ratio >= floor, f"{fg} on {bg} = {ratio:.2f}:1 (needs {floor})"
 
 
-def test_blade_shell_markup():
+def test_blade_shell_is_post_auth_only():
+    """base.html keeps the rail/blades chrome for post-auth pages."""
     assert 'class="sv-topbar"' in BASE
-    assert 'role="search"' in BASE and 'action="/search"' in BASE
     assert 'class="sv-rail"' in BASE
     assert "Favorites" in BASE and "All services" in BASE
     assert "sv-rail-tenant" in BASE
-    assert "/static/brand/seavix-logo.png" in BASE      # logo top-left
-    assert BASE.index("sv-rail-logo") < BASE.index("sv-rail-tenant")
     assert 'class="sv-blades"' in BASE
     assert "sv-blade-crumbs" in BASE
     assert "sv-blade-titlebar" in BASE
@@ -104,7 +130,92 @@ def test_blade_shell_markup():
     assert "/static/vendor/htmx.min.js" in BASE
     assert "/static/vendor/alpine.min.js" in BASE
     assert "sv-skip" in BASE
-    assert 'x-data' in BASE and "railCollapsed" in BASE  # Alpine rail toggle
+    assert 'x-data' in BASE and "railCollapsed" in BASE
+    # NO global search anywhere in the chrome (returns with the ops console)
+    assert 'action="/search"' not in BASE
+    assert "sv-search" not in BASE
+    assert 'role="search"' not in BASE
+    for tpl in TEMPLATES.glob("*.html"):
+        text = tpl.read_text()
+        assert 'action="/search"' not in text, f"{tpl.name}: search markup"
+        assert "sv-search" not in text, f"{tpl.name}: search markup"
+
+
+def test_no_text_wordmark_next_to_logo():
+    """The logo image carries the wordmark; no adjacent text wordmark in any
+    layout (a text node 'SeaVix' inside the logo container fails the test)."""
+    containers = [
+        re.search(r'<div class="sv-rail-logo">(.*?)</div>', BASE, re.S),
+        re.search(r'<a class="sv-public-brand"[^>]*>(.*?)</a>', BASE_PUBLIC, re.S),
+        re.search(r'<a class="sv-auth-logo"[^>]*>(.*?)</a>', BASE_AUTH, re.S),
+    ]
+    assert all(containers), "logo container not found in a base layout"
+    for match in containers:
+        inner = re.sub(r"<img[^>]*>", "", match.group(1))  # drop the logo img
+        text_only = re.sub(r"<[^>]+>", "", inner).strip()
+        assert "SeaVix" not in text_only, (
+            f"text wordmark next to logo: {text_only!r}"
+        )
+
+
+def test_public_layout_chrome():
+    assert 'class="sv-public"' in BASE_PUBLIC
+    assert 'class="sv-public-header"' in BASE_PUBLIC
+    assert 'class="sv-public-brand"' in BASE_PUBLIC
+    assert "/static/brand/seavix-logo.png" in BASE_PUBLIC
+    assert "/login" in BASE_PUBLIC and "/register" in BASE_PUBLIC
+    # zero app chrome on public pages
+    assert "sv-rail" not in BASE_PUBLIC
+    assert "sv-blades" not in BASE_PUBLIC
+    assert "sv-search" not in BASE_PUBLIC
+    assert "sv-rail-tenant" not in BASE_PUBLIC
+
+
+def test_auth_layout_centered_card():
+    assert 'class="sv-auth"' in BASE_AUTH
+    assert 'class="sv-auth-logo"' in BASE_AUTH
+    assert 'class="sv-auth-card"' in BASE_AUTH
+    assert "max-width: 420px" in STYLE
+    assert "seavix-logo.png" in BASE_AUTH
+    # zero app chrome on auth pages
+    assert "sv-rail" not in BASE_AUTH
+    assert "sv-blades" not in BASE_AUTH
+    assert "sv-search" not in BASE_AUTH
+    assert "sv-public-header" not in BASE_AUTH
+
+
+def test_template_lineage():
+    for name in AUTH_TEMPLATES:
+        text = (TEMPLATES / f"{name}.html").read_text()
+        assert '{% extends "base_auth.html" %}' in text, f"{name} must extend base_auth"
+    for name in PUBLIC_TEMPLATES:
+        text = (TEMPLATES / f"{name}.html").read_text()
+        assert '{% extends "base_public.html" %}' in text, f"{name} must extend base_public"
+    for name in BLADE_TEMPLATES:
+        text = (TEMPLATES / f"{name}.html").read_text()
+        assert '{% extends "base.html" %}' in text, f"{name} must extend the blade shell"
+    for name in AUTH_TEMPLATES + PUBLIC_TEMPLATES:
+        text = (TEMPLATES / f"{name}.html").read_text()
+        assert "sv-rail" not in text, f"{name}: rail markup on a public/auth page"
+        assert "sv-blades" not in text, f"{name}: blade markup on a public/auth page"
+
+
+def test_register_form_contract():
+    text = (TEMPLATES / "register.html").read_text()
+    # org type = <select> dropdown with the three mapped values
+    select = re.search(r"<select[^>]*name=\"org_type\"[^>]*>(.*?)</select>", text, re.S)
+    assert select, "org_type must be a <select>"
+    for value, label in (("agent", "Port Agent"),
+                         ("management", "Management Company"),
+                         ("survey_company", "Surveyor")):
+        assert f'value="{value}"' in select.group(1), f"missing option {value}"
+        assert label in select.group(1), f"missing label {label}"
+    # password entered twice
+    assert 'name="password"' in text and 'name="confirm_password"' in text
+    # NO public slug at registration (it lives in profile settings)
+    assert 'name="slug"' not in text
+    # organization name stays a text field
+    assert re.search(r"<input[^>]*name=\"org_name\"", text)
 
 
 def test_no_page_local_styling():
@@ -114,20 +225,50 @@ def test_no_page_local_styling():
         assert "<style" not in text, f"{tpl.name}: page-local <style> block"
 
 
-def test_workstream_pages_are_blades():
-    """Login/registration/reset/account pages: blade crumbs + title + close
-    from first render, deep-linkable URLs."""
-    for name in ("login", "register", "verify_email", "forgot_password",
-                 "reset_password", "org_home", "org_profile"):
+def test_otp_screen_contract():
+    text = (TEMPLATES / "login_otp.html").read_text()
+    assert "Check your inbox" in text
+    assert 'inputmode="numeric"' in text
+    assert 'autocomplete="one-time-code"' in text
+    assert 'maxlength="6"' in text
+    assert 'method="post" action="/login/otp/resend"' in text  # resend w/ cooldown
+    assert "Back to sign in" in text
+    # one clean numeric input — exactly one text-entry field for the code
+    assert text.count('name="code"') == 1
+    assert 'type="password"' not in text
+    # no log-path/dev references in UI copy
+    for banned in ("identity service log", "local dev", "DEV-", "MAIL to="):
+        assert banned not in text, f"dev reference in OTP copy: {banned}"
+
+
+def test_auth_templates_carry_no_dev_references():
+    for name in AUTH_TEMPLATES:
         text = (TEMPLATES / f"{name}.html").read_text()
-        assert "{% block breadcrumbs %}" in text, f"{name}: no breadcrumbs"
-        assert "{% block blade_title %}" in text, f"{name}: no blade title"
-        assert "{% block blade_close %}" in text, f"{name}: no blade close"
+        for banned in ("identity service log", "In local dev", "DEV-", "MAIL to="):
+            assert banned not in text, f"{name}: dev reference {banned!r}"
+
+
+def test_forgot_password_is_email_only():
+    text = (TEMPLATES / "forgot_password.html").read_text()
+    assert 'name="email"' in text
+    assert 'type="password"' not in text, "no password field on the email-action page"
+    assert 'name="confirm_password"' not in text
+
+
+def test_verify_templates_have_no_password_fields():
+    for name in ("verify_email", "verify_email_confirm", "verify_email_done"):
+        text = (TEMPLATES / f"{name}.html").read_text()
+        assert 'type="password"' not in text, f"{name}: password input on email action"
+
+
+def test_profile_settings_public_slug_section():
+    text = (TEMPLATES / "org_profile.html").read_text()
+    assert 'name="slug"' in text
+    assert "seavix.ai/p/" in text
+    assert "set it now or come back later" in text
 
 
 def test_favicon_and_pwa_icons_derived_from_logo():
-    import json
-
     brand = WEB_ROOT / "static" / "brand"
     for name in ("favicon-32.png", "favicon-64.png", "favicon.ico",
                  "apple-touch-icon.png", "icon-192.png", "icon-512.png"):
@@ -143,6 +284,6 @@ def test_favicon_and_pwa_icons_derived_from_logo():
     assert "apple-touch-icon.png" in BASE
     assert 'rel="manifest"' in BASE
     manifest = json.loads((WEB_ROOT / "static" / "site.webmanifest").read_text())
-    assert manifest["theme_color"] == "#001830"
+    assert manifest["theme_color"] == "#FFFFFF"  # light chrome
     sizes = {i["sizes"] for i in manifest["icons"]}
     assert {"192x192", "512x512"} <= sizes

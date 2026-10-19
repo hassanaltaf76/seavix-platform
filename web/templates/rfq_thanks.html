@@ -1,10 +1,11 @@
-{% extends "base.html" %}
-{% block title %}Thank you — SeaVix{% endblock %}
-{% block breadcrumbs %}<li><a href="/">Home</a></li><li aria-current="page">RFQ submitted</li>{% endblock %}
-{% block blade_title %}<h1>Thank you</h1>{% endblock %}
-{% block blade_close %}<a class="sv-blade-close" href="/" aria-label="Close blade and go back">×</a>{% endblock %}
+{% extends "base_public.html" %}{% block title %}Thank you — SeaVix{% endblock %}
 {% block content %}
-<p class="notice success">Your RFQ has been submitted. The survey company
-   will review the scope and respond via your contact channel.</p>
-<p><a href="/">Back to SeaVix</a></p>
+<section class="sv-hero">
+  <h1>Thank you</h1>
+  <p class="lede">Your RFQ has been submitted. The survey company will review
+     the scope and respond via your contact channel.</p>
+  <div class="sv-hero-actions">
+    <a class="button secondary" href="/">Back to SeaVix</a>
+  </div>
+</section>
 {% endblock %}

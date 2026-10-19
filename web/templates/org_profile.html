@@ -5,7 +5,7 @@
 {% block blade_close %}<a class="sv-blade-close" href="/org/home" aria-label="Close blade and go back">×</a>{% endblock %}
 {% block blade_tabs %}<nav class="sv-blade-tabs" aria-label="Profile sections">
   <a href="/org/profile" aria-current="page">Overview</a>
-  {% if org and org.profile_status == 'live' %}<a href="/p/{{ membership.slug }}">Public page</a>{% endif %}
+  {% if org and org.profile_status == 'live' %}<a href="/p/{{ org.slug }}">Public page</a>{% endif %}
 </nav>{% endblock %}{% block rail_favorites %}
 <li><a href="/org/home"{% if active == 'home' %} aria-current="page"{% endif %}><span class="sv-glyph" aria-hidden="true">★</span><span class="sv-rail-label">Overview</span></a></li>
 {% if membership and membership.org_type == 'survey_company' %}
@@ -15,7 +15,7 @@
 {% block rail_services %}
 <li><a href="/"><span class="sv-glyph" aria-hidden="true">⌂</span><span class="sv-rail-label">SeaVix home</span></a></li>
 {% if membership and membership.org_type == 'survey_company' and org and org.profile_status == 'live' %}
-<li><a href="/p/{{ membership.slug }}"><span class="sv-glyph" aria-hidden="true">▣</span><span class="sv-rail-label">Public page</span></a></li>
+<li><a href="/p/{{ org.slug }}"><span class="sv-glyph" aria-hidden="true">▣</span><span class="sv-rail-label">Public page</span></a></li>
 {% endif %}
 {% if membership %}
 <li><a href="/org/home"><span class="sv-glyph" aria-hidden="true">◉</span><span class="sv-rail-label">{{ membership.slug }}</span></a></li>
@@ -30,9 +30,21 @@
 {% if org %}
 <section class="card">
   <h2>Public profile</h2>
-  <p>Status: <strong>{{ org.profile_status }}</strong></p>
+  <p>Status: <strong>{{ org.profile_status }}</strong>
+     {% if org.profile_status == 'live' %}· <a href="/p/{{ org.slug }}">View public page</a>{% endif %}</p>
   {% if org.about %}<p class="about">{{ org.about }}</p>{% endif %}
-  <p><a href="/p/{{ membership.slug }}">View public page</a></p>
+
+  <form method="post" action="/org/profile" class="sv-form">
+    <label for="slug">Public profile address</label>
+    <input id="slug" name="slug" required minlength="2" maxlength="64"
+           pattern="[a-z0-9-]+" title="lowercase letters, digits and dashes"
+           value="{{ membership.slug }}">
+    <small>This becomes your public page address: seavix.ai/p/&lt;slug&gt; —
+           set it now or come back later.</small>
+    {% if slug_error %}<p class="sv-field-error" role="alert">{{ slug_error }}</p>{% endif %}
+    <p><button type="submit">Save public address</button>
+       {% if slug_saved %}<strong class="sv-saved">Saved.</strong>{% endif %}</p>
+  </form>
 </section>
 {% endif %}
 

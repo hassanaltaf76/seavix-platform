@@ -20,18 +20,19 @@ from app.db import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 
 
-async def _register(c, slug, email, password="secret-123", kind="survey_company"):
-    return await c.post(
+async def _register(c, email, password="secret-123", org_type="survey_company"):
+    resp = await c.post(
         "/api/register",
         json={
             "org_name": "Authn Org",
-            "org_type": "marine",
-            "slug": slug,
+            "org_type": org_type,
             "email": email,
             "password": password,
-            "account_kind": kind,
+            "confirm_password": password,
         },
     )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
 
 
 async def _dev_code(c, email) -> str:
@@ -85,8 +86,9 @@ def test_login_happy_path_and_logout(arun, client):
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"au-{u}", f"au-{u}@example.com"
-            await _register(c, slug, email)
+            email = f"au-{u}@example.com"
+
+            slug = (await _register(c, email))["slug"]
 
             start = await c.post(
                 "/api/auth/login/start",
@@ -130,8 +132,9 @@ def test_login_start_rejects_bad_credentials_and_unknown_email(arun, client):
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"lc-{u}", f"lc-{u}@example.com"
-            await _register(c, slug, email)
+            email = f"lc-{u}@example.com"
+
+            slug = (await _register(c, email))["slug"]
 
             wrong_pw = await c.post(
                 "/api/auth/login/start",
@@ -156,8 +159,9 @@ def test_wrong_code_then_lockout_then_replay(arun, client):
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"lk-{u}", f"lk-{u}@example.com"
-            await _register(c, slug, email)
+            email = f"lk-{u}@example.com"
+
+            slug = (await _register(c, email))["slug"]
             await c.post(
                 "/api/auth/login/start",
                 json={"email": email, "password": "secret-123"},
@@ -189,8 +193,9 @@ def test_expired_code_rejected(arun, client):
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"ex-{u}", f"ex-{u}@example.com"
-            await _register(c, slug, email)
+            email = f"ex-{u}@example.com"
+
+            slug = (await _register(c, email))["slug"]
             await c.post(
                 "/api/auth/login/start",
                 json={"email": email, "password": "secret-123"},
@@ -222,8 +227,9 @@ def test_send_rate_limit_5_per_hour(arun, client):
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"rl-{u}", f"rl-{u}@example.com"
-            await _register(c, slug, email)
+            email = f"rl-{u}@example.com"
+
+            slug = (await _register(c, email))["slug"]
             results = []
             for _ in range(6):
                 r = await c.post(
@@ -241,8 +247,9 @@ def test_registration_email_verification(arun, client):
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"ve-{u}", f"ve-{u}@example.com"
-            await _register(c, slug, email)
+            email = f"ve-{u}@example.com"
+
+            slug = (await _register(c, email))["slug"]
 
             # verification link arrives through the mail pipeline
             await c.post("/api/register/verify/send", json={"email": email})
@@ -295,8 +302,9 @@ def test_mail_pipeline_delivers_every_flow(arun, client):
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"mp-{u}", f"mp-{u}@example.com"
-            await _register(c, slug, email)
+            email = f"mp-{u}@example.com"
+
+            slug = (await _register(c, email))["slug"]
 
             await c.post(  # verification link
                 "/api/register/verify/send", json={"email": email}
@@ -323,8 +331,9 @@ def test_password_reset_round_trip(arun, client):
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"pr-{u}", f"pr-{u}@example.com"
-            await _register(c, slug, email)
+            email = f"pr-{u}@example.com"
+
+            slug = (await _register(c, email))["slug"]
 
             start = await c.post(
                 "/api/auth/reset/start", json={"email": email}

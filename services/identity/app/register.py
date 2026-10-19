@@ -1,9 +1,14 @@
-"""POST /api/register — public sign-up for survey companies and clients.
+"""POST /api/register — public sign-up for ports agents, management
+companies and surveyors.
 
 Creates the Firebase user against the Auth emulator via its REST API (same
 code path works in prod by dropping FIREBASE_AUTH_EMULATOR_HOST), then the
 organization + owner membership in one DB transaction, then publishes
 org.registered through the EventBus port.
+
+The public slug is NOT collected here: the org gets a server-generated
+placeholder slug (unique by construction) and the owner sets the real
+public slug later in profile settings.
 """
 from __future__ import annotations
 
@@ -17,6 +22,7 @@ from sqlalchemy import text
 from seavix_ports import domain_event, public_route
 
 from .db import SessionLocal
+from .orgs import _generate_slug
 from .rbac import assign_roles, role_id_by_name, seed_default_roles
 from .schemas import RegisterRequest, RegisterResponse
 
@@ -65,20 +71,12 @@ def _grant_owner_tuple(firebase_uid: str, org_id: str) -> None:
 @router.post("/api/register", status_code=201)
 @public_route
 async def register(payload: RegisterRequest, request: Request) -> RegisterResponse:
+    email = payload.email.lower()
     async with SessionLocal() as session:
         if (
             await session.execute(
-                text("SELECT 1 FROM organization WHERE slug = :slug"),
-                {"slug": payload.slug},
-            )
-        ).first():
-            raise HTTPException(
-                status_code=409, detail={"field": "slug", "message": "slug already taken"}
-            )
-        if (
-            await session.execute(
                 text("SELECT 1 FROM app_user WHERE email = :email"),
-                {"email": payload.email},
+                {"email": email},
             )
         ).first():
             raise HTTPException(
@@ -86,7 +84,11 @@ async def register(payload: RegisterRequest, request: Request) -> RegisterRespon
                 detail={"field": "email", "message": "email already registered"},
             )
 
-        fb = await _create_firebase_user(payload.email, payload.password)
+        fb = await _create_firebase_user(email, payload.password)
+
+        # Placeholder public slug — unique by construction (random suffix).
+        # The owner picks the real slug in profile settings post-registration.
+        slug = _generate_slug(payload.org_name)
 
         org_id, user_id = str(uuid.uuid4()), str(uuid.uuid4())
         await session.execute(
@@ -94,19 +96,15 @@ async def register(payload: RegisterRequest, request: Request) -> RegisterRespon
                 "INSERT INTO organization (id, name, type, slug, profile_status) "
                 "VALUES (:id, :name, :type, :slug, 'draft')"
             ),
-            {
-                "id": org_id,
-                "name": payload.org_name,
-                "type": payload.account_kind,  # org.type carries the account kind
-                "slug": payload.slug,
-            },
+            {"id": org_id, "name": payload.org_name, "type": payload.org_type,
+             "slug": slug},
         )
         await session.execute(
             text(
                 "INSERT INTO app_user (id, email, firebase_uid) "
                 "VALUES (:id, :email, :uid)"
             ),
-            {"id": user_id, "email": payload.email, "uid": fb["localId"]},
+            {"id": user_id, "email": email, "uid": fb["localId"]},
         )
         await session.execute(
             text(
@@ -129,11 +127,8 @@ async def register(payload: RegisterRequest, request: Request) -> RegisterRespon
             "org.registered",
             "organization",
             org_id,
-            {
-                "slug": payload.slug,
-                "org_name": payload.org_name,
-                "account_kind": payload.account_kind,
-            },
+            {"slug": slug, "org_name": payload.org_name,
+             "org_type": payload.org_type},
         ),
     )
-    return RegisterResponse(org_id=org_id, slug=payload.slug)
+    return RegisterResponse(org_id=org_id, slug=slug)

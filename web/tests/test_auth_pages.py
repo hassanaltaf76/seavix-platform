@@ -1,6 +1,7 @@
 """Browser auth-flow tests: login (password → OTP) → session cookie,
-redirect by account kind, logout, password reset, and the registration
-verification step. Web app + identity service in-process, one loop.
+redirect by org type, logout, password reset (with confirm), OTP resend,
+and the registration step (dropdown org type, double password, no slug).
+Web app + identity service in-process, one loop.
 """
 import re
 import uuid
@@ -20,19 +21,20 @@ def _extract_cookie(response: httpx.Response) -> str:
     return match.group(1)
 
 
-async def _register_identity(c: httpx.AsyncClient, slug: str, email: str) -> None:
+async def _register_identity(c: httpx.AsyncClient, email: str,
+                             org_type: str = "survey_company") -> dict:
     resp = await c.post(
         "/api/register",
         json={
             "org_name": "Web Auth Org",
-            "org_type": "marine",
-            "slug": slug,
+            "org_type": org_type,
             "email": email,
             "password": "secret-123",
-            "account_kind": "survey_company",
+            "confirm_password": "secret-123",
         },
     )
     assert resp.status_code == 201, resp.text
+    return resp.json()
 
 
 def _web() -> httpx.AsyncClient:
@@ -49,14 +51,16 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
         ) as idc:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"wl-{u}", f"wl-{u}@example.com"
-            await _register_identity(idc, slug, email)
+            email = f"wl-{u}@example.com"
+            reg = await _register_identity(idc, email)
+            slug = reg["slug"]
 
             async with _web() as w:
                 # login page renders
                 form = await w.get("/login")
                 assert form.status_code == 200
                 assert "Sign in" in form.text
+                assert 'class="sv-auth"' in form.text
 
                 # wrong password -> 401 page, no cookie
                 bad = await w.post(
@@ -72,6 +76,7 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 )
                 assert start.status_code == 200
                 assert "6-digit" in start.text
+                assert "Check your inbox" in start.text
 
                 # wrong code -> 401 on the challenge page
                 code = (await idc.get("/api/dev/last-otp", params={"email": email})).json()["code"]
@@ -81,9 +86,15 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 )
                 assert bad_otp.status_code == 401
 
+                # resend issues a fresh code that works (anti-enum constant 200)
+                resent = await w.post("/login/otp/resend", data={"email": email})
+                assert resent.status_code == 200
+                code2 = (await idc.get("/api/dev/last-otp", params={"email": email})).json()["code"]
+                assert code2 != code
+
                 # right code -> 303 + HttpOnly SameSite=Lax cookie
                 ok = await w.post(
-                    "/login/otp", data={"email": email, "code": code}
+                    "/login/otp", data={"email": email, "code": code2}
                 )
                 assert ok.status_code == 303
                 assert ok.headers["location"] == "/org/profile"
@@ -95,6 +106,7 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 assert home.status_code == 200
                 assert email in home.text
                 assert slug in home.text
+                assert "seavix.ai/p/" in home.text  # public-profile hint
 
                 # logout clears the cookie and kills the session
                 w.cookies.set(SESSION_COOKIE, sid)
@@ -109,25 +121,14 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
     arun(scenario())
 
 
-def test_client_login_redirects_to_org_home(arun, id_asgi):
+def test_management_login_redirects_to_org_home(arun, id_asgi):
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
         ) as idc:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"wc-{u}", f"wc-{u}@example.com"
-            resp = await idc.post(
-                "/api/register",
-                json={
-                    "org_name": "Client Org",
-                    "org_type": "shipping",
-                    "slug": slug,
-                    "email": email,
-                    "password": "secret-123",
-                    "account_kind": "client",
-                },
-            )
-            assert resp.status_code == 201
+            email = f"wc-{u}@example.com"
+            await _register_identity(idc, email, org_type="management")
 
             async with _web() as w:
                 await w.post("/login", data={"email": email, "password": "secret-123"})
@@ -139,7 +140,7 @@ def test_client_login_redirects_to_org_home(arun, id_asgi):
                 w.cookies.set(SESSION_COOKIE, sid)
                 home = await w.get("/org/home")
                 assert home.status_code == 200
-                assert "client" in home.text
+                assert "management" in home.text
 
     arun(scenario())
 
@@ -155,31 +156,69 @@ def test_org_pages_require_session(arun):
     arun(scenario())
 
 
-def test_register_flow_verifies_email(arun, id_asgi):
+def test_register_flow_dropdown_double_password_no_slug(arun, id_asgi):
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
         ) as idc:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"wr-{u}", f"wr-{u}@example.com"
+            email = f"wr-{u}@example.com"
+
             async with _web() as w:
                 form_page = await w.get("/register")
                 assert form_page.status_code == 200
+                assert 'name="org_type"' in form_page.text
+                assert 'name="confirm_password"' in form_page.text
+                assert 'name="slug"' not in form_page.text
+
+                # mismatched passwords -> inline error, NO account created
+                mismatch = await w.post(
+                    "/register",
+                    data={
+                        "org_name": "Verify Me Ltd",
+                        "org_type": "survey_company",
+                        "email": email,
+                        "password": "secret-123",
+                        "confirm_password": "different-1",
+                    },
+                )
+                assert mismatch.status_code == 400
+                assert "do not match" in mismatch.text.lower()
+                probe = await idc.post(
+                    "/api/auth/login/start",
+                    json={"email": email, "password": "secret-123"},
+                )
+                assert probe.status_code == 401  # no account exists
+
+                # unknown org type rejected before any identity call
+                bad_type = await w.post(
+                    "/register",
+                    data={
+                        "org_name": "Verify Me Ltd",
+                        "org_type": "shipping",
+                        "email": email,
+                        "password": "secret-123",
+                        "confirm_password": "secret-123",
+                    },
+                )
+                assert bad_type.status_code == 400
 
                 created = await w.post(
                     "/register",
                     data={
                         "org_name": "Verify Me Ltd",
-                        "org_type": "marine",
-                        "slug": slug,
+                        "org_type": "survey_company",
                         "email": email,
                         "password": "secret-123",
-                        "account_kind": "survey_company",
+                        "confirm_password": "secret-123",
                     },
                 )
                 assert created.status_code == 200
                 # registration auto-sent the verification link
                 assert "verification link" in created.text.lower()
+                # registration success screen hints what's next
+                assert "public profile" in created.text.lower()
+                assert "go live" in created.text.lower()
 
                 from urllib.parse import parse_qs, urlparse
 
@@ -217,18 +256,68 @@ def test_register_flow_verifies_email(arun, id_asgi):
     arun(scenario())
 
 
+def test_profile_settings_slug_update(arun, id_asgi):
+    """The public slug lives only in profile settings: register generates a
+    placeholder, the owner sets the real slug post-registration."""
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
+        ) as idc:
+            u = uuid.uuid4().hex[:8]
+            email = f"ws-{u}@example.com"
+            reg = await _register_identity(idc, email)
+            placeholder = reg["slug"]
+            new_slug = f"harbor-{u}"
+
+            async with _web() as w:
+                # login via OTP to get the session cookie
+                await w.post("/login", data={"email": email, "password": "secret-123"})
+                code = (await idc.get("/api/dev/last-otp", params={"email": email})).json()["code"]
+                ok = await w.post("/login/otp", data={"email": email, "code": code})
+                sid = _extract_cookie(ok)
+                w.cookies.set(SESSION_COOKIE, sid)
+
+                page = await w.get("/org/profile")
+                assert page.status_code == 200
+                assert placeholder in page.text
+                assert "set it now or come back later" in page.text
+
+                saved = await w.post("/org/profile", data={"slug": new_slug})
+                assert saved.status_code == 200
+                assert "Saved." in saved.text
+                assert new_slug in saved.text
+
+                # the org is now reachable under the new public slug
+                pub = await idc.get(f"/api/orgs/{new_slug}")
+                assert pub.status_code == 200
+                assert (await idc.get(f"/api/orgs/{placeholder}")).status_code == 404
+
+                # conflict with another org's slug -> inline field error
+                other = await _register_identity(idc, f"other-{u}@example.com")
+                conflict = await w.post("/org/profile", data={"slug": other["slug"]})
+                assert conflict.status_code == 409
+                assert "already taken" in conflict.text
+
+                # bad format -> clean form error, not a 500
+                bad = await w.post("/org/profile", data={"slug": "Bad Slug!"})
+                assert bad.status_code == 422
+
+    arun(scenario())
+
+
 def test_password_reset_pages(arun, id_asgi):
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
         ) as idc:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"wp-{u}", f"wp-{u}@example.com"
-            await _register_identity(idc, slug, email)
+            email = f"wp-{u}@example.com"
+            await _register_identity(idc, email)
 
             async with _web() as w:
                 fp = await w.get("/forgot-password")
                 assert fp.status_code == 200
+                assert 'type="password"' not in fp.text  # email field only
                 sent = await w.post("/forgot-password", data={"email": email})
                 assert sent.status_code == 200
                 assert "reset link" in sent.text.lower()
@@ -248,9 +337,21 @@ def test_password_reset_pages(arun, id_asgi):
             async with _web() as w:
                 page = await w.get("/reset-password", params={"oob_code": oob})
                 assert page.status_code == 200
+                assert 'name="confirm_password"' in page.text
+
+                # mismatch -> inline error, password unchanged
+                mismatch = await w.post(
+                    "/reset-password",
+                    data={"oob_code": oob, "password": "new-secret-1",
+                          "confirm_password": "other-secret"},
+                )
+                assert mismatch.status_code == 400
+                assert "do not match" in mismatch.text.lower()
+
                 done = await w.post(
                     "/reset-password",
-                    data={"oob_code": oob, "password": "new-secret-1"},
+                    data={"oob_code": oob, "password": "new-secret-1",
+                          "confirm_password": "new-secret-1"},
                     follow_redirects=False,
                 )
                 assert done.status_code == 303

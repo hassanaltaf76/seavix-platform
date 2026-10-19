@@ -1,25 +1,26 @@
-{% extends "base.html" %}
-{% block title %}Verify your email — SeaVix{% endblock %}
-{% block breadcrumbs %}
-<li><a href="/">Home</a></li>
-<li><a href="/register">Register</a></li>
-<li aria-current="page">Verify your email</li>
-{% endblock %}
-{% block blade_title %}<h1>Verify your email</h1>{% endblock %}
-{% block blade_close %}<a class="sv-blade-close" href="/register" aria-label="Close blade and go back">×</a>{% endblock %}
+{% extends "base_auth.html" %}{% block title %}Verify your email — SeaVix{% endblock %}
 {% block content %}
-<p>We sent a verification link to <strong>{{ email }}</strong>. Open it to
-   confirm your address — the link works once.</p>
-<p class="notice">In local dev the email is printed to the identity service
-   log — look for the <code>MAIL to={{ email }}</code> line.</p>
-{% if error %}<p class="error">{{ error }}</p>{% endif %}
-<form method="post" action="/register/verify/resend" class="form"
-      x-data="{ sent: false }">
-  <input type="hidden" name="email" value="{{ email }}">
-  <button type="submit" class="secondary"
-          x-bind:disabled="sent" x-on:htmx:after-request="sent = true"
-          hx-post="/register/verify/resend"
-          hx-vals='{"email": "{{ email }}"}'
-          hx-swap="none">Resend verification email</button>
-</form>
+<h1>Check your inbox</h1>
+<p class="sv-auth-sub">We sent a verification link to <strong>{{ email }}</strong>.
+   Open it to confirm your address — the link works once.</p>
+{% if error %}<p class="sv-form-error" role="alert">{{ error }}</p>{% endif %}
+{% if resent %}<p class="sv-auth-sub" role="status">A new verification email is
+   on its way.</p>{% endif %}
+<ol class="sv-next">
+  <li><span class="sv-next-step" aria-hidden="true">1</span>
+      <span><strong>Confirm your email</strong> — open the link we just sent.</span></li>
+  <li><span class="sv-next-step" aria-hidden="true">2</span>
+      <span><strong>Set your public profile</strong> — choose your page address
+      and add your logo.</span></li>
+  <li><span class="sv-next-step" aria-hidden="true">3</span>
+      <span><strong>Go live</strong> — publish your profile and start receiving
+      RFQs.</span></li>
+</ol>
+<div class="sv-auth-links">
+  <form method="post" action="/register/verify/resend">
+    <input type="hidden" name="email" value="{{ email }}">
+    <button type="submit" class="sv-resend">Resend verification email</button>
+  </form>
+  <p>Already verified? <a href="/login">Sign in</a></p>
+</div>
 {% endblock %}

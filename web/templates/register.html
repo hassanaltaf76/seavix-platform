@@ -1,41 +1,56 @@
-{% extends "base.html" %}{% block title %}Register — SeaVix{% endblock %}
-{% block breadcrumbs %}<li><a href="/">Home</a></li><li aria-current="page">Register</li>{% endblock %}
-{% block blade_title %}<h1>Register</h1>{% endblock %}
-{% block blade_close %}<a class="sv-blade-close" href="/" aria-label="Close blade and go back">×</a>{% endblock %}
+{% extends "base_auth.html" %}{% block title %}Register — SeaVix{% endblock %}
 {% block content %}
-{% if error %}<p class="error">{{ error }}</p>{% endif %}
-<form method="post" action="/register" class="form">
-  <label>Account type</label>
-  <div class="radio-row">
-    <label><input type="radio" name="account_kind" value="survey_company"
-        {% if form.get('account_kind', 'survey_company') == 'survey_company' %}checked{% endif %}>
-        Survey company</label>
-    <label><input type="radio" name="account_kind" value="client"
-        {% if form.get('account_kind') == 'client' %}checked{% endif %}>
-        Client</label>
+<h1>Create your account</h1>
+<p class="sv-auth-sub">Set up your organization in a couple of minutes.</p>
+{% if error %}<p class="sv-form-error" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/register" class="sv-auth-form" id="register-form" novalidate>
+  <div class="sv-field">
+    <label for="org_name">Organization name</label>
+    <input id="org_name" name="org_name" required maxlength="200" autocomplete="organization"
+           value="{{ form.get('org_name', '') }}">
   </div>
-
-  <label for="org_name">Organization name</label>
-  <input id="org_name" name="org_name" required maxlength="200"
-         value="{{ form.get('org_name', '') }}">
-
-  <label for="org_type">Organization type</label>
-  <input id="org_type" name="org_type" required maxlength="50"
-         placeholder="e.g. marine, cargo, technical"
-         value="{{ form.get('org_type', '') }}">
-
-  <label for="slug">Public slug</label>
-  <input id="slug" name="slug" required minlength="2" maxlength="64"
-         pattern="[a-z0-9-]+" title="lowercase letters, digits and dashes"
-         value="{{ form.get('slug', '') }}">
-  <small>Your public page will be /p/your-slug</small>
-
-  <label for="email">Email</label>
-  <input id="email" name="email" type="email" required
-         value="{{ form.get('email', '') }}">
-
-  <label for="password">Password</label>
-  <input id="password" name="password" type="password" required minlength="6">
-
+  <div class="sv-field">
+    <label for="org_type">Organization type</label>
+    <select id="org_type" name="org_type" required>
+      <option value="" {% if not form.get('org_type') %}selected{% endif %} disabled>Select…</option>
+      <option value="agent" {% if form.get('org_type') == 'agent' %}selected{% endif %}>Port Agent</option>
+      <option value="management" {% if form.get('org_type') == 'management' %}selected{% endif %}>Management Company</option>
+      <option value="survey_company" {% if form.get('org_type') == 'survey_company' %}selected{% endif %}>Surveyor</option>
+    </select>
+  </div>
+  <div class="sv-field">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required autocomplete="email"
+           value="{{ form.get('email', '') }}">
+  </div>
+  <div class="sv-field">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" required minlength="6"
+           autocomplete="new-password">
+  </div>
+  <div class="sv-field">
+    <label for="confirm_password">Confirm password</label>
+    <input id="confirm_password" name="confirm_password" type="password" required minlength="6"
+           autocomplete="new-password">
+    <p class="sv-field-error" id="password-mismatch" hidden>Passwords do not match.</p>
+  </div>
   <button type="submit">Create account</button>
-</form>{% endblock %}
+</form>
+<div class="sv-auth-links">
+  <p>Already have an account? <a href="/login">Sign in</a></p>
+</div>
+<script>
+document.getElementById("register-form").addEventListener("submit", function (e) {
+  var p = document.getElementById("password");
+  var c = document.getElementById("confirm_password");
+  var err = document.getElementById("password-mismatch");
+  if (p.value !== c.value) {
+    e.preventDefault();
+    err.hidden = false;
+    c.focus();
+  } else {
+    err.hidden = true;
+  }
+});
+</script>
+{% endblock %}

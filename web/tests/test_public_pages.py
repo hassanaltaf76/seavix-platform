@@ -85,12 +85,22 @@ def test_landing_and_register_form_render(web):
             landing = await c.get("/")
             assert landing.status_code == 200
             assert "SeaVix" in landing.text
+            assert 'class="sv-public"' in landing.text  # public layout, no chrome
 
             form = await c.get("/register")
             assert form.status_code == 200
-            assert 'name="account_kind"' in form.text
-            assert 'value="survey_company"' in form.text
-            assert 'value="client"' in form.text
+            # org type is a <select> with the three mapped values
+            assert 'name="org_type"' in form.text
+            for value in ("agent", "management", "survey_company"):
+                assert f'value="{value}"' in form.text
+            assert "Port Agent" in form.text
+            assert "Management Company" in form.text
+            assert "Surveyor" in form.text
+            # password entered twice; NO public slug at registration
+            assert 'name="confirm_password"' in form.text
+            assert 'name="slug"' not in form.text
+            assert "sv-rail" not in form.text
+            assert 'class="sv-auth"' in form.text
 
     _run(scenario())
 

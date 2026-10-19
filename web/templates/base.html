@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}SeaVix{% endblock %}</title>
-  <meta name="theme-color" content="#001830">
+  <meta name="theme-color" content="#FFFFFF">
   <link rel="manifest" href="/static/site.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
   <link rel="icon" type="image/png" sizes="64x64" href="/static/brand/favicon-64.png">
@@ -20,11 +20,6 @@
             aria-label="Toggle navigation" aria-expanded="true"
             x-on:click="railCollapsed = !railCollapsed"
             x-bind:aria-expanded="!railCollapsed.toString()">☰</button>
-    <form class="sv-search" method="get" action="/search" role="search">
-      <input type="search" name="q" value="{{ q if q is defined else '' }}"
-             placeholder="Search vessels, jobs, organizations…"
-             aria-label="Global search">
-    </form>
     <nav class="sv-topnav" aria-label="Account">
       {% if ctx is defined and ctx %}
         <a href="/org/home">Your account</a>
@@ -42,7 +37,6 @@
     <nav class="sv-rail" aria-label="Services">
       <div class="sv-rail-logo">
         <a href="/" aria-label="SeaVix home"><img src="/static/brand/seavix-logo.png" alt="SeaVix"></a>
-        <span class="sv-rail-label">SeaVix</span>
       </div>
 
       <div class="sv-rail-section sv-rail-fav">

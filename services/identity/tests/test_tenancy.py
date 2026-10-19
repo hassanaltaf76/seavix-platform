@@ -27,16 +27,15 @@ def _auth(sid):
     return {"X-Seavix-Session": sid}
 
 
-async def _register(c, slug, email, kind="survey_company"):
+async def _register(c, email, org_type="survey_company"):
     resp = await c.post(
         "/api/register",
         json={
             "org_name": "Tenancy Org",
-            "org_type": "marine",
-            "slug": slug,
+            "org_type": org_type,
             "email": email,
             "password": "secret-123",
-            "account_kind": kind,
+            "confirm_password": "secret-123",
         },
     )
     assert resp.status_code == 201, resp.text
@@ -79,7 +78,7 @@ def test_invite_happy_path(arun):
         async with _client() as c:
             u = uuid.uuid4().hex[:8]
             owner_email = f"iv-{u}@example.com"
-            await _register(c, f"iv-{u}", owner_email)
+            await _register(c, owner_email)
             owner_sid = await _login(c, owner_email)
             auth = _auth(owner_sid)
 
@@ -181,7 +180,7 @@ def test_invite_guards(arun):
         async with _client() as c:
             u = uuid.uuid4().hex[:8]
             owner_email = f"ig-{u}@example.com"
-            org_a = await _register(c, f"ig-{u}", owner_email)
+            org_a = await _register(c, owner_email)
             owner_sid = await _login(c, owner_email)
             auth = _auth(owner_sid)
 
@@ -192,7 +191,7 @@ def test_invite_guards(arun):
 
             # role from ANOTHER org -> 404 (isolation)
             other_email = f"og-{u}@example.com"
-            await _register(c, f"og-{u}", other_email)
+            await _register(c, other_email)
             other_sid = await _login(c, other_email)
             other_roles = (
                 await c.get("/api/orgs/me/roles", headers=_auth(other_sid))
@@ -251,7 +250,7 @@ def test_deactivate_reactivate_member(arun):
         async with _client() as c:
             u = uuid.uuid4().hex[:8]
             owner_email = f"dc-{u}@example.com"
-            await _register(c, f"dc-{u}", owner_email)
+            await _register(c, owner_email)
             owner_sid = await _login(c, owner_email)
             auth = _auth(owner_sid)
             org_id = (
@@ -336,8 +335,8 @@ def test_cross_tenant_isolation(arun):
         async with _client() as c:
             u = uuid.uuid4().hex[:8]
             a_email, b_email = f"ta-{u}@example.com", f"tb-{u}@example.com"
-            await _register(c, f"ta-{u}", a_email)
-            await _register(c, f"tb-{u}", b_email)
+            await _register(c, a_email)
+            await _register(c, b_email)
             a_sid = await _login(c, a_email)
             b_sid = await _login(c, b_email)
             a_auth, b_auth = _auth(a_sid), _auth(b_sid)

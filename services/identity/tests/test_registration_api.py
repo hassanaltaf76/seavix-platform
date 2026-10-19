@@ -8,6 +8,7 @@ Requires: Firebase Auth emulator on localhost:9099 and the dev OpenFGA store.
 import asyncio
 import io
 import os
+import re
 import uuid
 
 os.environ.setdefault("FIREBASE_AUTH_EMULATOR_HOST", "localhost:9099")
@@ -30,19 +31,16 @@ def _png_bytes(size=(8, 8), color=(20, 90, 140)) -> bytes:
     return buf.getvalue()
 
 
-async def _register(c, slug, email, kind="survey_company"):
-    resp = await c.post(
-        "/api/register",
-        json={
-            "org_name": "Test Org",
-            "org_type": "marine",
-            "slug": slug,
-            "email": email,
-            "password": "secret-123",
-            "account_kind": kind,
-        },
-    )
-    return resp
+async def _register(c, slug=None, email=None, org_type="survey_company",
+                    password="secret-123", confirm=None):
+    payload = {
+        "org_name": "Test Org",
+        "org_type": org_type,
+        "email": email,
+        "password": password,
+        "confirm_password": confirm if confirm is not None else password,
+    }
+    return await c.post("/api/register", json=payload)
 
 
 async def _sign_in(email) -> str:
@@ -56,29 +54,28 @@ async def _sign_in(email) -> str:
     return resp.json()["idToken"]
 
 
-def test_registration_happy_path_and_duplicate_slug(arun):
+def test_registration_happy_path_server_slug_and_dup_email(arun):
     async def scenario():
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"reg-{u}", f"reg-{u}@example.com"
-            r1 = await _register(c, slug, email)
+            email = f"reg-{u}@example.com"
+            r1 = await _register(c, email=email)
             assert r1.status_code == 201
             body = r1.json()
-            assert body["slug"] == slug
             assert body["org_id"]
-
-            r2 = await _register(c, slug, f"other-{u}@example.com")
-            assert r2.status_code == 409
-            assert r2.json()["detail"]["field"] == "slug"
-
-            r3 = await _register(c, f"reg2-{u}", email)
-            assert r3.status_code == 409
-            assert r3.json()["detail"]["field"] == "email"
-
+            # slug is server-generated (placeholder), format-valid, unique
+            slug = body["slug"]
+            assert re.fullmatch(r"[a-z0-9-]+", slug)
             g = await c.get(f"/api/orgs/{slug}")
             assert g.status_code == 200
+            assert g.json()["type"] == "survey_company"
             assert "email" not in g.text
+
+            # duplicate email -> field-level 409
+            r3 = await _register(c, email=email)
+            assert r3.status_code == 409
+            assert r3.json()["detail"]["field"] == "email"
             return slug, email
 
     arun(scenario())
@@ -91,8 +88,10 @@ def test_profile_update_logo_and_draft_to_live(arun):
         app.state.event_bus.subscribe("org.profile_published", received.append)
         async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"prof-{u}", f"prof-{u}@example.com"
-            await _register(c, slug, email)
+            email = f"prof-{u}@example.com"
+            reg = await _register(c, email=email)
+            slug = reg.json()["slug"]
+            chosen = f"harbor-{u}"
             await asyncio.sleep(0.2)  # let the owner-tuple task finish
             token = await _sign_in(email)
             auth = {"Authorization": f"Bearer {token}"}
@@ -109,6 +108,27 @@ def test_profile_update_logo_and_draft_to_live(arun):
                       "phone": "+1 555 0100"},
             )
             assert p.status_code == 200
+
+            # set the public slug (profile settings); about/website/phone keep
+            s = await c.put(
+                "/api/orgs/me/profile", headers=auth, json={"slug": chosen}
+            )
+            assert s.status_code == 200
+            assert (await c.get(f"/api/orgs/{chosen}")).status_code == 200
+            assert (await c.get(f"/api/orgs/{slug}")).status_code == 404
+
+            # slug conflicts and bad formats are clean field-level errors
+            other = await _register(c, email=f"other-{u}@example.com")
+            taken = await c.put(
+                "/api/orgs/me/profile", headers=auth,
+                json={"slug": other.json()["slug"]},
+            )
+            assert taken.status_code == 409
+            assert taken.json()["detail"]["field"] == "slug"
+            bad = await c.put(
+                "/api/orgs/me/profile", headers=auth, json={"slug": "Bad Slug!"}
+            )
+            assert bad.status_code == 422
 
             # small PNG accepted
             logo = await c.post(
@@ -169,7 +189,7 @@ def test_profile_update_logo_and_draft_to_live(arun):
             )
             assert live.status_code == 200
             assert live.json()["profile_status"] == "live"
-            g2 = await c.get(f"/api/orgs/{slug}")
+            g2 = await c.get(f"/api/orgs/{chosen}")
             assert g2.json()["profile_status"] == "live"
             assert g2.json()["logo_url"].endswith(blob_key)
             assert received and received[-1]["type"] == "org.profile_published"
@@ -177,13 +197,13 @@ def test_profile_update_logo_and_draft_to_live(arun):
     arun(scenario())
 
 
-def test_client_org_cannot_go_live_and_bad_status_400(arun):
+def test_non_survey_org_cannot_go_live_and_bad_status_400(arun):
     async def scenario():
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"cli-{u}", f"cli-{u}@example.com"
-            await _register(c, slug, email, kind="client")
+            email = f"cli-{u}@example.com"
+            await _register(c, email=email, org_type="management")
             await asyncio.sleep(0.2)
             token = await _sign_in(email)
             auth = {"Authorization": f"Bearer {token}"}
@@ -193,8 +213,8 @@ def test_client_org_cannot_go_live_and_bad_status_400(arun):
             assert r.status_code == 400
 
             # survey company with invalid status value
-            slug2, email2 = f"sc-{u}", f"sc-{u}@example.com"
-            await _register(c, slug2, email2, kind="survey_company")
+            email2 = f"sc-{u}@example.com"
+            await _register(c, email=email2, org_type="survey_company")
             token2 = await _sign_in(email2)
             r2 = await c.post("/api/orgs/me/profile-status",
                               headers={"Authorization": f"Bearer {token2}"},
@@ -218,8 +238,8 @@ def test_member_without_permission_gets_403(arun):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"own-{u}", f"own-{u}@example.com"
-            r1 = await _register(c, slug, email)
+            email = f"own-{u}@example.com"
+            r1 = await _register(c, email=email)
             org_id = r1.json()["org_id"]
             await asyncio.sleep(0.2)
             token = await _sign_in(email)

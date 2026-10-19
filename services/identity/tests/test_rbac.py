@@ -24,16 +24,15 @@ def _client():
     )
 
 
-async def _register(c, slug, email, kind="survey_company"):
+async def _register(c, email, org_type="survey_company"):
     resp = await c.post(
         "/api/register",
         json={
             "org_name": "RBAC Org",
-            "org_type": "marine",
-            "slug": slug,
+            "org_type": org_type,
             "email": email,
             "password": "secret-123",
-            "account_kind": kind,
+            "confirm_password": "secret-123",
         },
     )
     assert resp.status_code == 201, resp.text
@@ -69,7 +68,7 @@ async def _self_user_id(c, sid) -> str:
 async def _seed_user(c, slug, email, roles=None):
     """Register + login a FRESH org, optionally replacing the owner role
     with `roles` (list of role names in that fresh org)."""
-    await _register(c, slug, email)
+    await _register(c, email)
     sid = await _login(c, email)
     if roles:
         listed = (
@@ -130,7 +129,7 @@ def test_default_roles_seeded_on_registration(arun):
     async def scenario():
         async with _client() as c:
             u = uuid.uuid4().hex[:8]
-            await _register(c, f"rb-{u}", f"rb-{u}@example.com")
+            await _register(c, f"rb-{u}@example.com")
             sid = await _login(c, f"rb-{u}@example.com")
 
             resp = await c.get("/api/orgs/me/roles", headers=_auth(sid))
@@ -162,7 +161,7 @@ def test_role_crud_and_guards(arun):
         async with _client() as c:
             u = uuid.uuid4().hex[:8]
             email = f"cr-{u}@example.com"
-            await _register(c, f"cr-{u}", email)
+            await _register(c, email)
             sid = await _login(c, email)
             auth = _auth(sid)
 
@@ -264,7 +263,7 @@ def test_multi_role_union_semantics(arun):
         async with _client() as c:
             u = uuid.uuid4().hex[:8]
             owner_email = f"mu-{u}@example.com"
-            org = await _register(c, f"mu-{u}", owner_email)
+            org = await _register(c, owner_email)
             org_id = org["org_id"]
             owner_sid = await _login(c, owner_email)
             owner_auth = _auth(owner_sid)
@@ -351,7 +350,7 @@ def test_role_route_permission_matrix(arun):
         async with _client() as c:
             u = uuid.uuid4().hex[:8]
             email = f"mx-{u}@example.com"
-            org = await _register(c, f"mx-{u}", email)
+            org = await _register(c, email)
             org_id = org["org_id"]
             owner_sid = await _login(c, email)
             owner_auth = _auth(owner_sid)

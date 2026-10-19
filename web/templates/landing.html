@@ -1,24 +1,26 @@
-{% extends "base.html" %}{% block title %}Home — SeaVix{% endblock %}
-{% block breadcrumbs %}<li aria-current="page">Home</li>{% endblock %}
-{% block blade_title %}<h1>Marine survey coordination</h1>{% endblock %}
-{% block blade_close %}<a class="sv-blade-close" href="/" aria-label="Close blade and go back">×</a>{% endblock %}
+{% extends "base_public.html" %}{% block title %}SeaVix — marine survey coordination{% endblock %}
 {% block content %}
-<section class="hero">
-  <h1>Find marine survey companies. Request quotes. Get to sea.</h1>
-  <p>SeaVix connects ship operators, charterers and yards with qualified
-     marine survey companies — pre-purchase, condition, bunker and cargo
-     surveys at terminals, anchorages and STS locations worldwide.</p>
-  <p><a class="button" href="/register">Register your survey company</a></p>
+<section class="sv-hero">
+  <p class="sv-hero-eyebrow">Marine survey coordination</p>
+  <h1>Find marine survey companies.<br>Request quotes. Get to sea.</h1>
+  <p class="lede">SeaVix connects ship operators, charterers and yards with
+     qualified marine survey companies — pre-purchase, condition, bunker and
+     cargo surveys at terminals, anchorages and STS locations worldwide.</p>
+  <div class="sv-hero-actions">
+    <a class="button" href="/register">Register your company</a>
+    <a class="button secondary" href="/login">Sign in</a>
+  </div>
 </section>
-<section class="grid">
-  <div class="card">
-    <h2>Survey companies</h2>
+<section class="sv-features">
+  <div class="sv-feature">
+    <h2>For survey companies</h2>
     <p>Create a public profile, publish your capabilities and receive
        structured RFQs from vessel operators.</p>
   </div>
-  <div class="card">
-    <h2>Clients</h2>
+  <div class="sv-feature">
+    <h2>For ship operators &amp; charterers</h2>
     <p>Browse live survey company profiles and raise RFQs with vessel IMO,
        survey type, location and preferred date.</p>
   </div>
-</section>{% endblock %}
+</section>
+{% endblock %}

@@ -1,21 +1,21 @@
-{% extends "base.html" %}
-{% block title %}Confirm your email — SeaVix{% endblock %}
-{% block breadcrumbs %}
-<li><a href="/">Home</a></li>
-<li><a href="/register">Register</a></li>
-<li aria-current="page">Confirm email</li>
-{% endblock %}
-{% block blade_title %}<h1>Confirm your email</h1>{% endblock %}
-{% block blade_close %}<a class="sv-blade-close" href="/register" aria-label="Close blade and go back">×</a>{% endblock %}
+{% extends "base_auth.html" %}{% block title %}Confirm your email — SeaVix{% endblock %}
 {% block content %}
-{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<h1>Confirm your email</h1>
+{% if error %}<p class="sv-form-error" role="alert">{{ error }}</p>{% endif %}
 {% if oob_code %}
-<p>Confirm <strong>{{ email }}</strong> as your SeaVix email address.</p>
-<form method="post" action="/register/verify" class="form">
+<p class="sv-auth-sub">Confirm <strong>{{ email }}</strong> as the email
+   address for your SeaVix account.</p>
+<form method="post" action="/register/verify" class="sv-auth-form">
   <input type="hidden" name="email" value="{{ email }}">
   <input type="hidden" name="oob_code" value="{{ oob_code }}">
   <button type="submit">Verify my email address</button>
 </form>
+{% else %}
+<p class="sv-auth-sub">This verification link is missing its code. Request a
+   new one and we'll email you a fresh link.</p>
 {% endif %}
-<p><a href="/register/verify/resend">Request a new verification email</a></p>
+<div class="sv-auth-links">
+  <p><a href="/register/verify/resend">Request a new verification email</a></p>
+  <p><a href="/login">Back to sign in</a></p>
+</div>
 {% endblock %}

@@ -38,6 +38,7 @@ IDENTITY_PUBLIC = {
     "/api/register/verify/confirm",
     "/api/auth/login/start",
     "/api/auth/login/verify",
+    "/api/auth/login/resend",
     "/api/auth/reset/start",
     "/api/auth/reset/finish",
     "/api/orgs/{slug}",
@@ -82,14 +83,13 @@ WEB_PUBLIC = {
     "/media/{key:path}",
     "/login",
     "/login/otp",
+    "/login/otp/resend",
     "/logout",
     "/forgot-password",
     "/reset-password",
     "/register/verify",
     "/register/verify/confirm",
     "/register/verify/resend",
-    # global search — stub until the resource index exists (design §1)
-    "/search",
     # no-op without a valid cookie (identity 401 -> {"ok": false})
     "/session/refresh",
 }

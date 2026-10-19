@@ -109,6 +109,10 @@ class OtpChallenge(BaseModel):
     code: str = Field(min_length=6, max_length=6)
 
 
+class OtpResend(BaseModel):
+    email: EmailStr
+
+
 class ResetStart(BaseModel):
     email: EmailStr
 
@@ -198,6 +202,35 @@ async def login_verify(payload: OtpChallenge, request: Request) -> dict:
         "email_verified": bool(user["email_verified"]),
         "memberships": memberships,
     }
+
+
+@router.post("/api/auth/login/resend")
+@public_route
+async def login_resend(payload: OtpResend, request: Request) -> dict:
+    """Send a fresh sign-in code for an in-progress OTP challenge.
+
+    The response is constant regardless of account existence
+    (anti-enumeration, same posture as reset/start). Send pacing is enforced
+    by the per-email OTP send window; over-limit resends are swallowed so the
+    endpoint stays enum-free. Posture note: mailbox access already implies
+    full account access via the password-reset flow, so an email-only resend
+    does not weaken the model.
+    """
+    email = payload.email.lower()
+    async with SessionLocal() as session:
+        known = (
+            await session.execute(
+                text("SELECT 1 FROM app_user WHERE email = :email"),
+                {"email": email},
+            )
+        ).first()
+        if known is not None:
+            try:
+                await otp.send_code(session, email, "login")
+            except HTTPException as exc:
+                if exc.status_code != 429:
+                    raise
+    return {"email": email, "sent": True}
 
 
 # ------------------------------------------------- registration verification

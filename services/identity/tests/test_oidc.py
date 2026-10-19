@@ -128,13 +128,13 @@ def _auth(sid):
     return {"X-Seavix-Session": sid}
 
 
-async def _register_and_login(c, slug, email):
+async def _register_and_login(c, email):
     r = await c.post(
         "/api/register",
         json={
-            "org_name": "OIDC Org", "org_type": "marine", "slug": slug,
+            "org_name": "OIDC Org", "org_type": "survey_company",
             "email": email, "password": "secret-123",
-            "account_kind": "survey_company",
+            "confirm_password": "secret-123",
         },
     )
     assert r.status_code == 201, r.text
@@ -148,7 +148,7 @@ async def _register_and_login(c, slug, email):
     done = await c.post(
         "/api/auth/login/verify", json={"email": email, "code": code}
     )
-    return r.json()["org_id"], done.json()["session_id"]
+    return r.json()["org_id"], done.json()["session_id"], r.json()["slug"]
 
 
 MAPPING = {
@@ -163,8 +163,8 @@ def test_oidc_callback_jit_provisioning(arun):
     async def scenario():
         async with _client() as c:
             u = uuid.uuid4().hex[:8]
-            slug, email = f"oid-{u}", f"oid-{u}@example.com"
-            org_id, sid = await _register_and_login(c, slug, email)
+            email = f"oid-{u}@example.com"
+            org_id, sid, slug = await _register_and_login(c, email)
             auth = _auth(sid)
 
             made = await c.post(

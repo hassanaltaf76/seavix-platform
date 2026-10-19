@@ -1,12 +1,14 @@
-{% extends "base.html" %}
-{% block title %}Profile unavailable — SeaVix{% endblock %}
-{% block breadcrumbs %}<li><a href="/">Home</a></li><li><a href="/">Companies</a></li><li aria-current="page">Not available</li>{% endblock %}
-{% block blade_title %}<h1>Profile not available</h1>{% endblock %}
-{% block blade_close %}<a class="sv-blade-close" href="/" aria-label="Close blade and go back">×</a>{% endblock %}
+{% extends "base_public.html" %}{% block title %}Profile unavailable — SeaVix{% endblock %}
 {% block content %}
-<p>Sorry — the company profile <strong>{{ slug }}</strong> isn't public
-   {% if reason == 'draft' %}yet (it's still a draft).
-   {% elif reason == 'suspended' %}(it has been suspended).
-   {% else %}(we couldn't find it).{% endif %}</p>
-<p><a href="/">Back to SeaVix</a></p>
+<section class="sv-hero">
+  <h1>Profile not available</h1>
+  <p class="lede">Sorry — the company profile <strong>{{ slug }}</strong>
+     isn't public
+     {% if reason == 'draft' %}yet (it's still a draft).
+     {% elif reason == 'suspended' %}(it has been suspended).
+     {% else %}(we couldn't find it).{% endif %}</p>
+  <div class="sv-hero-actions">
+    <a class="button secondary" href="/">Back to SeaVix</a>
+  </div>
+</section>
 {% endblock %}

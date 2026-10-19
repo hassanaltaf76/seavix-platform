@@ -4,31 +4,33 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 SLUG_RE = re.compile(r"^[a-z0-9-]+$")
-ACCOUNT_KINDS = ("survey_company", "client")
+
+# Organization type, chosen from a dropdown at registration (form values map
+# to these). Stored verbatim in organization.type (TEXT — no migration).
+ORG_TYPES = ("agent", "management", "survey_company")
 
 
 class RegisterRequest(BaseModel):
     org_name: str = Field(min_length=1, max_length=200)
-    org_type: str = Field(min_length=1, max_length=50)
-    slug: str = Field(min_length=2, max_length=64)
+    org_type: Literal["agent", "management", "survey_company"]
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
-    account_kind: Literal["survey_company", "client"]
+    confirm_password: str = Field(min_length=6, max_length=128)
 
-    @field_validator("slug")
-    @classmethod
-    def slug_format(cls, v: str) -> str:
-        if not SLUG_RE.fullmatch(v):
-            raise ValueError("slug must match ^[a-z0-9-]+$")
-        return v
+    @model_validator(mode="after")
+    def passwords_match(self) -> "RegisterRequest":
+        if self.password != self.confirm_password:
+            raise ValueError("passwords do not match")
+        return self
 
 
 class RegisterResponse(BaseModel):
     org_id: str
-    slug: str
+    slug: str  # server-generated placeholder; the user sets the public slug
+        # later in profile settings
 
 
 class PublicOrgResponse(BaseModel):

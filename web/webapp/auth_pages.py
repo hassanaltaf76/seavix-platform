@@ -68,7 +68,8 @@ async def login_submit(
     return templates.TemplateResponse(
         request,
         "login_otp.html",
-        {"request": request, "email": resp.json()["email"], "error": None},
+        {"request": request, "email": resp.json()["email"], "error": None,
+         "resent": False},
     )
 
 
@@ -88,7 +89,7 @@ async def login_otp_submit(
         return templates.TemplateResponse(
             request,
             "login_otp.html",
-            {"request": request, "email": email.lower(),
+            {"request": request, "email": email.lower(), "resent": False,
              "error": "invalid or expired code"},
             status_code=401,
         )
@@ -100,6 +101,20 @@ async def login_otp_submit(
     return response
 
 
+@router.post("/login/otp/resend", response_class=HTMLResponse)
+@public_route
+async def login_otp_resend(request: Request, email: str = Form(...)) -> HTMLResponse:
+    """Fresh sign-in code; the identity side paces sends per email."""
+    await identity_request(
+        "POST", "/api/auth/login/resend", json={"email": email.lower()}
+    )
+    return templates.TemplateResponse(
+        request, "login_otp.html",
+        {"request": request, "email": email.lower(), "resent": True,
+         "error": None},
+    )
+
+
 @router.get("/login/otp", response_class=HTMLResponse)
 @public_route
 async def login_otp_form(request: Request, email: str = "") -> HTMLResponse:
@@ -107,7 +122,7 @@ async def login_otp_form(request: Request, email: str = "") -> HTMLResponse:
     itself only starts via POST /login."""
     return templates.TemplateResponse(
         request, "login_otp.html",
-        {"request": request, "email": email, "error": None},
+        {"request": request, "email": email, "error": None, "resent": False},
     )
 
 
@@ -193,7 +208,16 @@ async def reset_submit(
     request: Request,
     oob_code: str = Form(...),
     password: str = Form(...),
+    confirm_password: str = Form(...),
 ):
+    if password != confirm_password:
+        return templates.TemplateResponse(
+            request,
+            "reset_password.html",
+            {"request": request, "oob_code": oob_code,
+             "error": "Passwords do not match."},
+            status_code=400,
+        )
     resp = await identity_request(
         "POST",
         "/api/auth/reset/finish",
@@ -261,12 +285,16 @@ async def register_verify_resend(request: Request, email: str = Form(...)) -> HT
         "POST", "/api/register/verify/send", json={"email": email.lower()}
     )
     error = None
+    resent = True
     if resp.status_code == 429:
         error = "too many requests — try again later"
+        resent = False
     elif resp.status_code != 200:
         error = "could not resend the email"
+        resent = False
     return templates.TemplateResponse(
         request,
         "verify_email.html",
-        {"request": request, "email": email.lower(), "error": error},
+        {"request": request, "email": email.lower(), "error": error,
+         "resent": resent},
     )

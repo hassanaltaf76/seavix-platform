@@ -64,10 +64,10 @@ def login_redirect() -> RedirectResponse:
     return RedirectResponse("/login", status_code=303)
 
 
-def home_for(account_kind: str | None) -> str:
-    """Post-login landing, by account kind (single-org scaffold: the first
+def home_for(org_type: str | None) -> str:
+    """Post-login landing, by org type (single-org scaffold: the first
     membership decides)."""
-    if account_kind == "survey_company":
+    if org_type == "survey_company":
         return "/org/profile"
     return "/org/home"
 

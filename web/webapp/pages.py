@@ -19,6 +19,7 @@ limiter = RateLimiter(limit=5, window_seconds=3600)
 
 SURVEY_TYPES = ("pre-purchase", "condition", "bunker", "loading-discharging")
 LOCATION_TYPES = ("terminal", "STS", "anchorage", "OPL", "repair-berth", "dry-dock")
+ORG_TYPES = ("agent", "management", "survey_company")
 
 
 async def _identity_get(path: str) -> httpx.Response:
@@ -40,17 +41,6 @@ async def landing(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "landing.html", {"request": request})
 
 
-# ---------------------------------------------------------------- search
-
-@router.get("/search", response_class=HTMLResponse)
-@public_route
-async def search(request: Request, q: str = ""):
-    """Global search (design language §1). STUB: the cross-resource index
-    (vessels, jobs, organizations) is not built yet — the stub must stay
-    visible until the index lands."""
-    return templates.TemplateResponse(request, "search.html", {"request": request, "q": q})
-
-
 # ---------------------------------------------------------------- register
 
 @router.get("/register", response_class=HTMLResponse)
@@ -66,19 +56,29 @@ async def register_submit(
     request: Request,
     org_name: str = Form(...),
     org_type: str = Form(...),
-    slug: str = Form(...),
     email: str = Form(...),
     password: str = Form(...),
-    account_kind: str = Form(...),
+    confirm_password: str = Form(...),
 ) -> HTMLResponse:
-    form = {
-        "org_name": org_name,
-        "org_type": org_type,
-        "slug": slug,
-        "email": email,
-        "account_kind": account_kind,
-    }
-    resp = await identity_request("POST", "/api/register", json={**form, "password": password})
+    form = {"org_name": org_name, "org_type": org_type, "email": email}
+    if org_type not in ORG_TYPES:
+        return templates.TemplateResponse(
+            request, "register.html",
+            {"request": request, "error": "please choose an organization type",
+             "form": form},
+            status_code=400,
+        )
+    if password != confirm_password:
+        # Client + server guard: no account is created on a mismatch.
+        return templates.TemplateResponse(
+            request, "register.html",
+            {"request": request, "error": "Passwords do not match.", "form": form},
+            status_code=400,
+        )
+    resp = await identity_request(
+        "POST", "/api/register",
+        json={**form, "password": password, "confirm_password": confirm_password},
+    )
     if resp.status_code == 201:
         # Email verification is required before the profile can go live;
         # send the first code immediately and move the user to the code step.
@@ -88,13 +88,20 @@ async def register_submit(
         return templates.TemplateResponse(
             request,
             "verify_email.html",
-            {"request": request, "email": email.lower(), "error": None},
+            {"request": request, "email": email.lower(), "error": None,
+             "resent": False},
         )
     if resp.status_code == 409:
         detail = resp.json().get("detail", {})
         msg = f"{detail.get('field', 'field')}: {detail.get('message', 'conflict')}"
         return templates.TemplateResponse(request, "register.html", {"request": request, "error": msg, "form": form},
             status_code=409,
+        )
+    if resp.status_code == 422:
+        return templates.TemplateResponse(
+            request, "register.html",
+            {"request": request, "error": "please check the form fields", "form": form},
+            status_code=400,
         )
     raise HTTPException(status_code=502, detail="registration service error")
 

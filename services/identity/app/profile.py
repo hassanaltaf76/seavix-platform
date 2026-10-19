@@ -11,7 +11,7 @@ import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from seavix_ports import AuthContext, require_auth
 from sqlalchemy import text
 
@@ -20,6 +20,7 @@ from seavix_ports import LocalBlobStore, domain_event
 from .config import blob_root
 from .db import SessionLocal
 from .permissions import Permission
+from .schemas import SLUG_RE
 from .security import require_permission
 
 router = APIRouter()
@@ -49,6 +50,16 @@ class ProfileUpdate(BaseModel):
     about: str | None = None
     website: str | None = None
     phone: str | None = None
+    slug: str | None = None  # optional: set/change the public page slug
+
+    @field_validator("slug")
+    @classmethod
+    def slug_format(cls, v: str | None) -> str | None:
+        if v is not None and not (SLUG_RE.fullmatch(v) and 2 <= len(v) <= 64):
+            raise ValueError(
+                "slug must be 2-64 chars of lowercase letters, digits and dashes"
+            )
+        return v
 
 
 class StatusUpdate(BaseModel):
@@ -69,15 +80,31 @@ async def update_profile(
     membership = require_permission(ctx, Permission.ORG_PROFILE_EDIT.value)
     org_id = membership.org_id
     async with SessionLocal() as session:
+        if payload.slug is not None:
+            taken = (
+                await session.execute(
+                    text(
+                        "SELECT 1 FROM organization WHERE slug = :slug "
+                        "AND id <> :id"
+                    ),
+                    {"slug": payload.slug, "id": org_id},
+                )
+            ).first()
+            if taken:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"field": "slug", "message": "slug already taken"},
+                )
         await session.execute(
             text(
                 "UPDATE organization SET about = :about, website = :website, "
-                "phone = :phone WHERE id = :id"
+                "phone = :phone, slug = COALESCE(:slug, slug) WHERE id = :id"
             ),
             {
                 "about": payload.about,
                 "website": payload.website,
                 "phone": payload.phone,
+                "slug": payload.slug,
                 "id": org_id,
             },
         )

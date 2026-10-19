@@ -1,8 +1,16 @@
-{% extends "base.html" %}{% block title %}Email verified — SeaVix{% endblock %}
-{% block breadcrumbs %}<li><a href="/">Home</a></li><li><a href="/register">Register</a></li><li><a href="/login">Verify your email</a></li><li aria-current="page">Verified</li>{% endblock %}
-{% block blade_title %}<h1>Email verified</h1>{% endblock %}
-{% block blade_close %}<a class="sv-blade-close" href="/" aria-label="Close blade and go back">×</a>{% endblock %}
+{% extends "base_auth.html" %}{% block title %}Email verified — SeaVix{% endblock %}
 {% block content %}
-<p class="notice success">Your email address is verified. You can now publish
-   your company profile and sign in.</p>
-<p><a class="button" href="/login">Sign in</a></p>{% endblock %}
+<h1>You're verified</h1>
+<p class="sv-auth-sub">Your email address is confirmed. Here's what comes next:</p>
+<ol class="sv-next">
+  <li><span class="sv-next-step" aria-hidden="true">1</span>
+      <span><strong>Sign in</strong> — use the email and password you chose.</span></li>
+  <li><span class="sv-next-step" aria-hidden="true">2</span>
+      <span><strong>Set your public profile</strong> — choose your page address
+      (seavix.ai/p/your-slug) and add your logo.</span></li>
+  <li><span class="sv-next-step" aria-hidden="true">3</span>
+      <span><strong>Go live</strong> — publish your profile and start receiving
+      RFQs.</span></li>
+</ol>
+<div class="sv-auth-cta"><a class="button" href="/login">Continue to sign in</a></div>
+{% endblock %}
