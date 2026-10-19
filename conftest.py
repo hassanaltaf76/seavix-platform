@@ -18,6 +18,12 @@ os.environ.setdefault(
     "DATABASE_URL",
     "postgresql+asyncpg://seavix:dev@localhost:5432/seavix_identity",
 )
+# The platform .env may carry real DEV_SMTP_* credentials for manual QA.
+# Tests must stay hermetic on LogMailSender: blank them here (setdefault
+# semantics in the services' .env loaders mean these real-env values win).
+for _var in ("DEV_SMTP_HOST", "DEV_SMTP_PORT", "DEV_SMTP_USER",
+             "DEV_SMTP_PASSWORD", "DEV_SMTP_FROM", "DEV_SMTP_TO"):
+    os.environ.setdefault(_var, "")
 
 import pytest
 

@@ -33,3 +33,6 @@ seavix-work = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "services", "web", "tests"]
+markers = [
+    "smtp: optional live SMTP manual-QA test (needs DEV_SMTP_HOST; skipped by default)",
+]
