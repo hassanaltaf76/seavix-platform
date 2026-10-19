@@ -106,7 +106,15 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 assert home.status_code == 200
                 assert email in home.text
                 assert slug in home.text
-                assert "seavix.ai/p/" in home.text  # public-profile hint
+                # 31b: profile blade is the public-page editor
+                assert "Your public page" in home.text
+                assert f"seavix.ai/{slug}" in home.text  # root-level framing
+                assert "View public page" not in home.text  # draft: not live yet
+                # rail: company name present, zero favorites/services/home items
+                assert "Favorites" not in home.text
+                assert "All services" not in home.text
+                assert "SeaVix home" not in home.text
+                assert 'href="/org/profile"' in home.text
 
                 # logout clears the cookie and kills the session
                 w.cookies.set(SESSION_COOKIE, sid)
@@ -257,8 +265,8 @@ def test_register_flow_dropdown_double_password_no_slug(arun, id_asgi):
 
 
 def test_profile_settings_slug_update(arun, id_asgi):
-    """The public slug lives only in profile settings: register generates a
-    placeholder, the owner sets the real slug post-registration."""
+    """The public page lives only in profile settings: register generates a
+    placeholder, the owner sets the real slug + services text post-registration."""
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
@@ -281,16 +289,69 @@ def test_profile_settings_slug_update(arun, id_asgi):
                 assert page.status_code == 200
                 assert placeholder in page.text
                 assert "set it now or come back later" in page.text
+                assert 'name="about"' in page.text
 
-                saved = await w.post("/org/profile", data={"slug": new_slug})
+                # save description + slug together
+                saved = await w.post(
+                    "/org/profile",
+                    data={"slug": new_slug, "about": "Independent surveyors."},
+                )
                 assert saved.status_code == 200
                 assert "Saved." in saved.text
                 assert new_slug in saved.text
+                assert f"seavix.ai/{new_slug}" in saved.text
 
-                # the org is now reachable under the new public slug
+                # the org is now reachable under the new root URL, with about
                 pub = await idc.get(f"/api/orgs/{new_slug}")
                 assert pub.status_code == 200
+                assert pub.json()["about"] == "Independent surveyors."
                 assert (await idc.get(f"/api/orgs/{placeholder}")).status_code == 404
+
+                # go live (verification gate: confirm the email first)
+                await idc.post("/api/register/verify/send", json={"email": email})
+                from urllib.parse import parse_qs, urlparse
+
+                from app.mailer import get_mailer
+
+                mail = next(
+                    m for m in reversed(get_mailer().outbox)
+                    if m.to == email and m.subject.startswith("Verify your SeaVix")
+                )
+                line = next(l for l in mail.body_text.splitlines() if "oob_code=" in l)
+                oob = parse_qs(urlparse(line.strip()).query)["oob_code"][0]
+                confirmed = await idc.post(
+                    "/api/register/verify/confirm",
+                    json={"email": email, "oob_code": oob},
+                )
+                assert confirmed.status_code == 200
+                live = await idc.post(
+                    "/api/orgs/me/profile-status",
+                    headers={"X-Seavix-Session": sid},
+                    json={"status": "live"},
+                )
+                assert live.status_code == 200
+
+                # root-level public page renders for the live org
+                page_live = await w.get(f"/{new_slug}")
+                assert page_live.status_code == 200
+                assert "Independent surveyors." in page_live.text
+                assert "Raise an RFQ" in page_live.text
+
+                # profile blade now offers the public page in a new tab
+                editor = await w.get("/org/profile")
+                assert editor.status_code == 200
+                assert "View public page" in editor.text
+                assert f'href="/{new_slug}" target="_blank"' in editor.text
+
+                # legacy /p/<slug> redirects to the root URL
+                legacy = await w.get(f"/p/{new_slug}", follow_redirects=False)
+                assert legacy.status_code == 301
+                assert legacy.headers["location"] == f"/{new_slug}"
+
+                # reserved words can never be a public address
+                reserved = await w.post("/org/profile", data={"slug": "login"})
+                assert reserved.status_code == 422
+                assert "reserved" in reserved.text
 
                 # conflict with another org's slug -> inline field error
                 other = await _register_identity(idc, f"other-{u}@example.com")

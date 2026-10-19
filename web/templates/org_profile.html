@@ -1,26 +1,12 @@
-{% extends "base.html" %}{% block title %}Your company — SeaVix{% endblock %}
+{% extends "base.html" %}{% block title %}Your public page — SeaVix{% endblock %}
 {% set active = "profile" %}
-{% block breadcrumbs %}<li><a href="/">Home</a></li><li><a href="/org/home">Your account</a></li><li aria-current="page">Company profile</li>{% endblock %}
-{% block blade_title %}<h1>{{ membership.slug }}</h1>{% endblock %}
+{% block breadcrumbs %}<li><a href="/org/home">Your account</a></li><li aria-current="page">Your public page</li>{% endblock %}
+{% block blade_title %}<h1>Your public page</h1>{% endblock %}
 {% block blade_close %}<a class="sv-blade-close" href="/org/home" aria-label="Close blade and go back">×</a>{% endblock %}
 {% block blade_tabs %}<nav class="sv-blade-tabs" aria-label="Profile sections">
-  <a href="/org/profile" aria-current="page">Overview</a>
-  {% if org and org.profile_status == 'live' %}<a href="/p/{{ org.slug }}">Public page</a>{% endif %}
-</nav>{% endblock %}{% block rail_favorites %}
-<li><a href="/org/home"{% if active == 'home' %} aria-current="page"{% endif %}><span class="sv-glyph" aria-hidden="true">★</span><span class="sv-rail-label">Overview</span></a></li>
-{% if membership and membership.org_type == 'survey_company' %}
-<li><a href="/org/profile"{% if active == 'profile' %} aria-current="page"{% endif %}><span class="sv-glyph" aria-hidden="true">★</span><span class="sv-rail-label">Company profile</span></a></li>
-{% endif %}
-{% endblock %}
-{% block rail_services %}
-<li><a href="/"><span class="sv-glyph" aria-hidden="true">⌂</span><span class="sv-rail-label">SeaVix home</span></a></li>
-{% if membership and membership.org_type == 'survey_company' and org and org.profile_status == 'live' %}
-<li><a href="/p/{{ org.slug }}"><span class="sv-glyph" aria-hidden="true">▣</span><span class="sv-rail-label">Public page</span></a></li>
-{% endif %}
-{% if membership %}
-<li><a href="/org/home"><span class="sv-glyph" aria-hidden="true">◉</span><span class="sv-rail-label">{{ membership.slug }}</span></a></li>
-{% endif %}
-{% endblock %}
+  <a href="/org/profile" aria-current="page">Public page</a>
+  {% if org and org.profile_status == 'live' %}<a href="/{{ org.slug }}">Live page</a>{% endif %}
+</nav>{% endblock %}
 
 {% block content %}
 <p>Signed in as {{ ctx.user.email }}
@@ -29,21 +15,46 @@
 
 {% if org %}
 <section class="card">
-  <h2>Public profile</h2>
-  <p>Status: <strong>{{ org.profile_status }}</strong>
-     {% if org.profile_status == 'live' %}· <a href="/p/{{ org.slug }}">View public page</a>{% endif %}</p>
-  {% if org.about %}<p class="about">{{ org.about }}</p>{% endif %}
+  <h2>Your public page — seavix.ai/{{ org.slug }}</h2>
+  {% if org.profile_status == 'live' %}
+  <p><a class="button" href="/{{ org.slug }}" target="_blank" rel="noopener">View public page</a></p>
+  {% else %}
+  <p class="notice">Your page is <strong>{{ org.profile_status }}</strong> — only
+     live profiles are visible at this address.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>What visitors see</h2>
+  {% if org.logo_url %}
+  <p><img class="logo" src="{{ org.logo_url }}" alt="Your current logo"></p>
+  {% endif %}
 
   <form method="post" action="/org/profile" class="sv-form">
-    <label for="slug">Public profile address</label>
+    <label for="about">Describe your services — this appears on your public page</label>
+    <textarea id="about" name="about" rows="6">{{ org.about or "" }}</textarea>
+
+    <label for="slug">Public page address</label>
     <input id="slug" name="slug" required minlength="2" maxlength="64"
            pattern="[a-z0-9-]+" title="lowercase letters, digits and dashes"
            value="{{ membership.slug }}">
-    <small>This becomes your public page address: seavix.ai/p/&lt;slug&gt; —
+    <small>This becomes your public page address: seavix.ai/&lt;slug&gt; —
            set it now or come back later.</small>
     {% if slug_error %}<p class="sv-field-error" role="alert">{{ slug_error }}</p>{% endif %}
-    <p><button type="submit">Save public address</button>
+    <p><button type="submit">Save public page</button>
        {% if slug_saved %}<strong class="sv-saved">Saved.</strong>{% endif %}</p>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Logo</h2>
+  <form method="post" action="/org/profile/logo" enctype="multipart/form-data" class="sv-form">
+    <label for="logo">Upload your logo — PNG, JPEG or WEBP, up to 2&nbsp;MB.
+           Shown at the top of your public page.</label>
+    <input id="logo" name="file" type="file" accept="image/png,image/jpeg,image/webp" required>
+    {% if logo_error %}<p class="sv-field-error" role="alert">{{ logo_error }}</p>{% endif %}
+    <p><button type="submit">Upload logo</button>
+       {% if logo_saved %}<strong class="sv-saved">Logo updated.</strong>{% endif %}</p>
   </form>
 </section>
 {% endif %}

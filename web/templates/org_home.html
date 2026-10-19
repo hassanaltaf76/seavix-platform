@@ -1,24 +1,8 @@
 {% extends "base.html" %}{% block title %}Your account — SeaVix{% endblock %}
 {% set active = "home" %}
-{% block breadcrumbs %}<li><a href="/">Home</a></li><li aria-current="page">Your account</li>{% endblock %}
+{% block breadcrumbs %}<li aria-current="page">Your account</li>{% endblock %}
 {% block blade_title %}<h1>Your account</h1>{% endblock %}
 {% block blade_close %}<a class="sv-blade-close" href="/" aria-label="Close blade and go back">×</a>{% endblock %}
-{% block rail_favorites %}
-<li><a href="/org/home"{% if active == 'home' %} aria-current="page"{% endif %}><span class="sv-glyph" aria-hidden="true">★</span><span class="sv-rail-label">Overview</span></a></li>
-{% if membership and membership.org_type == 'survey_company' %}
-<li><a href="/org/profile"{% if active == 'profile' %} aria-current="page"{% endif %}><span class="sv-glyph" aria-hidden="true">★</span><span class="sv-rail-label">Company profile</span></a></li>
-{% endif %}
-{% endblock %}
-{% block rail_services %}
-<li><a href="/"><span class="sv-glyph" aria-hidden="true">⌂</span><span class="sv-rail-label">SeaVix home</span></a></li>
-{% if membership and membership.org_type == 'survey_company' and org and org.profile_status == 'live' %}
-<li><a href="/p/{{ membership.slug }}"><span class="sv-glyph" aria-hidden="true">▣</span><span class="sv-rail-label">Public page</span></a></li>
-{% endif %}
-{% if membership %}
-<li><a href="/org/home"><span class="sv-glyph" aria-hidden="true">◉</span><span class="sv-rail-label">{{ membership.slug }}</span></a></li>
-{% endif %}
-{% endblock %}
-
 {% block content %}
 <p>Signed in as {{ ctx.user.email }}
    {% if not ctx.email_verified %}(unverified){% endif %}</p>
@@ -27,6 +11,9 @@
 <section class="card">
   <h2>{{ membership.slug }} · {{ membership.org_type }}</h2>
   <p>Roles: {{ membership.roles|join(", ") }}</p>
+  {% if membership.org_type == 'survey_company' %}
+  <p><a href="/org/profile">Edit your public page</a></p>
+  {% endif %}
 </section>
 {% else %}
 <div class="sv-empty">No organization membership is attached to this account yet.</div>

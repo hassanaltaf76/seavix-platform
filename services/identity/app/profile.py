@@ -25,6 +25,21 @@ from .security import require_permission
 
 router = APIRouter()
 
+# Root-level public URLs live at /<slug> on the web app, so every app path —
+# current and planned — is a reserved slug. Concrete routes win at the router
+# first; this list makes the collision impossible at the data layer too.
+RESERVED_SLUGS = frozenset({
+    "api", "static", "media", "healthz", "p", "org",
+    "login", "register", "logout", "session",
+    "forgot-password", "reset-password",
+    "search", "app", "dashboard", "admin", "console",
+    "settings", "account", "billing", "team", "teams", "users",
+    "invite", "invites", "verify", "docs", "help", "support",
+    "about", "contact", "pricing", "blog", "news",
+    "terms", "privacy", "status", "download", "assets",
+    "favicon.ico", "robots.txt", "sitemap.xml",
+})
+
 MAX_LOGO_BYTES = 2 * 1024 * 1024
 _MAGIC = {
     b"\x89PNG\r\n\x1a\n": "image/png",
@@ -59,6 +74,8 @@ class ProfileUpdate(BaseModel):
             raise ValueError(
                 "slug must be 2-64 chars of lowercase letters, digits and dashes"
             )
+        if v is not None and v in RESERVED_SLUGS:
+            raise ValueError(f"slug {v!r} is a reserved word")
         return v
 
 

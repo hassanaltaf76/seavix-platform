@@ -6,7 +6,7 @@ from pathlib import Path
 import httpx
 from seavix_ports import public_route
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .config import blob_root, work_base_url
@@ -107,37 +107,69 @@ async def register_submit(
 
 
 # ---------------------------------------------------------------- profiles
+# Public profiles live at the root: /<slug>. /p/<slug> is the legacy shape
+# and 301-redirects. Concrete app paths (login, register, api, …) are
+# registered before the root catch-all and always win; unknown roots fall
+# through to the not-available page (404).
 
 @router.get("/p/{slug}", response_class=HTMLResponse)
 @public_route
-async def public_profile(request: Request, slug: str) -> HTMLResponse:
+async def legacy_profile_redirect(slug: str) -> RedirectResponse:
+    return RedirectResponse(f"/{slug}", status_code=301)
+
+
+@router.get("/p/{slug}/rfq", response_class=HTMLResponse)
+@public_route
+async def legacy_rfq_redirect(slug: str) -> RedirectResponse:
+    return RedirectResponse(f"/{slug}/rfq", status_code=301)
+
+
+async def _public_org_or_none(slug: str) -> tuple[dict | None, str | None]:
+    """(org, None) for a live org, else (None, reason) with reason in
+    {not_found, <profile_status>} for the not-available page."""
     resp = await _identity_get(f"/api/orgs/{slug}")
     if resp.status_code != 200:
-        return templates.TemplateResponse(request, "profile_unavailable.html", {"request": request, "slug": slug, "reason": "not_found"},
-            status_code=404,
-        )
+        return None, "not_found"
     org = resp.json()
     if org["profile_status"] != "live":
-        return templates.TemplateResponse(request, "profile_unavailable.html", {"request": request, "slug": slug, "reason": org["profile_status"]},
+        return None, org["profile_status"]
+    return org, None
+
+
+async def _profile_or_unavailable(request: Request, slug: str) -> HTMLResponse:
+    org, reason = await _public_org_or_none(slug)
+    if org is None:
+        return templates.TemplateResponse(
+            request, "profile_unavailable.html",
+            {"request": request, "slug": slug, "reason": reason},
             status_code=404,
         )
     return templates.TemplateResponse(request, "profile.html", {"request": request, "org": org})
 
 
-# ---------------------------------------------------------------- RFQ
+root_router = APIRouter()
 
-@router.get("/p/{slug}/rfq", response_class=HTMLResponse)
+
+@root_router.get("/{slug}", response_class=HTMLResponse)
+@public_route
+async def public_profile_root(request: Request, slug: str) -> HTMLResponse:
+    return await _profile_or_unavailable(request, slug)
+
+
+@root_router.get("/{slug}/rfq", response_class=HTMLResponse)
 @public_route
 async def rfq_form(request: Request, slug: str) -> HTMLResponse:
-    resp = await _identity_get(f"/api/orgs/{slug}")
-    if resp.status_code != 200 or resp.json()["profile_status"] != "live":
-        return templates.TemplateResponse(request, "profile_unavailable.html", {"request": request, "slug": slug, "reason": "unavailable"},
+    org, reason = await _public_org_or_none(slug)
+    if org is None:
+        return templates.TemplateResponse(
+            request, "profile_unavailable.html",
+            {"request": request, "slug": slug, "reason": reason},
             status_code=404,
         )
     return templates.TemplateResponse(request, "rfq_form.html", {
             "request": request,
             "slug": slug,
-            "org_name": resp.json()["name"],
+            "org_name": org["name"],
             "survey_types": SURVEY_TYPES,
             "location_types": LOCATION_TYPES,
             "error": None,
@@ -145,7 +177,7 @@ async def rfq_form(request: Request, slug: str) -> HTMLResponse:
     )
 
 
-@router.post("/p/{slug}/rfq", response_class=HTMLResponse)
+@root_router.post("/{slug}/rfq", response_class=HTMLResponse)
 @public_route
 async def rfq_submit(
     request: Request,
@@ -169,15 +201,15 @@ async def rfq_submit(
             status_code=429, detail="too many requests — please try later"
         )
 
-    resp = await _identity_get(f"/api/orgs/{slug}")
-    if resp.status_code != 200 or resp.json()["profile_status"] != "live":
+    org, _ = await _public_org_or_none(slug)
+    if org is None:
         raise HTTPException(status_code=404, detail="organization not available")
 
     if not contact_email.strip():
         return templates.TemplateResponse(request, "rfq_form.html", {
                 "request": request,
                 "slug": slug,
-                "org_name": resp.json()["name"],
+                "org_name": org["name"],
                 "survey_types": SURVEY_TYPES,
                 "location_types": LOCATION_TYPES,
                 "error": "contact email is required",
@@ -201,7 +233,7 @@ async def rfq_submit(
         return templates.TemplateResponse(request, "rfq_form.html", {
                 "request": request,
                 "slug": slug,
-                "org_name": resp.json()["name"],
+                "org_name": org["name"],
                 "survey_types": SURVEY_TYPES,
                 "location_types": LOCATION_TYPES,
                 "error": str(error),

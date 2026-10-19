@@ -16,6 +16,6 @@
     {% if org.website %}<li>Website: <a href="{{ org.website }}" rel="nofollow">{{ org.website }}</a></li>{% endif %}
     {% if org.phone %}<li>Phone: {{ org.phone }}</li>{% endif %}
   </ul>
-  <p><a class="button" href="/p/{{ org.slug }}/rfq">Raise an RFQ</a></p>
+  <p><a class="button" href="/{{ org.slug }}/rfq">Raise an RFQ</a></p>
 </article>
 {% endblock %}

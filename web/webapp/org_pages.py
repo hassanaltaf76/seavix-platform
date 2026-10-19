@@ -6,7 +6,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from seavix_ports import AuthContext, MembershipContext, require_auth
@@ -49,7 +57,8 @@ async def org_profile(request: Request, ctx: AuthContext = Depends(require_auth)
         request,
         "org_profile.html",
         {"request": request, "ctx": ctx, "membership": membership, "org": org,
-         "keepalive": _KEEPALIVE, "slug_saved": False, "slug_error": None},
+         "keepalive": _KEEPALIVE, "slug_saved": False, "slug_error": None,
+         "logo_saved": False, "logo_error": None},
     )
 
 
@@ -57,9 +66,10 @@ async def org_profile(request: Request, ctx: AuthContext = Depends(require_auth)
 async def org_profile_update(
     request: Request,
     slug: str = Form(...),
+    about: str = Form(""),
     ctx: AuthContext = Depends(require_auth),
 ):
-    """Profile settings: set/change the public page slug. Proxies the
+    """Public page editor: services description + page slug. Proxies the
     identity profile update (org.profile.edit permission enforced there);
     re-renders inline with the field-level error on conflict."""
     membership = _first_membership(ctx)
@@ -68,7 +78,7 @@ async def org_profile_update(
     sid = session_id_from(request)
     resp = await identity_request(
         "PUT", "/api/orgs/me/profile",
-        json={"slug": slug.strip()},
+        json={"slug": slug.strip(), "about": about.strip() or None},
         headers={SESSION_HEADER: sid} if sid else {},
     )
     if resp.status_code == 200:
@@ -80,22 +90,60 @@ async def org_profile_update(
             "org_profile.html",
             {"request": request, "ctx": ctx, "membership": membership,
              "org": org, "keepalive": _KEEPALIVE, "slug_saved": True,
-             "slug_error": None},
+             "slug_error": None, "logo_saved": False, "logo_error": None},
         )
     slug_error = "could not save — try again"
     if resp.status_code == 409:
         detail = resp.json().get("detail", {})
         slug_error = f"{detail.get('field', 'slug')}: {detail.get('message', 'conflict')}"
     elif resp.status_code == 422:
-        slug_error = "use 2-64 lowercase letters, digits and dashes"
+        detail = resp.json().get("detail", [])
+        msg = ""
+        if isinstance(detail, list) and detail:
+            msg = str(detail[0].get("msg", ""))
+        slug_error = ("that address is reserved — pick another"
+                      if "reserved" in msg else
+                      "use 2-64 lowercase letters, digits and dashes")
     org = await _org_summary(membership.slug)
     return templates.TemplateResponse(
         request,
         "org_profile.html",
         {"request": request, "ctx": ctx, "membership": membership, "org": org,
          "keepalive": _KEEPALIVE, "slug_saved": False,
-         "slug_error": slug_error},
+         "slug_error": slug_error, "logo_saved": False, "logo_error": None},
         status_code=resp.status_code if resp.status_code in (409, 422) else 502,
+    )
+
+
+@router.post("/org/profile/logo", response_class=HTMLResponse)
+async def org_profile_logo(
+    request: Request,
+    file: UploadFile = File(...),
+    ctx: AuthContext = Depends(require_auth),
+):
+    """Logo upload proxies to the identity service (org.logo.upload enforced
+    there); re-renders the editor with the outcome."""
+    membership = _first_membership(ctx)
+    if membership is None or membership.org_type != "survey_company":
+        raise HTTPException(status_code=403, detail="not available")
+    sid = session_id_from(request)
+    resp = await identity_request(
+        "POST", "/api/orgs/me/logo",
+        files={"file": (file.filename or "logo",
+                        await file.read(), file.content_type)},
+        headers={SESSION_HEADER: sid} if sid else {},
+    )
+    org = await _org_summary(membership.slug)
+    logo_error = None
+    if resp.status_code != 200:
+        logo_error = resp.json().get("detail", "could not upload — try again")
+    return templates.TemplateResponse(
+        request,
+        "org_profile.html",
+        {"request": request, "ctx": ctx, "membership": membership, "org": org,
+         "keepalive": _KEEPALIVE, "slug_saved": False, "slug_error": None,
+         "logo_saved": resp.status_code == 200, "logo_error": logo_error},
+        status_code=200 if resp.status_code == 200 else 502,
     )
 
 

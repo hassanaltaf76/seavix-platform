@@ -6,7 +6,10 @@ accent-hover #1565C0, navy primary #142E4A), WCAG AA contrast on the LIGHT
 surfaces, the three-layout system (base_public / base_auth / blade shell),
 zero search markup, no text wordmark next to the logo, the register form
 contract (org-type select + confirm password + no slug), the OTP screen
-contract, and the favicon/PWA icon set.
+contract, and the favicon/PWA icon set. 31b: the post-auth rail is
+logo + company link only (no favorites/services/home items) and the profile
+blade is the public-page editor (framing "Your public page — seavix.ai/<slug>"
++ view-public-page link, services description, logo upload, slug + hint).
 """
 import json
 import re
@@ -120,8 +123,16 @@ def test_blade_shell_is_post_auth_only():
     """base.html keeps the rail/blades chrome for post-auth pages."""
     assert 'class="sv-topbar"' in BASE
     assert 'class="sv-rail"' in BASE
-    assert "Favorites" in BASE and "All services" in BASE
     assert "sv-rail-tenant" in BASE
+    # 31b: rail = logo + company only — no favorites/services sections while
+    # no services exist, and no "SeaVix home" menu item anywhere
+    assert "Favorites" not in BASE
+    assert "All services" not in BASE
+    assert "SeaVix home" not in BASE
+    assert "sv-rail-fav" not in BASE
+    assert "sv-rail-section" not in BASE
+    # the company in the rail links to the profile blade
+    assert 'href="/org/profile"' in BASE
     assert 'class="sv-blades"' in BASE
     assert "sv-blade-crumbs" in BASE
     assert "sv-blade-titlebar" in BASE
@@ -139,6 +150,9 @@ def test_blade_shell_is_post_auth_only():
         text = tpl.read_text()
         assert 'action="/search"' not in text, f"{tpl.name}: search markup"
         assert "sv-search" not in text, f"{tpl.name}: search markup"
+        # 31b: no favorites/services/home rail items on any page
+        assert "All services" not in text, f"{tpl.name}: services section"
+        assert "SeaVix home" not in text, f"{tpl.name}: home menu item"
 
 
 def test_no_text_wordmark_next_to_logo():
@@ -262,9 +276,19 @@ def test_verify_templates_have_no_password_fields():
 
 
 def test_profile_settings_public_slug_section():
+    """31b: the profile blade is the public-page editor — framing with the
+    root-level URL, services description, slug + hint, logo upload."""
     text = (TEMPLATES / "org_profile.html").read_text()
     assert 'name="slug"' in text
-    assert "seavix.ai/p/" in text
+    assert 'name="about"' in text
+    assert "seavix.ai/" in text
+    assert "seavix.ai/p/" not in text  # profiles moved to the root URL
+    assert "Your public page" in text
+    assert "View public page" in text
+    assert 'target="_blank"' in text
+    assert "Describe your services" in text
+    assert 'action="/org/profile/logo"' in text
+    assert 'name="file"' in text
     assert "set it now or come back later" in text
 
 

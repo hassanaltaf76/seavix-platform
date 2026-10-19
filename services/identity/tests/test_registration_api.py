@@ -130,6 +130,14 @@ def test_profile_update_logo_and_draft_to_live(arun):
             )
             assert bad.status_code == 422
 
+            # app paths (current + planned) are reserved at the root URL
+            for reserved in ("login", "search", "dashboard"):
+                r = await c.put(
+                    "/api/orgs/me/profile", headers=auth, json={"slug": reserved}
+                )
+                assert r.status_code == 422, reserved
+                assert "reserved" in str(r.json()["detail"])
+
             # small PNG accepted
             logo = await c.post(
                 "/api/orgs/me/logo",

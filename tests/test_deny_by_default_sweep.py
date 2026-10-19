@@ -80,6 +80,8 @@ WEB_PUBLIC = {
     "/register",
     "/p/{slug}",
     "/p/{slug}/rfq",
+    "/{slug}",
+    "/{slug}/rfq",
     "/media/{key:path}",
     "/login",
     "/login/otp",
@@ -96,6 +98,7 @@ WEB_PUBLIC = {
 
 WEB_PROTECTED = {
     "/org/profile",
+    "/org/profile/logo",
     "/org/home",
 }
 

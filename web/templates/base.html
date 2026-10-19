@@ -34,41 +34,22 @@
   </header>
 
   <div class="sv-shell" x-bind:class="railCollapsed ? 'sv-rail-collapsed' : ''">
-    <nav class="sv-rail" aria-label="Services">
+    <nav class="sv-rail" aria-label="Workspace">
       <div class="sv-rail-logo">
-        <a href="/" aria-label="SeaVix home"><img src="/static/brand/seavix-logo.png" alt="SeaVix"></a>
-      </div>
-
-      <div class="sv-rail-section sv-rail-fav">
-        <h2 class="sv-rail-label">Favorites</h2>
-        <ul>
-          {% block rail_favorites %}
-            <li><a href="/"><span class="sv-glyph" aria-hidden="true">★</span><span class="sv-rail-label">Home</span></a></li>
-            <li><a href="/login"><span class="sv-glyph" aria-hidden="true">★</span><span class="sv-rail-label">Sign in</span></a></li>
-          {% endblock %}
-        </ul>
-      </div>
-
-      <div class="sv-rail-section">
-        <h2 class="sv-rail-label">All services</h2>
-        <ul>
-          {% block rail_services %}
-            <li><a href="/"><span class="sv-glyph" aria-hidden="true">⌂</span><span class="sv-rail-label">Home</span></a></li>
-            <li><a href="/register"><span class="sv-glyph" aria-hidden="true">＋</span><span class="sv-rail-label">Register your company</span></a></li>
-            <li><a href="/login"><span class="sv-glyph" aria-hidden="true">➜</span><span class="sv-rail-label">Sign in</span></a></li>
-          {% endblock %}
-        </ul>
+        <a href="/" aria-label="SeaVix"><img src="/static/brand/seavix-logo.png" alt="SeaVix"></a>
       </div>
 
       <div class="sv-rail-tenant">
-        <span class="sv-glyph" aria-hidden="true">◉</span>
-        <span class="sv-rail-label">
-          {% if ctx is defined and ctx and ctx.memberships %}
-            <strong>{{ ctx.memberships[0].slug }}</strong>
-          {% else %}
-            Public browsing
-          {% endif %}
-        </span>
+        <a href="/org/profile">
+          <span class="sv-glyph" aria-hidden="true">◉</span>
+          <span class="sv-rail-label">
+            {% if ctx is defined and ctx and ctx.memberships %}
+              <strong>{% if org is defined and org and org.name %}{{ org.name }}{% else %}{{ ctx.memberships[0].slug }}{% endif %}</strong>
+            {% else %}
+              Public browsing
+            {% endif %}
+          </span>
+        </a>
       </div>
     </nav>
 
