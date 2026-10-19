@@ -59,6 +59,7 @@ async def _memberships(session, user_id: str) -> list[dict]:
             text(
                 "SELECT m.org_id, o.slug, o.type FROM membership m "
                 "JOIN organization o ON o.id = m.org_id WHERE m.user_id = :uid "
+                "AND m.status = 'active' "
                 "ORDER BY m.org_id"
             ),
             {"uid": user_id},
@@ -161,6 +162,17 @@ async def login_verify(payload: OtpChallenge, request: Request) -> dict:
         ).mappings().first()
         if user is None:
             raise HTTPException(status_code=401, detail="invalid credentials")
+        active = (
+            await session.execute(
+                text(
+                    "SELECT 1 FROM membership WHERE user_id = :uid "
+                    "AND status = 'active' LIMIT 1"
+                ),
+                {"uid": str(user["id"])},
+            )
+        ).first()
+        if active is None:
+            raise HTTPException(status_code=403, detail="account deactivated")
         sid = await sessions.create_session(
             session, str(user["id"]), user["firebase_uid"]
         )

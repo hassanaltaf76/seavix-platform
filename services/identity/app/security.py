@@ -76,7 +76,8 @@ async def my_org_id(session: AsyncSession, uid: str) -> str:
             text(
                 "SELECT m.org_id FROM membership m "
                 "JOIN app_user u ON u.id = m.user_id "
-                "WHERE u.firebase_uid = :uid ORDER BY m.org_id LIMIT 1"
+                "WHERE u.firebase_uid = :uid AND m.status = 'active' "
+                "ORDER BY m.org_id LIMIT 1"
             ),
             {"uid": uid},
         )
@@ -165,7 +166,8 @@ class IdentityAuthLoader:
                     text(
                         "SELECT m.org_id, o.slug, o.type "
                         "FROM membership m JOIN organization o ON o.id = m.org_id "
-                        "WHERE m.user_id = :uid ORDER BY m.org_id"
+                        "WHERE m.user_id = :uid AND m.status = 'active' "
+                        "ORDER BY m.org_id"
                     ),
                     {"uid": app_user_id},
                 )

@@ -42,9 +42,13 @@ IDENTITY_PUBLIC = {
     "/api/auth/reset/finish",
     "/api/orgs/{slug}",
     "/api/internal/orgs/{slug}",
-    # Dev-only OTP peek; inert (404) unless SEAVIX_DEV_OTP_ENDPOINT=1. The
+    # invite acceptance (the invitee has no credentials yet); guarded by the
+    # single-use hashed token, not by the wall
+    "/api/public/invites/accept",
+    # Dev-only peeks; inert (404) unless SEAVIX_DEV_OTP_ENDPOINT=1. The
     # flag is the gate, and it never ships enabled.
     "/api/dev/last-otp",
+    "/api/dev/last-invite",
 }
 
 IDENTITY_PROTECTED = {
@@ -53,7 +57,11 @@ IDENTITY_PROTECTED = {
     "/api/orgs/me/profile-status",
     "/api/orgs/me/roles",
     "/api/orgs/me/roles/{role_id}",
+    "/api/orgs/me/members",
     "/api/orgs/me/members/{user_id}/roles",
+    "/api/orgs/me/members/{user_id}/deactivate",
+    "/api/orgs/me/members/{user_id}/reactivate",
+    "/api/orgs/me/invites",
     "/api/auth/session",
     "/api/auth/session/refresh",
     "/api/internal/whoami",
