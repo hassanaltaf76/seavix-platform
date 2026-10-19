@@ -115,3 +115,33 @@ def test_vendor_libs_present():
     vendor = WEB_ROOT / "static" / "vendor"
     assert (vendor / "htmx.min.js").stat().st_size > 20_000
     assert (vendor / "alpine.min.js").stat().st_size > 20_000
+
+
+def test_favicon_and_pwa_icons_derived_from_logo():
+    """favicon + PWA icon set derived from the logo's wave band, referenced
+    from the base layout; manifest theme matches the chrome token."""
+    import json
+
+    brand = WEB_ROOT / "static" / "brand"
+    for name in ("favicon-32.png", "favicon-64.png", "favicon.ico",
+                 "apple-touch-icon.png", "icon-192.png", "icon-512.png"):
+        assert (brand / name).stat().st_size > 500, f"{name} missing/empty"
+
+    from PIL import Image
+    for name, size in (("favicon-32.png", 32), ("icon-192.png", 192),
+                       ("icon-512.png", 512), ("apple-touch-icon.png", 180)):
+        with Image.open(brand / name) as img:
+            assert img.size == (size, size), f"{name}: expected square {size}"
+
+    assert "favicon-32.png" in BASE
+    assert "apple-touch-icon.png" in BASE
+    assert 'rel="manifest"' in BASE
+    assert 'name="theme-color" content="#001830"' in BASE
+
+    manifest = json.loads(
+        (WEB_ROOT / "static" / "site.webmanifest").read_text()
+    )
+    assert manifest["theme_color"] == "#001830"
+    assert manifest["background_color"] == "#001830"
+    sizes = {i["sizes"] for i in manifest["icons"]}
+    assert {"192x192", "512x512"} <= sizes
