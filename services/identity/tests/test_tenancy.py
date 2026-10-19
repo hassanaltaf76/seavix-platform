@@ -125,14 +125,21 @@ def test_invite_happy_path(arun):
             )
             assert garbage.status_code == 404
 
-            # invited member verifies email, then logs in with the standing
-            # OTP flow; effective permissions come from the assigned roles
-            code = (
-                await c.get("/api/dev/last-otp", params={"email": member_email})
-            ).json()["code"]
+            # invited member verifies email via the link sent through the
+            # mail pipeline, then logs in with the standing OTP flow
+            from urllib.parse import parse_qs, urlparse
+
+            from app.mailer import get_mailer
+
+            mail = next(
+                m for m in reversed(get_mailer().outbox)
+                if m.to == member_email and m.subject.startswith("Verify your SeaVix")
+            )
+            line = next(l for l in mail.body_text.splitlines() if "oob_code=" in l)
+            oob = parse_qs(urlparse(line.strip()).query)["oob_code"][0]
             ok = await c.post(
                 "/api/register/verify/confirm",
-                json={"email": member_email, "code": code},
+                json={"email": member_email, "oob_code": oob},
             )
             assert ok.status_code == 200
 

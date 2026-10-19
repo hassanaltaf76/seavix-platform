@@ -86,6 +86,7 @@ WEB_PUBLIC = {
     "/forgot-password",
     "/reset-password",
     "/register/verify",
+    "/register/verify/confirm",
     "/register/verify/resend",
     # global search — stub until the resource index exists (design §1)
     "/search",

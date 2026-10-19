@@ -28,6 +28,7 @@ from .authn import (  # noqa: F401
     public_route,
     require_auth,
 )
+from .mail import LogMailSender, MailMessage, MailProvider, mailer_from_env  # noqa: F401
 
 
 # ---------------------------------------------------------------- events

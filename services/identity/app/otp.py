@@ -2,9 +2,10 @@
 
 6-digit code, 10-minute TTL, single-use, hashed at rest, rate-limited
 (5 sends/hour/email, 5 attempts/code). Firebase has no native email-OTP, so
-the identity service owns the whole lifecycle: generation, "delivery"
-(prod email wiring = TODO; dev logs the code and, behind an explicit flag,
-exposes it via /api/dev/last-otp), verification, and expiry.
+the identity service owns the lifecycle: generation, delivery through the
+ONE mail pipeline (MailProvider port; dev = LogMailSender, prod = real
+provider — see the email-pipeline task report), plus a flag-gated dev peek
+(/api/dev/last-otp) for tests and local development.
 
 The code is NEVER stored or logged by Firebase, so the firebase-auth
 container logs cannot show it — dev readability lives here by design.
@@ -12,7 +13,6 @@ container logs cannot show it — dev readability lives here by design.
 from __future__ import annotations
 
 import hashlib
-import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -22,8 +22,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import config
-
-logger = logging.getLogger("seavix.identity.otp")
 
 PURPOSES = ("login", "verify_email")
 
@@ -79,8 +77,17 @@ async def send_code(session: AsyncSession, email: str, purpose: str) -> None:
         },
     )
     await session.commit()
-    # Dev delivery channel (D1). Prod: send via email provider — TODO.
-    logger.info("DEV-OTP email=%s purpose=%s code=%s", email, purpose, code)
+    # Delivery goes through the ONE mail pipeline (dev: LogMailSender prints
+    # the email to the identity log; prod: real provider). The code also
+    # lands in the flag-gated dev peek below.
+    from .mail_templates import otp_login_email
+    from .mailer import get_mailer
+
+    subject, plain, html = otp_login_email(
+        code, config.otp_ttl_seconds() // 60,
+        purpose="verification" if purpose == "verify_email" else "sign-in",
+    )
+    await get_mailer().send(email, subject, plain, html)
     if config.dev_otp_endpoint_enabled():
         _DEV_CODES[email] = (purpose, code)
 

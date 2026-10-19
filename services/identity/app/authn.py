@@ -7,9 +7,7 @@ Bearer tokens via security.current_user.
 """
 from __future__ import annotations
 
-import logging
 import os
-from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -21,8 +19,7 @@ from seavix_ports import (AuthenticatedUser, FirebaseAuthProvider,
 
 from . import otp, sessions
 from .db import SessionLocal
-
-logger = logging.getLogger("seavix.identity.authn")
+from .security import _ensure_firebase
 
 router = APIRouter()
 
@@ -44,6 +41,21 @@ async def _firebase_post(path: str, payload: dict) -> dict:
             json=payload,
         )
     return {"status": resp.status_code, "body": resp.json()}
+
+
+def _oob_code(action_link: str) -> str:
+    from urllib.parse import parse_qs, urlparse
+
+    return parse_qs(urlparse(action_link).query)["oobCode"][0]
+
+
+def _web_link(path: str, **params: str) -> str:
+    """Rewrite an Admin SDK action link into a SeaVix web URL: the emails
+    always carry OUR pages (prod and dev), never a raw Firebase URL."""
+    from urllib.parse import urlencode
+
+    base = os.environ.get("SEAVIX_WEB_BASE_URL", "http://localhost:8000")
+    return f"{base}{path}?{urlencode(params)}"
 
 
 async def _publish(request: Request, event_type: str, aggregate: str,
@@ -193,38 +205,63 @@ async def login_verify(payload: OtpChallenge, request: Request) -> dict:
 @router.post("/api/register/verify/send")
 @public_route
 async def register_verify_send(payload: ResetStart, request: Request) -> dict:
+    """Admin SDK verification link, delivered through the SeaVix mail
+    pipeline (our template — no Firebase Trigger Email extension)."""
+    email = payload.email.lower()
     async with SessionLocal() as session:
         user = (
             await session.execute(
                 text("SELECT 1 FROM app_user WHERE email = :email"),
-                {"email": payload.email.lower()},
+                {"email": email},
             )
         ).first()
         if user is None:
             # Same anti-enumeration posture as login.
             raise HTTPException(status_code=404, detail="unknown email")
-        await otp.send_code(session, payload.email, "verify_email")
-    await _publish(request, "auth.otp_sent", "app_user", payload.email.lower(),
-                   {"purpose": "verify_email"})
-    return {"email": payload.email.lower(), "otp_sent": True}
+    _ensure_firebase()
+    from firebase_admin import auth
+
+    from .mail_templates import email_verification_email
+    from .mailer import get_mailer
+
+    action = auth.generate_email_verification_link(email)
+    link = _web_link("/register/verify/confirm", email=email,
+                     oob_code=_oob_code(action))
+    subject, plain, html = email_verification_email(link)
+    await get_mailer().send(email, subject, plain, html)
+    await _publish(request, "auth.verification_link_sent", "app_user", email,
+                   {})
+    return {"email": email, "sent": True}
+
+
+class VerifyConfirm(BaseModel):
+    email: EmailStr
+    oob_code: str = Field(min_length=1)
 
 
 @router.post("/api/register/verify/confirm")
 @public_route
-async def register_verify_confirm(payload: OtpChallenge, request: Request) -> dict:
+async def register_verify_confirm(payload: VerifyConfirm, request: Request) -> dict:
+    """Apply the single-use verification oobCode (the click target of the
+    link sent by /send) and mark the app_user verified."""
     async with SessionLocal() as session:
-        await otp.verify_code(session, payload.email, "verify_email", payload.code)
         user = (
             await session.execute(
-                text(
-                    "UPDATE app_user SET email_verified = true WHERE email = :email "
-                    "RETURNING id"
-                ),
+                text("SELECT id FROM app_user WHERE email = :email"),
                 {"email": payload.email.lower()},
             )
         ).mappings().first()
         if user is None:
             raise HTTPException(status_code=404, detail="unknown email")
+        fb = await _firebase_post(
+            "/accounts:update", {"oobCode": payload.oob_code}
+        )
+        if fb["status"] != 200:
+            raise HTTPException(status_code=400, detail="invalid or expired link")
+        await session.execute(
+            text("UPDATE app_user SET email_verified = true WHERE id = :id"),
+            {"id": str(user["id"])},
+        )
         await session.commit()
     await _publish(request, "auth.email_verified", "app_user", str(user["id"]),
                    {"email": payload.email.lower()})
@@ -236,43 +273,23 @@ async def register_verify_confirm(payload: OtpChallenge, request: Request) -> di
 @router.post("/api/auth/reset/start")
 @public_route
 async def reset_start(payload: ResetStart, request: Request) -> dict:
-    """Firebase password-reset link. In dev the emulator neither sends email
-    nor returns the link on the REST response, so the latest oobLink is
-    fetched from the emulator's inspection API and logged (prod: real email
-    via provider — TODO). Response is constant regardless of account
-    existence."""
+    """Admin SDK reset link through the SeaVix mail pipeline (our template).
+    Response is constant regardless of account existence."""
     email = payload.email.lower()
-    await _firebase_post(
-        "/accounts:sendOobCode",
-        {"requestType": "PASSWORD_RESET", "email": email},
-    )
-    link = await _latest_reset_link(email)
-    if link:
-        logger.info("DEV-RESET-LINK email=%s link=%s", email, link)
-        await _publish(request, "auth.password_reset_requested", "app_user",
-                       email, {})
+    _ensure_firebase()
+    from firebase_admin import auth
+
+    from .mail_templates import password_reset_email
+    from .mailer import get_mailer
+
+    action = auth.generate_password_reset_link(email)
+    link = _web_link("/reset-password", oob_code=_oob_code(action))
+    subject, plain, html = password_reset_email(link)
+    await get_mailer().send(email, subject, plain, html)
+    await _publish(request, "auth.password_reset_requested", "app_user",
+                   email, {})
     return {"sent": True}
 
-
-async def _latest_reset_link(email: str) -> str | None:
-    """Dev-only: newest PASSWORD_RESET oobLink for an email from the auth
-    emulator's inspection endpoint (prod returns None — email is the
-    delivery channel there)."""
-    if "FIREBASE_AUTH_EMULATOR_HOST" not in os.environ:
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as c:
-            resp = await c.get(
-                f"{_emulator_base().split('/identitytoolkit')[0]}"
-                f"/emulator/v1/projects/"
-                f"{os.environ.get('FIREBASE_PROJECT_ID', 'seavix-dev')}/oobCodes"
-            )
-        for entry in reversed(resp.json().get("oobCodes", [])):
-            if entry.get("email") == email and entry.get("requestType") == "PASSWORD_RESET":
-                return entry.get("oobLink")
-    except Exception:  # pragma: no cover - dev convenience only
-        logger.debug("emulator oobCodes inspection failed", exc_info=True)
-    return None
 
 
 @router.post("/api/auth/reset/finish")

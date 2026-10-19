@@ -178,18 +178,35 @@ def test_register_flow_verifies_email(arun, id_asgi):
                     },
                 )
                 assert created.status_code == 200
-                # registration auto-sent the verification code
-                assert "verify your email" in created.text.lower()
+                # registration auto-sent the verification link
+                assert "verification link" in created.text.lower()
 
-                code = (await idc.get("/api/dev/last-otp", params={"email": email})).json()["code"]
-                wrong = "000000" if code != "000000" else "000001"
-                bad = await w.post(
-                    "/register/verify", data={"email": email, "code": wrong}
+                from urllib.parse import parse_qs, urlparse
+
+                from app.mailer import get_mailer
+
+                mail = next(
+                    m for m in reversed(get_mailer().outbox)
+                    if m.to == email and m.subject.startswith("Verify your SeaVix")
                 )
-                assert bad.status_code == 401
+                line = next(l for l in mail.body_text.splitlines() if "oob_code=" in l)
+                oob = parse_qs(urlparse(line.strip()).query)["oob_code"][0]
+
+                confirm_page = await w.get(
+                    "/register/verify/confirm",
+                    params={"email": email, "oob_code": oob},
+                )
+                assert confirm_page.status_code == 200
+                assert "Confirm" in confirm_page.text
+
+                bad = await w.post(
+                    "/register/verify",
+                    data={"email": email, "oob_code": "bogus-code"},
+                )
+                assert bad.status_code == 400
 
                 ok = await w.post(
-                    "/register/verify", data={"email": email, "code": code}
+                    "/register/verify", data={"email": email, "oob_code": oob}
                 )
                 assert ok.status_code == 200
                 assert "verified" in ok.text.lower()
@@ -216,17 +233,17 @@ def test_password_reset_pages(arun, id_asgi):
                 assert sent.status_code == 200
                 assert "reset link" in sent.text.lower()
 
-            # capture the oobLink from the emulator inspection API (dev "email")
-            async with httpx.AsyncClient(base_url="http://localhost:9099") as fc:
-                resp = await fc.get("/emulator/v1/projects/seavix-dev/oobCodes")
-            entries = [
-                e for e in resp.json()["oobCodes"]
-                if e["email"] == email and e["requestType"] == "PASSWORD_RESET"
-            ]
-            link = entries[-1]["oobLink"]
-            oob = dict(
-                kv.split("=", 1) for kv in link.split("?", 1)[1].split("&")
-            )["oobCode"]
+            # the dev "mailbox" is the mail pipeline outbox
+            from urllib.parse import parse_qs, urlparse
+
+            from app.mailer import get_mailer
+
+            mail = next(
+                m for m in reversed(get_mailer().outbox)
+                if m.to == email and m.subject.startswith("Reset your SeaVix")
+            )
+            line = next(l for l in mail.body_text.splitlines() if "oob_code=" in l)
+            oob = parse_qs(urlparse(line.strip()).query)["oob_code"][0]
 
             async with _web() as w:
                 page = await w.get("/reset-password", params={"oob_code": oob})

@@ -178,8 +178,6 @@ async def list_invites(
 async def accept_invite(payload: InviteAccept, request: Request) -> dict:
     """PUBLIC (the invitee has no credentials yet). Generic 404 on any
     invalid/expired/consumed/revoked token — enumeration reveals nothing."""
-    from . import otp as otp_module
-
     async with SessionLocal() as session:
         row = (
             await session.execute(
@@ -225,9 +223,23 @@ async def accept_invite(payload: InviteAccept, request: Request) -> dict:
             {"now": now, "id": row["id"]},
         )
         await session.commit()
-        # Email verification is part of becoming an active member: send the
-        # code immediately (dev: logged / dev endpoint).
-        await otp_module.send_code(session, row["email"], "verify_email")
+
+    # Email verification is part of becoming an active member: send the
+    # Admin SDK verification link through the SeaVix mail pipeline.
+    from firebase_admin import auth
+
+    from .mail_templates import email_verification_email
+    from .mailer import get_mailer
+    from .security import _ensure_firebase
+
+    from .authn import _oob_code, _web_link
+
+    _ensure_firebase()
+    action = auth.generate_email_verification_link(row["email"])
+    link = _web_link("/register/verify/confirm", email=row["email"],
+                     oob_code=_oob_code(action))
+    subject, plain, html = email_verification_email(link)
+    await get_mailer().send(row["email"], subject, plain, html)
 
     await request.app.state.event_bus.publish(
         "member.joined",

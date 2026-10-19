@@ -212,25 +212,42 @@ async def reset_submit(
 
 # ------------------------------------------------- registration verification
 
+@router.get("/register/verify/confirm", response_class=HTMLResponse)
+@public_route
+async def register_verify_form(request: Request, email: str = "", oob_code: str = ""):
+    """Deep-link target of the verification email: confirms on POST."""
+    if not oob_code:
+        return templates.TemplateResponse(
+            request, "verify_email_confirm.html",
+            {"request": request, "email": email, "oob_code": "",
+             "error": "missing verification code"},
+            status_code=400,
+        )
+    return templates.TemplateResponse(
+        request, "verify_email_confirm.html",
+        {"request": request, "email": email, "oob_code": oob_code, "error": None},
+    )
+
+
 @router.post("/register/verify", response_class=HTMLResponse)
 @public_route
 async def register_verify_submit(
     request: Request,
     email: str = Form(...),
-    code: str = Form(...),
+    oob_code: str = Form(...),
 ):
     resp = await identity_request(
         "POST",
         "/api/register/verify/confirm",
-        json={"email": email.lower(), "code": code.strip()},
+        json={"email": email.lower(), "oob_code": oob_code},
     )
     if resp.status_code != 200:
         return templates.TemplateResponse(
             request,
-            "verify_email.html",
-            {"request": request, "email": email.lower(),
-             "error": "invalid or expired code"},
-            status_code=401,
+            "verify_email_confirm.html",
+            {"request": request, "email": email.lower(), "oob_code": oob_code,
+             "error": "verification link is invalid or expired — request a new one"},
+            status_code=400,
         )
     return templates.TemplateResponse(
         request, "verify_email_done.html", {"request": request}
@@ -245,9 +262,9 @@ async def register_verify_resend(request: Request, email: str = Form(...)) -> HT
     )
     error = None
     if resp.status_code == 429:
-        error = "too many codes requested — try again later"
+        error = "too many requests — try again later"
     elif resp.status_code != 200:
-        error = "could not resend the code"
+        error = "could not resend the email"
     return templates.TemplateResponse(
         request,
         "verify_email.html",

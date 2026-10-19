@@ -4,8 +4,8 @@
 {% block blade_close %}<a class="sv-blade-close" href="/login" aria-label="Close blade and go back">×</a>{% endblock %}
 {% block content %}
 <p>We sent a 6-digit sign-in code to <strong>{{ email }}</strong>.
-   In local dev the code is in the identity service log
-   (<code>DEV-OTP email={{ email }}</code>).</p>
+   In local dev the email is printed to the identity service log — look for
+   the <code>MAIL to={{ email }}</code> line.</p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 <form method="post" action="/login/otp" class="form">
   <input type="hidden" name="email" value="{{ email }}">

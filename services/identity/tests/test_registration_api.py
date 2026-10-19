@@ -146,12 +146,19 @@ def test_profile_update_logo_and_draft_to_live(arun):
             assert live.status_code == 403
 
             await c.post("/api/register/verify/send", json={"email": email})
-            code = (
-                await c.get("/api/dev/last-otp", params={"email": email})
-            ).json()["code"]
+            from urllib.parse import parse_qs, urlparse
+
+            from app.mailer import get_mailer
+
+            mail = next(
+                m for m in reversed(get_mailer().outbox)
+                if m.to == email and m.subject.startswith("Verify your SeaVix")
+            )
+            line = next(l for l in mail.body_text.splitlines() if "oob_code=" in l)
+            oob = parse_qs(urlparse(line.strip()).query)["oob_code"][0]
             ok = await c.post(
                 "/api/register/verify/confirm",
-                json={"email": email, "code": code},
+                json={"email": email, "oob_code": oob},
             )
             assert ok.status_code == 200
 

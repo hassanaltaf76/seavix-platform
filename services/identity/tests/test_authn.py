@@ -50,6 +50,27 @@ def _session(sid) -> dict:
     return {"X-Seavix-Session": sid}
 
 
+async def _last_mail(email: str, subject_prefix: str):
+    """Newest outbox message for (recipient, subject prefix) — the mail
+    pipeline IS the dev mailbox."""
+    from app.mailer import get_mailer
+
+    outbox = get_mailer().outbox
+    for m in reversed(outbox):
+        if m.to == email and m.subject.startswith(subject_prefix):
+            return m
+    raise AssertionError(f"no mail to {email} matching {subject_prefix!r}")
+
+
+def _oob_from_body(body: str) -> str:
+    from urllib.parse import parse_qs, urlparse
+
+    for line in body.splitlines():
+        if "oob_code=" in line:
+            return parse_qs(urlparse(line.strip()).query)["oob_code"][0]
+    raise AssertionError("no oob_code link in body")
+
+
 @pytest.fixture()
 def client():
     async def start():
@@ -197,6 +218,7 @@ def test_expired_code_rejected(arun, client):
 
 
 def test_send_rate_limit_5_per_hour(arun, client):
+    """D1: at most 5 OTP sends per hour per email (6th -> 429)."""
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
@@ -205,7 +227,8 @@ def test_send_rate_limit_5_per_hour(arun, client):
             results = []
             for _ in range(6):
                 r = await c.post(
-                    "/api/register/verify/send", json={"email": email}
+                    "/api/auth/login/start",
+                    json={"email": email, "password": "secret-123"},
                 )
                 results.append(r.status_code)
             assert results[:5] == [200] * 5
@@ -221,29 +244,31 @@ def test_registration_email_verification(arun, client):
             slug, email = f"ve-{u}", f"ve-{u}@example.com"
             await _register(c, slug, email)
 
-            # wrong code first (deliberately different from the issued one)
+            # verification link arrives through the mail pipeline
             await c.post("/api/register/verify/send", json={"email": email})
-            code = await _dev_code(c, email)
-            wrong = "000000" if code != "000000" else "000001"
+            mail = await _last_mail(email, "Verify your SeaVix email address")
+            oob = _oob_from_body(mail.body_text)
+
+            # wrong code first
             bad = await c.post(
                 "/api/register/verify/confirm",
-                json={"email": email, "code": wrong},
+                json={"email": email, "oob_code": "bogus-code"},
             )
-            assert bad.status_code == 401
+            assert bad.status_code == 400
 
             ok = await c.post(
                 "/api/register/verify/confirm",
-                json={"email": email, "code": code},
+                json={"email": email, "oob_code": oob},
             )
             assert ok.status_code == 200
             assert ok.json()["email_verified"] is True
 
-            # replay of the consumed code fails
+            # replay of the consumed link fails
             again = await c.post(
                 "/api/register/verify/confirm",
-                json={"email": email, "code": code},
+                json={"email": email, "oob_code": oob},
             )
-            assert again.status_code == 401
+            assert again.status_code == 400
 
             # verified flag visible on the session context
             await c.post(
@@ -254,12 +279,42 @@ def test_registration_email_verification(arun, client):
             done = await _login(c, email, code2)
             assert done.json()["email_verified"] is True
 
-            # unknown email cannot request codes
+            # unknown email cannot request links
             ghost = await c.post(
                 "/api/register/verify/send",
                 json={"email": f"ghost-{u}@example.com"},
             )
             assert ghost.status_code == 404
+
+    arun(scenario())
+
+
+def test_mail_pipeline_delivers_every_flow(arun, client):
+    """OTP codes, verification links and reset links all flow through the
+    ONE MailProvider (LogMailSender outbox in dev)."""
+    async def scenario():
+        async with await client() as c:
+            u = uuid.uuid4().hex[:8]
+            slug, email = f"mp-{u}", f"mp-{u}@example.com"
+            await _register(c, slug, email)
+
+            await c.post(  # verification link
+                "/api/register/verify/send", json={"email": email}
+            )
+            await c.post(  # OTP (login start)
+                "/api/auth/login/start",
+                json={"email": email, "password": "secret-123"},
+            )
+            await c.post("/api/auth/reset/start", json={"email": email})
+
+            verify = await _last_mail(email, "Verify your SeaVix")
+            otp = await _last_mail(email, "Your SeaVix sign-in")
+            reset = await _last_mail(email, "Reset your SeaVix")
+            assert all(m.to == email for m in (verify, otp, reset))
+            assert "oob_code=" in verify.body_text
+            assert "oob_code=" in reset.body_text
+            first_line = otp.body_text.strip().splitlines()[0]
+            assert first_line.rstrip(".").rsplit(" ", 1)[-1].isdigit()  # the code
 
     arun(scenario())
 
@@ -277,19 +332,9 @@ def test_password_reset_round_trip(arun, client):
             assert start.status_code == 200
             assert start.json() == {"sent": True}
 
-            # The emulator neither sends email nor returns the link on the
-            # REST response; its inspection API is the dev "mailbox".
-            async with httpx.AsyncClient(base_url="http://localhost:9099") as fc:
-                resp = await fc.get("/emulator/v1/projects/seavix-dev/oobCodes")
-            entries = [
-                e for e in resp.json()["oobCodes"]
-                if e["email"] == email and e["requestType"] == "PASSWORD_RESET"
-            ]
-            link = entries[-1]["oobLink"]
-            oob = dict(
-                kv.split("=", 1)
-                for kv in link.split("?", 1)[1].split("&")
-            )["oobCode"]
+            # The dev "mailbox" is the LogMailSender outbox.
+            mail = await _last_mail(email, "Reset your SeaVix password")
+            oob = _oob_from_body(mail.body_text)
 
             bad = await c.post(
                 "/api/auth/reset/finish",
