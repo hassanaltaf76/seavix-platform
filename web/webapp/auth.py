@@ -64,12 +64,27 @@ def login_redirect() -> RedirectResponse:
     return RedirectResponse("/login", status_code=303)
 
 
-def home_for(org_type: str | None) -> str:
-    """Post-login landing, by org type (single-org scaffold: the first
-    membership decides)."""
-    if org_type == "survey_company":
-        return "/org/profile"
+def home_for(_org_type: str | None = None) -> str:
+    """Post-login landing: EVERY member lands on the org home (31c landing
+    rule). It is the one surface all roles can count on — the profile blade
+    is permission-gated (org.profile.view) and would 404 for surveyor/
+    viewer roles. The blade stays one click away via the rail cell, which
+    itself only renders when the permission holds."""
     return "/org/home"
+
+
+async def authenticated_home_redirect(request: Request) -> RedirectResponse | None:
+    """Signed-out-only dual guard (31c): when a valid session cookie is
+    present, return the 303 to the user's home; otherwise None so the
+    auth-family handler proceeds. Applied to BOTH the GET (form render)
+    and the POST (form submit) of every auth page, plus the public
+    landing: an authenticated user is never dropped onto signed-out
+    chrome, and no auth flow can fire while a session exists."""
+    ctx = await session_context(request)
+    if ctx is None:
+        return None
+    kind = ctx["memberships"][0]["type"] if ctx["memberships"] else None
+    return RedirectResponse(home_for(kind), status_code=303)
 
 
 def set_session_cookie(response: RedirectResponse, session_id: str) -> None:

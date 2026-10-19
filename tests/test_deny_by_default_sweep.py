@@ -100,6 +100,8 @@ WEB_PROTECTED = {
     "/org/profile",
     "/org/profile/logo",
     "/org/home",
+    # 31e: signed-in "resend verification email" action (POST only)
+    "/org/verification/resend",
 }
 
 

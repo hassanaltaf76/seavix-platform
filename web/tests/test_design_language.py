@@ -31,7 +31,7 @@ AUTH_TEMPLATES = ("login", "register", "forgot_password", "reset_password",
                   "verify_email_done")
 PUBLIC_TEMPLATES = ("landing", "profile", "profile_unavailable",
                     "rfq_form", "rfq_thanks")
-BLADE_TEMPLATES = ("org_home", "org_profile")
+BLADE_TEMPLATES = ("org_home", "org_profile", "org_not_found")
 
 
 def _tokens() -> dict[str, str]:
@@ -314,6 +314,42 @@ def test_profile_settings_public_slug_section():
     assert 'action="/org/profile/logo"' in text
     assert 'name="file"' in text
     assert "set it now or come back later" in text
+
+
+def test_profile_blade_is_permission_gated_31e():
+    """31e: the blade template renders edit surfaces ONLY when the
+    membership holds the permission — view-only members get a read-only
+    blade with NO form and NO Edit button."""
+    text = (TEMPLATES / "org_profile.html").read_text()
+    assert "'org.profile.edit' in membership.permissions" in text
+    assert "'org.logo.upload' in membership.permissions" in text
+    assert "view-only access" in text
+    home = (TEMPLATES / "org_home.html").read_text()
+    # the rail company cell is permission-gated, never role-name-driven
+    assert "'org.profile.view' in ctx.memberships[0].permissions" in BASE
+    assert 'href="/org/profile"' in BASE
+    # org home link to the blade is permission-gated too, and labelled by
+    # capability (edit vs view)
+    assert "'org.profile.view' in membership.permissions" in home
+    assert "Edit your public page" in home
+    assert "View your public page" in home
+
+
+def test_verification_resend_action_wired_31e():
+    """31e: the unverified tag IS the resend action on both blades, the
+    master-account banner sits on org home, and the blade 404 exists."""
+    for name in ("org_home", "org_profile"):
+        text = (TEMPLATES / f"{name}.html").read_text()
+        assert 'action="/org/verification/resend"' in text, name
+        assert "sv-tag-warn" in text, name
+        assert "unverified — resend" in text, name
+    home = (TEMPLATES / "org_home.html").read_text()
+    assert "Verify your email to activate your public page." in home
+    assert '"owner" in membership.roles' in home
+    assert 'method="post" action="/org/verification/resend"' in home
+    not_found = (TEMPLATES / "org_not_found.html").read_text()
+    assert '{% extends "base.html" %}' in not_found
+    assert "isn't available" in not_found
 
 
 def test_favicon_and_pwa_icons_derived_from_logo():

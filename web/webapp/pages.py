@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from .config import blob_root, work_base_url
 from .identity_client import identity_request
 from .ratelimit import RateLimiter
+from .auth import authenticated_home_redirect
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -38,6 +39,11 @@ async def _post_public_rfq(payload: dict) -> httpx.Response:
 @router.get("/", response_class=HTMLResponse)
 @public_route
 async def landing(request: Request) -> HTMLResponse:
+    # 31c landing rule: the marketing landing is signed-out-only chrome;
+    # a signed-in user goes straight to their workspace home.
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     return templates.TemplateResponse(request, "landing.html", {"request": request})
 
 
@@ -46,6 +52,9 @@ async def landing(request: Request) -> HTMLResponse:
 @router.get("/register", response_class=HTMLResponse)
 @public_route
 async def register_form(request: Request) -> HTMLResponse:
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     return templates.TemplateResponse(request, "register.html", {"request": request, "error": None, "form": {}}
     )
 
@@ -60,6 +69,9 @@ async def register_submit(
     password: str = Form(...),
     confirm_password: str = Form(...),
 ) -> HTMLResponse:
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     form = {"org_name": org_name, "org_type": org_type, "email": email}
     if org_type not in ORG_TYPES:
         return templates.TemplateResponse(

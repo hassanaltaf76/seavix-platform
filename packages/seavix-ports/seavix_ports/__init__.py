@@ -33,6 +33,7 @@ from .mail import (  # noqa: F401
     MailMessage,
     MailProvider,
     SmtpMailSender,
+    TeeMailSender,
     mailer_from_env,
 )
 

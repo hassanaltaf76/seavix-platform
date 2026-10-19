@@ -239,7 +239,11 @@ async def login_resend(payload: OtpResend, request: Request) -> dict:
 @public_route
 async def register_verify_send(payload: ResetStart, request: Request) -> dict:
     """Admin SDK verification link, delivered through the SeaVix mail
-    pipeline (our template — no Firebase Trigger Email extension)."""
+    pipeline (our template — no Firebase Trigger Email extension).
+
+    31e: resending is rate-limited like every other send — the link shares
+    the per-email 5/hour window with the OTP codes (over-limit -> 429, the
+    same posture as /api/auth/login/start)."""
     email = payload.email.lower()
     async with SessionLocal() as session:
         user = (
@@ -251,6 +255,8 @@ async def register_verify_send(payload: ResetStart, request: Request) -> dict:
         if user is None:
             # Same anti-enumeration posture as login.
             raise HTTPException(status_code=404, detail="unknown email")
+        await otp.enforce_send_window(session, email)
+        await otp.log_verification_link_send(session, email)
     _ensure_firebase()
     from firebase_admin import auth
 

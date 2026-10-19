@@ -24,6 +24,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from . import config
 
 PURPOSES = ("login", "verify_email")
+# Verification-link sends are recorded in the same per-email ledger with
+# this purpose. The row is a send-COUNTER entry only: verification links
+# confirm via Firebase oobCode, not a SeaVix code, so the row's hash is a
+# throwaway value and it never surfaces in the dev OTP peek (that cache is
+# populated by send_code alone).
+VERIFY_LINK_PURPOSE = "verify_link"
 
 # Dev-only plaintext cache backing /api/dev/last-otp (flag-gated). Lives in
 # process memory only — the database stores hashes (D1).
@@ -39,12 +45,11 @@ def _hash(email: str, code: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-async def send_code(session: AsyncSession, email: str, purpose: str) -> None:
-    """Create and "send" a code. Enforces the per-email send window."""
+async def enforce_send_window(session: AsyncSession, email: str) -> None:
+    """The single per-email send window (SEAVIX_OTP_SEND_LIMIT/hour) shared
+    by every mail the identity service sends — OTP codes (send_code) and
+    verification links (register/verify/send) alike."""
     email = email.strip().lower()
-    if purpose not in PURPOSES:
-        raise HTTPException(status_code=400, detail="unknown OTP purpose")
-
     window_start = datetime.now(timezone.utc) - timedelta(hours=1)
     sent = (
         await session.execute(
@@ -60,7 +65,11 @@ async def send_code(session: AsyncSession, email: str, purpose: str) -> None:
             status_code=429, detail="too many codes requested — try again later"
         )
 
-    code = f"{secrets.randbelow(1_000_000):06d}"
+
+async def _log_send(
+    session: AsyncSession, email: str, purpose: str, code_hash: str,
+    ttl_seconds: int,
+) -> None:
     now = datetime.now(timezone.utc)
     await session.execute(
         text(
@@ -71,11 +80,32 @@ async def send_code(session: AsyncSession, email: str, purpose: str) -> None:
             "id": str(uuid.uuid4()),
             "email": email,
             "purpose": purpose,
-            "hash": _hash(email, code),
+            "hash": code_hash,
             "now": now,
-            "expires": now + timedelta(seconds=config.otp_ttl_seconds()),
+            "expires": now + timedelta(seconds=ttl_seconds),
         },
     )
+
+
+async def log_verification_link_send(session: AsyncSession, email: str) -> None:
+    """Record a verification-link send in the shared window ledger (31e)."""
+    email = email.strip().lower()
+    throwaway = hashlib.sha256(secrets.token_hex(16).encode()).hexdigest()
+    await _log_send(session, email, VERIFY_LINK_PURPOSE, throwaway, 3600)
+    await session.commit()
+
+
+async def send_code(session: AsyncSession, email: str, purpose: str) -> None:
+    """Create and "send" a code. Enforces the per-email send window."""
+    email = email.strip().lower()
+    if purpose not in PURPOSES:
+        raise HTTPException(status_code=400, detail="unknown OTP purpose")
+
+    await enforce_send_window(session, email)
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    await _log_send(session, email, purpose, _hash(email, code),
+                    config.otp_ttl_seconds())
     await session.commit()
     # Delivery goes through the ONE mail pipeline (dev: LogMailSender prints
     # the email to the identity log; prod: real provider). The code also

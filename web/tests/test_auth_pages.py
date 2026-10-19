@@ -92,15 +92,18 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 code2 = (await idc.get("/api/dev/last-otp", params={"email": email})).json()["code"]
                 assert code2 != code
 
-                # right code -> 303 + HttpOnly SameSite=Lax cookie
+                # right code -> 303 + HttpOnly SameSite=Lax cookie.
+                # 31c landing rule: everyone lands on org home (the one
+                # surface every role can count on — the profile blade is
+                # permission-gated and would 404 for surveyor/viewer)
                 ok = await w.post(
                     "/login/otp", data={"email": email, "code": code2}
                 )
                 assert ok.status_code == 303
-                assert ok.headers["location"] == "/org/profile"
+                assert ok.headers["location"] == "/org/home"
                 sid = _extract_cookie(ok)
 
-                # authenticated page renders with the cookie
+                # the profile blade still renders for the owner (view+edit)
                 w.cookies.set(SESSION_COOKIE, sid)
                 home = await w.get("/org/profile")
                 assert home.status_code == 200
@@ -176,6 +179,80 @@ def test_org_pages_require_session(arun):
                 resp = await w.get(path, follow_redirects=False)
                 assert resp.status_code == 303
                 assert resp.headers["location"] == "/login"
+
+    arun(scenario())
+
+
+def test_signed_out_only_dual_guard_on_auth_pages_and_landing(arun, id_asgi):
+    """31c: the landing page and every auth-family page are signed-out-only
+    chrome. The guard fires on BOTH the GET (form render) and the POST
+    (form submit — the flow must not fire): a signed-in user always ends
+    up on org home."""
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
+        ) as idc:
+            u = uuid.uuid4().hex[:8]
+            email = f"wg-{u}@example.com"
+            await _register_identity(idc, email)
+            # a second account: proves a signed-in POST /login starts no
+            # OTP challenge for it
+            other = f"wi-{u}@example.com"
+            await _register_identity(idc, other)
+
+            async with _web() as w:
+                await w.post("/login", data={"email": email, "password": "secret-123"})
+                code = (await idc.get("/api/dev/last-otp", params={"email": email})).json()["code"]
+                ok = await w.post("/login/otp", data={"email": email, "code": code})
+                sid = _extract_cookie(ok)
+                w.cookies.set(SESSION_COOKIE, sid)
+
+                # GET dual: landing + every auth page redirects home
+                for path in ("/", "/login", "/register", "/forgot-password",
+                             "/reset-password", "/login/otp",
+                             "/register/verify/confirm"):
+                    r = await w.get(path, follow_redirects=False)
+                    assert r.status_code == 303, path
+                    assert r.headers["location"] == "/org/home", path
+
+                # POST dual: the login flow does not fire for `other`
+                r = await w.post(
+                    "/login",
+                    data={"email": other, "password": "secret-123"},
+                    follow_redirects=False,
+                )
+                assert r.status_code == 303
+                assert r.headers["location"] == "/org/home"
+                peek = await idc.get("/api/dev/last-otp", params={"email": other})
+                assert peek.status_code == 404  # no challenge was started
+
+                # POST dual: registration does not create the account
+                new_email = f"wj-{u}@example.com"
+                r = await w.post(
+                    "/register",
+                    data={
+                        "org_name": "Guarded Org",
+                        "org_type": "survey_company",
+                        "email": new_email,
+                        "password": "secret-123",
+                        "confirm_password": "secret-123",
+                    },
+                    follow_redirects=False,
+                )
+                assert r.status_code == 303
+                assert r.headers["location"] == "/org/home"
+                probe = await idc.post(
+                    "/api/auth/login/start",
+                    json={"email": new_email, "password": "secret-123"},
+                )
+                assert probe.status_code == 401  # account never created
+
+                # anonymous users still get the public landing and pages
+                anon = _web()
+                async with anon as a:
+                    assert (await a.get("/")).status_code == 200
+                    assert (await a.get("/login")).status_code == 200
+                    assert (await a.get("/register")).status_code == 200
 
     arun(scenario())
 

@@ -150,9 +150,10 @@ def test_invite_happy_path(arun):
             assert "role.manage" not in membership["permissions"]
             assert me.json()["email_verified"] is True
 
-            # ops can list roles (org.profile.view) but not create them
+            # 31e: the roles list is a management surface (role.manage) —
+            # ops can neither list nor create roles
             listed = await c.get("/api/orgs/me/roles", headers=_auth(sid))
-            assert listed.status_code == 200
+            assert listed.status_code == 403
             denied = await c.post(
                 "/api/orgs/me/roles", headers=_auth(sid),
                 json={"name": "x", "permissions": ["quote.create"]},
@@ -276,7 +277,7 @@ def test_deactivate_reactivate_member(arun):
             member_id = await _self_user_id(c, member_sid)
 
             # live session works pre-deactivation
-            ok = await c.get("/api/orgs/me/roles", headers=_auth(member_sid))
+            ok = await c.get("/api/auth/session", headers=_auth(member_sid))
             assert ok.status_code == 200
 
             off = await c.post(
@@ -322,7 +323,7 @@ def test_deactivate_reactivate_member(arun):
             )
             assert on.status_code == 200
             member_sid2 = await _login(c, member_email, password="their-secret-1")
-            alive = await c.get("/api/orgs/me/roles", headers=_auth(member_sid2))
+            alive = await c.get("/api/auth/session", headers=_auth(member_sid2))
             assert alive.status_code == 200
 
     arun(scenario())

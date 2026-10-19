@@ -1,7 +1,7 @@
 """Mail pipeline — ONE provider surface for every outbound email.
 
 OTP codes, password-reset links and email-verification links all leave the
-platform through MailProvider.send. Two implementations:
+platform through MailProvider.send. Three implementations:
 
 - LogMailSender (DEFAULT, no env): stdout/container logs + in-memory
   outbox; the entire automated suite runs against it (hermetic).
@@ -9,6 +9,11 @@ platform through MailProvider.send. Two implementations:
   set — default OFF): plain smtplib + STARTTLS. From-address must equal
   the SMTP account address (Outlook rejects other domains) — asserted in
   from_env() config validation.
+- TeeMailSender: composes senders — every leg receives every message.
+  Selected by mailer_from_env() when DEV_SMTP_HOST is set: the real SMTP
+  delivery happens AND a copy lands in the LogMailSender outbox, so
+  manual QA still leaves a readable, assertable record of exactly what
+  left the platform (Unix tee semantics).
 
 Prod wiring (human follow-up, in the task report): SendGrid/SES + a real
 sending domain with SPF/DKIM/DMARC on seavix.ai. No Firebase Trigger
@@ -146,10 +151,51 @@ class SmtpMailSender:
 
 
 def mailer_from_env() -> MailProvider:
-    """Selection rule: SmtpMailSender ONLY when DEV_SMTP_HOST is set;
-    LogMailSender otherwise (the default, no env needed)."""
+    """Selection rule: with DEV_SMTP_HOST set, a TeeMailSender delivers
+    through SmtpMailSender AND LogMailSender (real delivery + dev outbox
+    copy); LogMailSender alone otherwise (the default, no env needed)."""
     import os
 
     if os.environ.get("DEV_SMTP_HOST"):
-        return SmtpMailSender.from_env()
+        return TeeMailSender(
+            senders=(SmtpMailSender.from_env(), LogMailSender())
+        )
     return LogMailSender()
+
+
+@dataclass
+class TeeMailSender:
+    """Fan-out sender: every message goes to EVERY leg (Unix tee).
+
+    Manual-SMTP mode uses this so a real inbox delivery still leaves the
+    log/outbox copy the dev mailbox and the test-suite assertions read.
+    Each leg is attempted even when an earlier leg raised; the first
+    error is re-raised afterwards so delivery failures stay loud.
+    """
+
+    senders: tuple[MailProvider, ...]
+
+    async def send(
+        self,
+        to: str,
+        subject: str,
+        body_text: str,
+        body_html: str | None = None,
+    ) -> None:
+        first_error: Exception | None = None
+        for sender in self.senders:
+            try:
+                await sender.send(to, subject, body_text, body_html)
+            except Exception as exc:  # noqa: BLE001 — re-raised below
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error
+
+    @property
+    def outbox(self) -> list[MailMessage]:
+        """The LogMailSender leg's outbox (the dev mailbox copy)."""
+        for sender in self.senders:
+            if isinstance(sender, LogMailSender):
+                return sender.outbox
+        raise AttributeError("TeeMailSender has no LogMailSender leg")

@@ -243,6 +243,51 @@ def test_send_rate_limit_5_per_hour(arun, client):
     arun(scenario())
 
 
+def test_verification_link_send_rate_limit(arun, client):
+    """31e: verification-link sends share the per-email 5/hour window with
+    OTP codes (the ONE send budget per email). The 6th send is 429; the
+    budget is per-email, and an exhausted window blocks the OTP pipeline
+    for that address too — and only that address."""
+    async def scenario():
+        async with await client() as c:
+            u = uuid.uuid4().hex[:8]
+            email = f"vr-{u}@example.com"
+            await _register(c, email)
+
+            results = []
+            for _ in range(6):
+                r = await c.post(
+                    "/api/register/verify/send", json={"email": email}
+                )
+                results.append(r.status_code)
+            assert results[:5] == [200] * 5
+            assert results[5] == 429
+
+            # the window is per-email: another address still sends
+            other = f"vo-{u}@example.com"
+            await _register(c, other)
+            fresh = await c.post(
+                "/api/register/verify/send", json={"email": other}
+            )
+            assert fresh.status_code == 200
+
+            # the shared budget: the 5 verification sends above consumed
+            # the hour window for `email`, so the OTP pipeline is limited
+            # for that address too (and only that address)
+            blocked = await c.post(
+                "/api/auth/login/start",
+                json={"email": email, "password": "secret-123"},
+            )
+            assert blocked.status_code == 429
+            other_login = await c.post(
+                "/api/auth/login/start",
+                json={"email": other, "password": "secret-123"},
+            )
+            assert other_login.status_code == 200
+
+    arun(scenario())
+
+
 def test_registration_email_verification(arun, client):
     async def scenario():
         async with await client() as c:

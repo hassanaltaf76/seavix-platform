@@ -1,8 +1,11 @@
 """Mail pipeline tests.
 
 Default path: LogMailSender, selected with NO env set — the whole
-automated suite is hermetic. The live SmtpMailSender test is optional: it
-runs only when DEV_SMTP_HOST is present (manual QA), and skips otherwise.
+automated suite is hermetic. With DEV_SMTP_HOST set the selector returns
+a TeeMailSender (SMTP delivery + LogMailSender outbox copy) — asserted
+hermetically without any network. The live SmtpMailSender test is
+optional: it runs only when DEV_SMTP_HOST is present (manual QA), and
+skips otherwise.
 """
 import os
 
@@ -12,6 +15,7 @@ from seavix_ports import (
     LogMailSender,
     MailMessage,
     SmtpMailSender,
+    TeeMailSender,
     mailer_from_env,
 )
 
@@ -57,10 +61,60 @@ def test_smtp_selected_only_when_host_set(monkeypatch):
     monkeypatch.setenv("DEV_SMTP_USER", "someone@example.test")
     monkeypatch.setenv("DEV_SMTP_PASSWORD", "app-password")
     mailer = mailer_from_env()
-    assert isinstance(mailer, SmtpMailSender)
-    assert mailer.host == "smtp.example.test"
-    assert mailer.port == 587  # default
-    assert mailer.from_addr == "someone@example.test"  # defaults to user
+    # 31c mailer tee: SMTP delivery AND the dev log/outbox copy
+    assert isinstance(mailer, TeeMailSender)
+    assert isinstance(mailer.senders[0], SmtpMailSender)
+    assert isinstance(mailer.senders[1], LogMailSender)
+    assert mailer.senders[0].host == "smtp.example.test"
+    assert mailer.senders[0].port == 587  # default
+    assert mailer.senders[0].from_addr == "someone@example.test"  # defaults to user
+    assert mailer.outbox is mailer.senders[1].outbox
+
+
+def test_tee_sends_to_every_leg_and_records_outbox():
+    async def scenario():
+        log_leg = LogMailSender()
+
+        class RecordingSender:
+            def __init__(self):
+                self.messages = []
+
+            async def send(self, to, subject, body_text, body_html=None):
+                self.messages.append((to, subject, body_text, body_html))
+
+        primary = RecordingSender()
+        tee = TeeMailSender(senders=(primary, log_leg))
+        await tee.send("a@b.c", "Subject", "hello\n", "<p>hi</p>")
+        assert primary.messages == [("a@b.c", "Subject", "hello\n", "<p>hi</p>")]
+        assert len(tee.outbox) == 1
+        assert tee.outbox[0].to == "a@b.c"
+
+    import asyncio
+
+    asyncio.run(scenario())
+
+
+def test_tee_attempts_all_legs_and_raises_first_error():
+    async def scenario():
+        log_leg = LogMailSender()
+
+        class FailingSender:
+            async def send(self, to, subject, body_text, body_html=None):
+                raise ConnectionError("smtp down")
+
+        tee = TeeMailSender(senders=(FailingSender(), log_leg))
+        try:
+            await tee.send("a@b.c", "Subject", "hello\n")
+        except ConnectionError as exc:
+            assert "smtp down" in str(exc)
+        else:  # pragma: no cover
+            raise AssertionError("tee swallowed the delivery failure")
+        # the log leg still got its copy — tee semantics
+        assert len(tee.outbox) == 1
+
+    import asyncio
+
+    asyncio.run(scenario())
 
 
 def test_smtp_from_must_equal_user_for_outlook(monkeypatch):

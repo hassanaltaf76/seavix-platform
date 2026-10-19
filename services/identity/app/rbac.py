@@ -159,7 +159,10 @@ async def _get_role_row(session, org_id: str, role_id: str) -> dict:
 
 @router.get("/api/orgs/me/roles")
 async def list_roles(request: Request, ctx: AuthContext = Depends(require_auth)):
-    _check_perm(ctx, Permission.ORG_PROFILE_VIEW.value)
+    # 31e audit fix: the roles LIST is a management surface and is gated by
+    # role.manage like role create/edit/delete — not by org.profile.view
+    # (which wrongly exposed the full role catalog to every profile viewer).
+    _check_perm(ctx, Permission.ROLE_MANAGE.value)
     membership = _my_membership(ctx)
     async with SessionLocal() as session:
         roles = await _org_scoped_roles(session, membership.org_id)

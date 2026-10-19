@@ -140,9 +140,15 @@ def test_default_roles_seeded_on_registration(arun):
                 assert r["is_system"] is True
             assert set(roles["owner"]["permissions"]) == set(ALL_PERMISSIONS)
             assert "role.manage" not in roles["admin"]["permissions"]
+            # 31e: surveyor/viewer carry NO org.profile.view — the profile
+            # blade is gated to ops-and-above
             assert roles["viewer"]["permissions"] == sorted(
-                {"org.profile.view", "rfq.view", "job.view"}
+                {"rfq.view", "job.view"}
             )
+            assert roles["surveyor"]["permissions"] == sorted(
+                {"rfq.view", "job.view"}
+            )
+            assert "org.profile.view" in roles["ops"]["permissions"]
 
             # the owner membership resolved through the AuthContext carries
             # the owner role and every permission
@@ -249,9 +255,12 @@ def test_role_management_requires_role_manage(arun):
             assert denied.status_code == 403
             assert "role.manage" in denied.json()["detail"]
 
-            # listing roles needs only org.profile.view — viewer has it
+            # 31e audit fix: the roles LIST is a management surface — it
+            # requires role.manage exactly like create/edit/delete, so a
+            # viewer (no role.manage) is rejected on the list too.
             listed = await c.get("/api/orgs/me/roles", headers=_auth(sid))
-            assert listed.status_code == 200
+            assert listed.status_code == 403
+            assert "role.manage" in listed.json()["detail"]
 
     arun(scenario())
 
@@ -297,7 +306,7 @@ def test_multi_role_union_semantics(arun):
             effective = set(view.json()["effective_permissions"])
             # union: viewer set + quote.create (which viewer lacks)
             assert "quote.create" in effective
-            assert "org.profile.view" in effective
+            assert "rfq.view" in effective  # viewer base (31e: no org.profile.view)
             assert "role.manage" not in effective
             assert {r["name"] for r in view.json()["roles"]} == {
                 "viewer", "quote-only"
@@ -321,9 +330,12 @@ def test_multi_role_union_semantics(arun):
             assert "quote.create" in eff2  # via ops
             assert "role.manage" not in eff2  # neither role grants it
 
-            # union is enforced at the route layer too
+            # union is enforced at the route layer too: the member's roles
+            # are now ops + nothing-new — ops still cannot manage roles
+            # (31e: the roles LIST needs role.manage, not org.profile.view)
             listed = await c.get("/api/orgs/me/roles", headers=_auth(member_sid))
-            assert listed.status_code == 200  # ops grants org.profile.view
+            assert listed.status_code == 403
+            assert "role.manage" in listed.json()["detail"]
             forbidden = await c.put(
                 "/api/orgs/me/profile", headers=_auth(member_sid),
                 json={"about": "nope"},
@@ -340,6 +352,11 @@ ROUTE_MATRIX = [
     ("PUT", "/api/orgs/me/profile", "org.profile.edit", {"about": "x"}),
     ("POST", "/api/orgs/me/profile-status", "org.profile.publish", {"status": "draft"}),
     ("POST", "/api/orgs/me/roles", "role.manage", {"name": "m", "permissions": ["rfq.view"]}),
+    # 31e audit: the LIST surfaces are management surfaces too — the roles
+    # list is gated by role.manage (was wrongly org.profile.view), the
+    # members list by member.manage
+    ("GET", "/api/orgs/me/roles", "role.manage", None),
+    ("GET", "/api/orgs/me/members", "member.manage", None),
 ]
 
 

@@ -11,6 +11,14 @@ Revises: 0003
 Data migration: existing orgs get the five default system roles and every
 legacy membership (always an owner from registration) is bound to its
 org's owner role.
+
+NOTE (31e): this file's DEFAULT_ROLE_PERMISSIONS mirrors the seed catalog
+for FRESH databases. The surveyor/viewer entries were reduced to
+rfq.view + job.view in 31e (no org.profile.view — the profile blade is
+gated to ops-and-above). Already-applied databases keep the rows they
+were seeded with; system roles are read-only via the API, so pre-31e dev
+databases keep the old surveyor/viewer permissions until reseeded (dev
+data is throwaway — no data migration was built for it).
 """
 from typing import Sequence, Union
 import uuid
@@ -36,8 +44,8 @@ DEFAULT_ROLE_PERMISSIONS = {
         "org.profile.view", "rfq.create", "rfq.view", "quote.create",
         "quote.send", "quote.accept", "job.view", "job.assign",
     ],
-    "surveyor": ["org.profile.view", "rfq.view", "job.view"],
-    "viewer": ["org.profile.view", "rfq.view", "job.view"],
+    "surveyor": ["rfq.view", "job.view"],
+    "viewer": ["rfq.view", "job.view"],
 }
 ALL_PERMISSIONS = sorted(DEFAULT_ROLE_PERMISSIONS["admin"]) + ["role.manage"]
 

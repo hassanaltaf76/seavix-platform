@@ -39,18 +39,21 @@
         <a href="/org/home" aria-label="SeaVix"><img src="/static/brand/seavix-logo.png" alt="SeaVix"></a>
       </div>
 
+      {#- 31e: the company cell links to the permission-gated profile blade,
+          so it renders ONLY when the membership holds org.profile.view —
+          visibility is permission-driven, never role-name-driven. -#}
+      {% set can_view_profile = ctx is defined and ctx and ctx.memberships
+              and 'org.profile.view' in ctx.memberships[0].permissions %}
+      {% if can_view_profile %}
       <div class="sv-rail-tenant">
         <a href="/org/profile">
           <span class="sv-glyph" aria-hidden="true">◉</span>
           <span class="sv-rail-label">
-            {% if ctx is defined and ctx and ctx.memberships %}
-              <strong>{% if org is defined and org and org.name %}{{ org.name }}{% else %}{{ ctx.memberships[0].slug }}{% endif %}</strong>
-            {% else %}
-              Public browsing
-            {% endif %}
+            <strong>{% if org is defined and org and org.name %}{{ org.name }}{% else %}{{ ctx.memberships[0].slug }}{% endif %}</strong>
           </span>
         </a>
       </div>
+      {% endif %}
     </nav>
 
     <main class="sv-blades" aria-label="Blades">

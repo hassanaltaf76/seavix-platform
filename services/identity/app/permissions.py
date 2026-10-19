@@ -55,6 +55,11 @@ def valid_permissions(values: list[str]) -> list[str]:
 
 # ---------------------------------------------------------- default roles
 
+# 31e role semantics (profile-blade gating):
+# - owner/admin: full profile blade (view + edit + logo + publish)
+# - ops: profile VIEW only — the blade renders read-only, no edit controls
+# - surveyor/viewer: NO profile access — direct navigation 404s and the
+#   rail company cell is hidden (permission-driven, not role-name-driven)
 DEFAULT_ROLES: dict[str, frozenset[str]] = {
     "owner": ALL_PERMISSIONS,
     "admin": ALL_PERMISSIONS - {Permission.ROLE_MANAGE.value},
@@ -69,12 +74,10 @@ DEFAULT_ROLES: dict[str, frozenset[str]] = {
         Permission.JOB_ASSIGN.value,
     }),
     "surveyor": frozenset({
-        Permission.ORG_PROFILE_VIEW.value,
         Permission.RFQ_VIEW.value,
         Permission.JOB_VIEW.value,
     }),
     "viewer": frozenset({
-        Permission.ORG_PROFILE_VIEW.value,
         Permission.RFQ_VIEW.value,
         Permission.JOB_VIEW.value,
     }),

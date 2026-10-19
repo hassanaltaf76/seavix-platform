@@ -16,10 +16,10 @@ from fastapi.templating import Jinja2Templates
 
 from .auth import (
     SESSION_HEADER,
+    authenticated_home_redirect,
     clear_session_cookie,
     home_for,
     login_redirect,
-    session_context,
     session_id_from,
     set_session_cookie,
 )
@@ -34,10 +34,10 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templa
 @router.get("/login", response_class=HTMLResponse)
 @public_route
 async def login_form(request: Request):
-    ctx = await session_context(request)
-    if ctx is not None:
-        kind = ctx["memberships"][0]["type"] if ctx["memberships"] else None
-        return RedirectResponse(home_for(kind), status_code=303)
+    # 31c signed-out-only: a live session goes straight home
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     return templates.TemplateResponse(
         request, "login.html", {"request": request, "error": None, "form": {}}
     )
@@ -50,6 +50,9 @@ async def login_submit(
     email: str = Form(...),
     password: str = Form(...),
 ) -> HTMLResponse:
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     resp = await identity_request(
         "POST",
         "/api/auth/login/start",
@@ -80,6 +83,9 @@ async def login_otp_submit(
     email: str = Form(...),
     code: str = Form(...),
 ):
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     resp = await identity_request(
         "POST",
         "/api/auth/login/verify",
@@ -105,6 +111,9 @@ async def login_otp_submit(
 @public_route
 async def login_otp_resend(request: Request, email: str = Form(...)) -> HTMLResponse:
     """Fresh sign-in code; the identity side paces sends per email."""
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     await identity_request(
         "POST", "/api/auth/login/resend", json={"email": email.lower()}
     )
@@ -120,6 +129,9 @@ async def login_otp_resend(request: Request, email: str = Form(...)) -> HTMLResp
 async def login_otp_form(request: Request, email: str = "") -> HTMLResponse:
     """Direct GET renders the code form (e.g. back-button); the challenge
     itself only starts via POST /login."""
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     return templates.TemplateResponse(
         request, "login_otp.html",
         {"request": request, "email": email, "error": None, "resent": False},
@@ -168,6 +180,9 @@ async def session_refresh(request: Request) -> dict:
 @router.get("/forgot-password", response_class=HTMLResponse)
 @public_route
 async def forgot_form(request: Request) -> HTMLResponse:
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     return templates.TemplateResponse(
         request, "forgot_password.html", {"request": request, "sent": False}
     )
@@ -176,6 +191,9 @@ async def forgot_form(request: Request) -> HTMLResponse:
 @router.post("/forgot-password", response_class=HTMLResponse)
 @public_route
 async def forgot_submit(request: Request, email: str = Form(...)) -> HTMLResponse:
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     await identity_request(
         "POST", "/api/auth/reset/start", json={"email": email.lower()}
     )
@@ -190,6 +208,9 @@ async def forgot_submit(request: Request, email: str = Form(...)) -> HTMLRespons
 @router.get("/reset-password", response_class=HTMLResponse)
 @public_route
 async def reset_form(request: Request, oob_code: str = "") -> HTMLResponse:
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     if not oob_code:
         return templates.TemplateResponse(
             request, "reset_password.html",
@@ -210,6 +231,9 @@ async def reset_submit(
     password: str = Form(...),
     confirm_password: str = Form(...),
 ):
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     if password != confirm_password:
         return templates.TemplateResponse(
             request,
@@ -240,6 +264,9 @@ async def reset_submit(
 @public_route
 async def register_verify_form(request: Request, email: str = "", oob_code: str = ""):
     """Deep-link target of the verification email: confirms on POST."""
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     if not oob_code:
         return templates.TemplateResponse(
             request, "verify_email_confirm.html",
@@ -260,6 +287,9 @@ async def register_verify_submit(
     email: str = Form(...),
     oob_code: str = Form(...),
 ):
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     resp = await identity_request(
         "POST",
         "/api/register/verify/confirm",
@@ -281,6 +311,9 @@ async def register_verify_submit(
 @router.post("/register/verify/resend", response_class=HTMLResponse)
 @public_route
 async def register_verify_resend(request: Request, email: str = Form(...)) -> HTMLResponse:
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
     resp = await identity_request(
         "POST", "/api/register/verify/send", json={"email": email.lower()}
     )
