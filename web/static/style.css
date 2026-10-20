@@ -205,6 +205,28 @@ a:hover { color: var(--seavix-accent-bright); }
   overflow: hidden;
 }
 .sv-rail-tenant strong { color: var(--seavix-text-primary); }
+.sv-rail-initials {
+  flex: 0 0 1.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--seavix-primary);
+  color: var(--seavix-on-primary);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.sv-rail-company-logo {
+  flex: 0 0 1.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--seavix-navy-900);
+}
 
 /* ------------------------------------------------------- blade stack */
 .sv-blades {
@@ -372,6 +394,12 @@ a:hover { color: var(--seavix-accent-bright); }
   font-family: inherit;
 }
 .button:hover, button:hover { background: var(--seavix-primary-hover); color: var(--seavix-on-primary); }
+button:disabled, button:disabled:hover {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: var(--seavix-primary);
+  color: var(--seavix-on-primary);
+}
 .secondary, button.secondary {
   background: transparent;
   color: var(--seavix-text-primary);

@@ -65,12 +65,13 @@ def login_redirect() -> RedirectResponse:
 
 
 def home_for(_org_type: str | None = None) -> str:
-    """Post-login landing: EVERY member lands on the org home (31c landing
-    rule). It is the one surface all roles can count on — the profile blade
-    is permission-gated (org.profile.view) and would 404 for surveyor/
-    viewer roles. The blade stays one click away via the rail cell, which
-    itself only renders when the permission holds."""
-    return "/org/home"
+    """Post-login landing (31g landing rule): EVERY member lands on
+    /dashboard — the post-auth shell any active member can count on
+    (account internals are one click away at /org/home; the profile blade
+    is permission-gated and would 404 for surveyor/viewer roles). The
+    blade stays one click away via the rail cell, which itself only
+    renders when org.profile.view holds."""
+    return "/dashboard"
 
 
 async def authenticated_home_redirect(request: Request) -> RedirectResponse | None:

@@ -1,8 +1,8 @@
 {% extends "base.html" %}{% block title %}Your public page — SeaVix{% endblock %}
 {% set active = "profile" %}
-{% block breadcrumbs %}<li><a href="/org/home">Home</a></li><li aria-current="page">Profile</li>{% endblock %}
+{% block breadcrumbs %}<li><a href="/dashboard">Home</a></li><li aria-current="page">Profile</li>{% endblock %}
 {% block blade_title %}<h1>Your public page</h1>{% endblock %}
-{% block blade_close %}<a class="sv-blade-close" href="/org/home" aria-label="Close blade and go back">×</a>{% endblock %}
+{% block blade_close %}<a class="sv-blade-close" href="/dashboard" aria-label="Close blade and go back">×</a>{% endblock %}
 {% block blade_actions %}
   {% if mode == "view" and can_edit %}
   <a class="button" href="/org/profile?view=edit">Edit</a>
@@ -35,40 +35,42 @@
 
 {% else %}
 {#- EDIT MODE (org.profile.edit) — the 31d view-edit-save Save button
-    persists about + slug + ports in one PUT. -#}
+    persists about + slug + ports in one PUT. 31g: Save stays disabled
+    until the form is actually dirty (any edit, port add or removal). -#}
 {% if org %}
 <p><a href="/org/profile">← Back to preview</a></p>
 
 <section class="card">
   <h2>What visitors see</h2>
-  <form method="post" action="/org/profile" class="sv-form">
+  <form method="post" action="/org/profile" class="sv-form"
+        x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false, dirty: false,
+                  async search() {
+                    const frag = this.q.trim();
+                    if (!frag) { this.results = []; this.open = false; return; }
+                    const resp = await fetch("/org/ports/search?q=" + encodeURIComponent(frag));
+                    if (resp.ok) {
+                      this.results = (await resp.json()).ports;
+                      this.open = this.results.length > 0;
+                    }
+                  },
+                  add(port) {
+                    if (!this.selected.some(p => p.code === port.code)) { this.selected.push(port); this.dirty = true; }
+                    this.q = ""; this.results = []; this.open = false;
+                  },
+                  remove(code) { this.selected = this.selected.filter(p => p.code !== code); this.dirty = true; } }'>
     <label for="about">Describe your services — this appears on your public page</label>
-    <textarea id="about" name="about" rows="6">{{ org.about or "" }}</textarea>
+    <textarea id="about" name="about" rows="6"
+              @input="dirty = true">{{ org.about or "" }}</textarea>
 
     <label for="slug">Public page address</label>
     <input id="slug" name="slug" required minlength="2" maxlength="64"
            pattern="[a-z0-9-]+" title="lowercase letters, digits and dashes"
-           value="{{ membership.slug }}">
+           value="{{ membership.slug }}" @input="dirty = true">
     <small>This becomes your public page address: seavix.ai/&lt;slug&gt; —
            set it now or come back later.</small>
     {% if slug_error %}<p class="sv-field-error" role="alert">{{ slug_error }}</p>{% endif %}
 
-    <div class="sv-port-picker"
-         x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false,
-                   async search() {
-                     const frag = this.q.trim();
-                     if (!frag) { this.results = []; this.open = false; return; }
-                     const resp = await fetch("/org/ports/search?q=" + encodeURIComponent(frag));
-                     if (resp.ok) {
-                       this.results = (await resp.json()).ports;
-                       this.open = this.results.length > 0;
-                     }
-                   },
-                   add(port) {
-                     if (!this.selected.some(p => p.code === port.code)) this.selected.push(port);
-                     this.q = ""; this.results = []; this.open = false;
-                   },
-                   remove(code) { this.selected = this.selected.filter(p => p.code !== code); } }'>
+    <div class="sv-port-picker">
       <label for="port-search">Ports of operation — search by port name,
              UN/LOCODE or country</label>
       <input id="port-search" x-model="q" @input.debounce.300ms="search()"
@@ -98,7 +100,7 @@
              serve" on your public page.</small>
     </div>
 
-    <p><button type="submit">Save public page</button></p>
+    <p><button type="submit" :disabled="!dirty">Save public page</button></p>
   </form>
 </section>
 

@@ -100,6 +100,8 @@ WEB_PROTECTED = {
     "/org/profile",
     "/org/profile/logo",
     "/org/home",
+    # 31g: the post-auth landing blade
+    "/dashboard",
     # 31e: signed-in "resend verification email" action (POST only)
     "/org/verification/resend",
     # 31f: port-picker combobox backend (proxies the registry)

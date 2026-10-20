@@ -45,20 +45,26 @@
   <div class="sv-shell" x-bind:class="railCollapsed ? 'sv-rail-collapsed' : ''">
     <nav class="sv-rail" aria-label="Workspace">
       <div class="sv-rail-logo">
-        <a href="/org/home" aria-label="SeaVix"><img src="/static/brand/seavix-logo.png" alt="SeaVix"></a>
+        <a href="/dashboard" aria-label="SeaVix"><img src="/static/brand/seavix-logo.png" alt="SeaVix"></a>
       </div>
 
-      {#- 31e: the company cell links to the permission-gated profile blade,
-          so it renders ONLY when the membership holds org.profile.view —
-          visibility is permission-driven, never role-name-driven. -#}
+      {#- 31e/31g: the company cell links to the permission-gated profile
+          blade, so it renders ONLY when the membership holds
+          org.profile.view — visibility is permission-driven, never
+          role-name-driven. The cell shows the org logo when set, else
+          initials derived from the company name, plus the name. -#}
       {% set can_view_profile = ctx is defined and ctx and ctx.memberships
               and 'org.profile.view' in ctx.memberships[0].permissions %}
       {% if can_view_profile %}
       <div class="sv-rail-tenant">
         <a href="/org/profile">
-          <span class="sv-glyph" aria-hidden="true">◉</span>
+          {% if rail_org.logo_url %}
+          <img class="sv-rail-company-logo" src="{{ rail_org.logo_url }}" alt="">
+          {% else %}
+          <span class="sv-rail-initials" aria-hidden="true">{{ rail_org.initials }}</span>
+          {% endif %}
           <span class="sv-rail-label">
-            <strong>{% if org is defined and org and org.name %}{{ org.name }}{% else %}{{ ctx.memberships[0].slug }}{% endif %}</strong>
+            <strong>{{ rail_org.name }}</strong>
           </span>
         </a>
       </div>

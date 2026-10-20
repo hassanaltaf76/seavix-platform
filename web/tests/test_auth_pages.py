@@ -93,14 +93,15 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 assert code2 != code
 
                 # right code -> 303 + HttpOnly SameSite=Lax cookie.
-                # 31c landing rule: everyone lands on org home (the one
-                # surface every role can count on — the profile blade is
+                # 31g landing rule: everyone lands on /dashboard (the
+                # post-auth shell any active member can count on — account
+                # internals live at /org/home, the profile blade is
                 # permission-gated and would 404 for surveyor/viewer)
                 ok = await w.post(
                     "/login/otp", data={"email": email, "code": code2}
                 )
                 assert ok.status_code == 303
-                assert ok.headers["location"] == "/org/home"
+                assert ok.headers["location"] == "/dashboard"
                 sid = _extract_cookie(ok)
 
                 # the profile blade still renders for the owner (view+edit)
@@ -130,23 +131,26 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 assert "All services" not in home.text
                 assert "SeaVix home" not in home.text
                 assert 'href="/org/profile"' in home.text
+                # 31g: the rail cell shows initials-or-logo + the company
+                # name, and the rail logo goes to the dashboard
+                assert "sv-rail-initials" in home.text
+                assert 'href="/dashboard"' in home.text
                 # 31b-7: the rendered blade never links the public landing,
                 # and × closes to the parent crumb — following it lands on
-                # org home
+                # the dashboard (the landing blade)
                 assert 'href="/"' not in home.text
                 close = re.search(r'class="sv-blade-close" href="([^"]+)"', home.text)
-                assert close and close.group(1) == "/org/home"
+                assert close and close.group(1) == "/dashboard"
                 landing = await w.get(close.group(1))
                 assert landing.status_code == 200
-                assert "Your account" in landing.text
-                assert email in landing.text  # org home IS the account surface
-                # org home is the top-level blade: crumb root "Home", and
-                # its × also closes to org home (never "/")
+                assert "Dashboard" in landing.text
+                # the dashboard is the top-level blade: crumb root "Home",
+                # and its × also closes to the dashboard (never "/")
                 assert "<li aria-current=\"page\">Home</li>" in landing.text
                 top_close = re.search(
                     r'class="sv-blade-close" href="([^"]+)"', landing.text
                 )
-                assert top_close and top_close.group(1) == "/org/home"
+                assert top_close and top_close.group(1) == "/dashboard"
 
                 # logout clears the cookie and kills the session
                 w.cookies.set(SESSION_COOKIE, sid)
@@ -161,7 +165,9 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
     arun(scenario())
 
 
-def test_management_login_redirects_to_org_home(arun, id_asgi):
+def test_management_login_redirects_to_dashboard(arun, id_asgi):
+    """31g: EVERY org type lands on /dashboard; the management account
+    surface stays reachable at /org/home one click away."""
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
@@ -175,12 +181,15 @@ def test_management_login_redirects_to_org_home(arun, id_asgi):
                 code = (await idc.get("/api/dev/last-otp", params={"email": email})).json()["code"]
                 ok = await w.post("/login/otp", data={"email": email, "code": code})
                 assert ok.status_code == 303
-                assert ok.headers["location"] == "/org/home"
+                assert ok.headers["location"] == "/dashboard"
                 sid = _extract_cookie(ok)
                 w.cookies.set(SESSION_COOKIE, sid)
                 home = await w.get("/org/home")
                 assert home.status_code == 200
                 assert "management" in home.text
+                dash = await w.get("/dashboard")
+                assert dash.status_code == 200
+                assert "Dashboard" in dash.text
 
     arun(scenario())
 
@@ -188,7 +197,7 @@ def test_management_login_redirects_to_org_home(arun, id_asgi):
 def test_org_pages_require_session(arun):
     async def scenario():
         async with _web() as w:
-            for path in ("/org/profile", "/org/home"):
+            for path in ("/org/profile", "/org/home", "/dashboard"):
                 resp = await w.get(path, follow_redirects=False)
                 assert resp.status_code == 303
                 assert resp.headers["location"] == "/login"
@@ -200,7 +209,7 @@ def test_signed_out_only_dual_guard_on_auth_pages_and_landing(arun, id_asgi):
     """31c: the landing page and every auth-family page are signed-out-only
     chrome. The guard fires on BOTH the GET (form render) and the POST
     (form submit — the flow must not fire): a signed-in user always ends
-    up on org home."""
+    up on the dashboard (31g landing rule)."""
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
@@ -220,13 +229,13 @@ def test_signed_out_only_dual_guard_on_auth_pages_and_landing(arun, id_asgi):
                 sid = _extract_cookie(ok)
                 w.cookies.set(SESSION_COOKIE, sid)
 
-                # GET dual: landing + every auth page redirects home
+                # GET dual: landing + every auth page redirects to the dashboard
                 for path in ("/", "/login", "/register", "/forgot-password",
                              "/reset-password", "/login/otp",
                              "/register/verify/confirm"):
                     r = await w.get(path, follow_redirects=False)
                     assert r.status_code == 303, path
-                    assert r.headers["location"] == "/org/home", path
+                    assert r.headers["location"] == "/dashboard", path
 
                 # POST dual: the login flow does not fire for `other`
                 r = await w.post(
@@ -235,7 +244,7 @@ def test_signed_out_only_dual_guard_on_auth_pages_and_landing(arun, id_asgi):
                     follow_redirects=False,
                 )
                 assert r.status_code == 303
-                assert r.headers["location"] == "/org/home"
+                assert r.headers["location"] == "/dashboard"
                 peek = await idc.get("/api/dev/last-otp", params={"email": other})
                 assert peek.status_code == 404  # no challenge was started
 
@@ -253,7 +262,7 @@ def test_signed_out_only_dual_guard_on_auth_pages_and_landing(arun, id_asgi):
                     follow_redirects=False,
                 )
                 assert r.status_code == 303
-                assert r.headers["location"] == "/org/home"
+                assert r.headers["location"] == "/dashboard"
                 probe = await idc.post(
                     "/api/auth/login/start",
                     json={"email": new_email, "password": "secret-123"},

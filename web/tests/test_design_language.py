@@ -10,10 +10,10 @@ contract, and the favicon/PWA icon set. 31b: the post-auth rail is
 logo + company link only (no favorites/services/home items) and the profile
 blade is the public-page editor (framing "Your public page — seavix.ai/<slug>"
 + view-public-page link, services description, logo upload, slug + hint).
-31b-7: breadcrumbs are the blade navigation — the crumb trail roots at org
-home ("Home > Profile"), × closes to its parent crumb (org home at top
-level), and no post-auth chrome link (crumbs, ×, logo) drops a signed-in
-user onto the public landing.
+31b-7: breadcrumbs are the blade navigation — the crumb trail roots at the
+dashboard ("Home > Profile"), × closes to its parent crumb (the dashboard
+at top level), and no post-auth chrome link (crumbs, ×, logo) drops a
+signed-in user onto the public landing.
 """
 import json
 import re
@@ -31,7 +31,7 @@ AUTH_TEMPLATES = ("login", "register", "forgot_password", "reset_password",
                   "verify_email_done")
 PUBLIC_TEMPLATES = ("landing", "profile", "profile_unavailable",
                     "rfq_form", "rfq_thanks")
-BLADE_TEMPLATES = ("org_home", "org_profile", "org_not_found")
+BLADE_TEMPLATES = ("org_home", "org_profile", "org_not_found", "dashboard")
 
 
 def _tokens() -> dict[str, str]:
@@ -160,21 +160,28 @@ def test_blade_shell_is_post_auth_only():
 
 
 def test_blade_navigation_never_drops_to_public_landing():
-    """31b-7: breadcrumbs ARE the blade navigation. The crumb trail roots at
-    org home (never the public landing), × closes to its parent crumb (org
-    home at top level), and the post-auth rail logo goes to org home too."""
+    """31b-7 (amended 31g): breadcrumbs ARE the blade navigation. The crumb
+    trail roots at the dashboard (never the public landing), × closes to
+    its parent crumb (the dashboard at top level), and the post-auth rail
+    logo goes to the dashboard too."""
     # zero public-landing links in the post-auth chrome
     assert 'href="/"' not in BASE
-    assert 'href="/org/home"' in BASE  # rail logo → org home
+    assert 'href="/dashboard"' in BASE  # rail logo → dashboard
+    dash = (TEMPLATES / "dashboard.html").read_text()
     home = (TEMPLATES / "org_home.html").read_text()
     profile = (TEMPLATES / "org_profile.html").read_text()
-    # crumb trail: "Home" root (org home), child crumbs under it
-    assert "<li aria-current=\"page\">Home</li>" in home
-    assert '<li><a href="/org/home">Home</a></li>' in profile
+    # the dashboard is the top-level blade: crumb root "Home" IS the page
+    assert "<li aria-current=\"page\">Home</li>" in dash
+    # child blades root their crumbs at the dashboard
+    assert '<li><a href="/dashboard">Home</a></li>' in home
+    assert "<li aria-current=\"page\">Your account</li>" in home
+    assert '<li><a href="/dashboard">Home</a></li>' in profile
     assert "<li aria-current=\"page\">Profile</li>" in profile
-    # × closes to the parent crumb; a top-level blade closes to ORG HOME
-    assert 'class="sv-blade-close" href="/org/home"' in home
-    assert 'class="sv-blade-close" href="/org/home"' in profile
+    # × closes to the parent crumb; a top-level blade closes to the DASHBOARD
+    assert 'class="sv-blade-close" href="/dashboard"' in dash
+    assert 'class="sv-blade-close" href="/dashboard"' in home
+    assert 'class="sv-blade-close" href="/dashboard"' in profile
+    assert 'href="/"' not in dash
     assert 'href="/"' not in home
     assert 'href="/"' not in profile
 
@@ -319,6 +326,31 @@ def test_profile_settings_public_slug_section():
     assert 'name="file"' in text
     assert "set it now or come back later" in text
     assert ">Save public page</button>" in text  # 31d view-edit-save
+    # 31g: Save stays disabled until the form is dirty — the Alpine
+    # component lives on the form (fields + picker share one scope), the
+    # flag starts false, every edit surface sets it, and the submit
+    # button binds :disabled to it
+    assert "dirty: false" in text
+    assert '@input="dirty = true"' in text
+    assert "this.dirty = true" in text  # port add()/remove()
+    assert ':disabled="!dirty"' in text
+
+
+def test_rail_company_cell_31g():
+    """31g: the rail company cell shows the org LOGO when one is set, else
+    INITIALS derived from the company name — never a bare glyph — plus
+    the company name, and links to the profile blade. Visibility stays
+    permission-driven (org.profile.view)."""
+    assert "'org.profile.view' in ctx.memberships[0].permissions" in BASE
+    assert "rail_org.logo_url" in BASE
+    assert 'class="sv-rail-initials"' in BASE
+    assert "rail_org.initials" in BASE
+    assert "rail_org.name" in BASE
+    assert "◉" not in BASE  # the placeholder glyph is gone
+    # every blade route feeds the cell the same rail_org shape
+    routes = Path(__file__).resolve().parents[1] / "webapp" / "org_pages.py"
+    text = routes.read_text()
+    assert text.count("_rail_org(") >= 6  # not-found, view, edit, home, dashboard
 
 
 def test_profile_blade_is_permission_gated_31e():
@@ -381,20 +413,24 @@ def test_port_picker_markup_31f():
 
 
 def test_verification_resend_action_wired_31e():
-    """31e (amended): the unverified tag + resend live in the signed-in
-    ACCOUNT MENU (base.html) and the master banner on org home. The
-    profile blade, its edit mode and the shared public partial carry
-    ZERO verification or account state."""
+    """31e (amended 31g): the unverified tag + resend live in the signed-in
+    ACCOUNT MENU (base.html) and the master banner on /dashboard. The
+    profile blade, its edit mode, the account page (org home) and the
+    shared public partial carry ZERO verification or account state."""
     base = BASE
     assert 'action="/org/verification/resend"' in base
     assert "sv-tag-warn" in base
     assert "unverified — resend" in base
     assert 'aria-label="Account"' in base  # the tag sits in the account menu
 
+    dash = (TEMPLATES / "dashboard.html").read_text()
+    assert "Verify your email to activate your public page." in dash
+    assert '"owner" in membership.roles' in dash
+    assert 'method="post" action="/org/verification/resend"' in dash
+
     home = (TEMPLATES / "org_home.html").read_text()
-    assert "Verify your email to activate your public page." in home
-    assert '"owner" in membership.roles' in home
-    assert 'method="post" action="/org/verification/resend"' in home
+    for banned in ("Verify your email", "verification/resend", "unverified"):
+        assert banned not in home, f"org home leaks verification state: {banned!r}"
 
     # the blade is a public-content surface: NO verification state, NO
     # account email line, NO roles — in either mode

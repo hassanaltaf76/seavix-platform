@@ -6,6 +6,9 @@ resolved AuthContext here — require_auth reads it from the request scope
 public page through the SAME content partial as /<slug> (WYSIWYG by
 construction); edit mode (org.profile.edit) carries the Save button that
 persists about + slug + ports of operation in one PUT.
+
+31g: /dashboard is the post-auth landing blade (home_for); the
+master-only verification banner lives there, never on the profile blade.
 """
 from __future__ import annotations
 
@@ -68,15 +71,27 @@ def _has(membership: MembershipContext | None, permission: str) -> bool:
     return membership is not None and permission in membership.permissions
 
 
+def _rail_org(org: dict | None, membership: MembershipContext | None) -> dict:
+    """31g: the rail company cell renders on every blade — the org logo
+    when one is set, otherwise initials derived from the company name,
+    plus the name itself. Same public org summary the blade renders."""
+    name = (org or {}).get("name") or (membership.slug if membership else "")
+    words = name.split()
+    initials = ("".join(w[0] for w in words[:2]) or "S").upper()
+    return {"name": name, "logo_url": (org or {}).get("logo_url"),
+            "initials": initials}
+
+
 def _blade_not_found(request: Request, ctx: AuthContext) -> HTMLResponse:
     """404-over-403 (task-23 policy, extended to permission-gated blades):
     a surface the membership has no permission to know about renders the
     friendly not-found blade with a REAL 404 — never a 403."""
+    membership = _first_membership(ctx)
     return templates.TemplateResponse(
         request,
         "org_not_found.html",
-        {"request": request, "ctx": ctx, "membership": _first_membership(ctx),
-         "keepalive": _KEEPALIVE},
+        {"request": request, "ctx": ctx, "membership": membership,
+         "rail_org": _rail_org(None, membership), "keepalive": _KEEPALIVE},
         status_code=404,
     )
 
@@ -84,6 +99,7 @@ def _blade_not_found(request: Request, ctx: AuthContext) -> HTMLResponse:
 def _view_context(ctx, membership, org, saved: bool) -> dict:
     return {
         "request": None, "ctx": ctx, "membership": membership, "org": org,
+        "rail_org": _rail_org(org, membership),
         "keepalive": _KEEPALIVE, "mode": "view",
         "can_edit": _has(membership, ORG_PROFILE_EDIT), "saved": saved,
     }
@@ -93,6 +109,7 @@ def _edit_context(ctx, membership, org, *, slug_error=None, port_error=None,
                   logo_saved=False, logo_error=None) -> dict:
     return {
         "request": None, "ctx": ctx, "membership": membership, "org": org,
+        "rail_org": _rail_org(org, membership),
         "keepalive": _KEEPALIVE, "mode": "edit",
         "can_edit": _has(membership, ORG_PROFILE_EDIT),
         "slug_error": slug_error, "port_error": port_error,
@@ -248,6 +265,26 @@ async def org_home(request: Request, resent: str = "", ctx: AuthContext = Depend
         request,
         "org_home.html",
         {"request": request, "ctx": ctx, "membership": membership, "org": org,
+         "rail_org": _rail_org(org, membership),
+         "keepalive": _KEEPALIVE, "resent": resent},
+    )
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request, resent: str = "",
+                    ctx: AuthContext = Depends(require_auth)):
+    """31g: the post-auth landing blade — every active member lands here
+    after sign-in (home_for), and signed-in "/" redirects here. Until the
+    operational surfaces (jobs, RFQs, activity) ship, the body is an
+    honest placeholder. The master-only verification banner lives HERE —
+    the profile blade is a public-content surface and carries none of it."""
+    membership = _first_membership(ctx)
+    org = await _org_summary(membership.slug) if membership else None
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        {"request": request, "ctx": ctx, "membership": membership, "org": org,
+         "rail_org": _rail_org(org, membership),
          "keepalive": _KEEPALIVE, "resent": resent},
     )
 
@@ -256,11 +293,12 @@ async def org_home(request: Request, resent: str = "", ctx: AuthContext = Depend
 async def resend_verification(request: Request, ctx: AuthContext = Depends(require_auth)):
     """31e: the signed-in "Resend verification email" action behind the
     unverified tag in the ACCOUNT MENU (base.html) — never on the profile
-    blade, which is a public-content surface. Goes through the identity
-    verification-link pipeline — itself rate-limited like every other send
-    (shared per-email 5/hour window, 429 mapped to ?resent=limited). PRG
-    back to org home with the outcome in the query string."""
-    target = "/org/home"
+    blade, which is a public-content surface. 31g: the master banner and
+    the PRG target moved to /dashboard (the post-auth landing). Goes
+    through the identity verification-link pipeline — itself rate-limited
+    like every other send (shared per-email 5/hour window, 429 mapped to
+    ?resent=limited)."""
+    target = "/dashboard"
     if ctx.email_verified:
         return _redirect(target)
     resp = await identity_request(

@@ -6,8 +6,9 @@ it misreads as "the company is unverified".
 Where the state lives:
 - the signed-in ACCOUNT MENU (base.html topnav) — a subtle, actionable
   tag that POSTs the resend;
-- a banner on ORG HOME for unverified MASTER accounts only ("Verify your
-  email to activate your public page." + Resend verification email).
+- a banner on /DASHBOARD for unverified MASTER accounts only ("Verify your
+  email to activate your public page." + Resend verification email) — 31g
+  moved it from org home to the post-auth landing blade.
 
 The resend goes through the identity verification-link pipeline,
 rate-limited like every other send (shared per-email 5/hour window).
@@ -145,10 +146,11 @@ async def _add_member(org_id: str, email: str) -> str:
     return user_id
 
 
-def test_unverified_master_account_menu_tag_and_org_home_banner(arun, id_asgi):
-    """Unverified master: banner on org home, actionable tag in the account
-    menu — and ZERO verification markup on the profile blade (view and
-    edit) or its public preview. Resend works; verifying clears both."""
+def test_unverified_master_account_menu_tag_and_dashboard_banner(arun, id_asgi):
+    """Unverified master: banner on /dashboard, actionable tag in the
+    account menu — and ZERO verification markup on the profile blade
+    (view and edit), its public preview, or the account page. Resend
+    works; verifying clears both."""
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
@@ -158,15 +160,17 @@ def test_unverified_master_account_menu_tag_and_org_home_banner(arun, id_asgi):
             async with _web() as w:
                 await _register_and_login_web(idc, w, email)
 
-                home = await w.get("/org/home")
-                assert home.status_code == 200
-                # the master banner lives on ORG HOME
-                assert "Verify your email to activate your public page." in home.text
-                assert 'method="post" action="/org/verification/resend"' in home.text
+                dash = await w.get("/dashboard")
+                assert dash.status_code == 200
+                # the master banner lives on the DASHBOARD
+                assert "Verify your email to activate your public page." in dash.text
+                assert 'method="post" action="/org/verification/resend"' in dash.text
                 # the subtle actionable tag lives in the ACCOUNT MENU
-                assert "unverified — resend" in _topnav(home.text)
-                # org home is the account surface: the email line stays here
+                assert "unverified — resend" in _topnav(dash.text)
+                # org home is the account surface: email line, NO banner
+                home = await w.get("/org/home")
                 assert f"Signed in as {email}" in home.text
+                assert "activate your public page" not in home.text
 
                 # the profile blade carries NO account/verification state
                 blade = await w.get("/org/profile")
@@ -174,11 +178,11 @@ def test_unverified_master_account_menu_tag_and_org_home_banner(arun, id_asgi):
                 editor = await w.get("/org/profile?view=edit")
                 _assert_no_verification_state(editor.text, email)
 
-                # resend from the account menu: PRG + a REAL mail
+                # resend from the account menu: PRG to the dashboard + a REAL mail
                 before = len(_verify_mails(email))
                 r = await w.post("/org/verification/resend", follow_redirects=False)
                 assert r.status_code == 303
-                assert r.headers["location"] == "/org/home?resent=ok"
+                assert r.headers["location"] == "/dashboard?resent=ok"
                 assert len(_verify_mails(email)) == before + 1
                 followed = await w.get(r.headers["location"])
                 assert "on its way" in followed.text
@@ -192,16 +196,16 @@ def test_unverified_master_account_menu_tag_and_org_home_banner(arun, id_asgi):
                 assert confirmed.status_code == 200
 
                 # verified: tag AND banner are gone; the blade was always clean
-                home2 = await w.get("/org/home")
-                assert "activate your public page" not in home2.text
-                assert "unverified" not in _topnav(home2.text)
+                dash2 = await w.get("/dashboard")
+                assert "activate your public page" not in dash2.text
+                assert "unverified" not in _topnav(dash2.text)
                 blade2 = await w.get("/org/profile")
                 _assert_no_verification_state(blade2.text, email)
 
                 # resending a verified account is a plain no-op redirect
                 noop = await w.post("/org/verification/resend", follow_redirects=False)
                 assert noop.status_code == 303
-                assert noop.headers["location"] == "/org/home"
+                assert noop.headers["location"] == "/dashboard"
 
     arun(scenario())
 
@@ -246,12 +250,12 @@ def test_unverified_non_master_tag_in_menu_but_no_banner(arun, id_asgi):
             member_sid = await _identity_session(idc, member_email)
             async with _web() as w:
                 w.cookies.set(SESSION_COOKIE, member_sid)
-                home = await w.get("/org/home")
-                assert home.status_code == 200
+                dash = await w.get("/dashboard")
+                assert dash.status_code == 200
                 # account-menu tag yes, master banner NO (viewer is not
                 # the master account)
-                assert "unverified — resend" in _topnav(home.text)
-                assert "activate your public page" not in home.text
+                assert "unverified — resend" in _topnav(dash.text)
+                assert "activate your public page" not in dash.text
                 # the blade stays clean for non-masters too
                 blade = await w.get("/org/profile", follow_redirects=False)
                 assert blade.status_code == 404  # viewer: no profile access
@@ -261,7 +265,7 @@ def test_unverified_non_master_tag_in_menu_but_no_banner(arun, id_asgi):
                 before = len(_verify_mails(member_email))
                 r = await w.post("/org/verification/resend", follow_redirects=False)
                 assert r.status_code == 303
-                assert r.headers["location"] == "/org/home?resent=ok"
+                assert r.headers["location"] == "/dashboard?resent=ok"
                 assert len(_verify_mails(member_email)) == before + 1
 
     arun(scenario())
@@ -284,10 +288,10 @@ def test_resend_is_rate_limited(arun, id_asgi):
                     r = await w.post("/org/verification/resend",
                                      follow_redirects=False)
                     assert r.status_code == 303
-                    assert r.headers["location"] == "/org/home?resent=ok", i
+                    assert r.headers["location"] == "/dashboard?resent=ok", i
                 r = await w.post("/org/verification/resend", follow_redirects=False)
                 assert r.status_code == 303
-                assert r.headers["location"] == "/org/home?resent=limited"
+                assert r.headers["location"] == "/dashboard?resent=limited"
 
                 page = await w.get(r.headers["location"])
                 assert "too many requests" in page.text
