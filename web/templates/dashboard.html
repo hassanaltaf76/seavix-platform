@@ -4,24 +4,10 @@
 {% block blade_title %}<h1>Dashboard</h1>{% endblock %}
 {% block blade_close %}<a class="sv-blade-close" href="/dashboard" aria-label="Close blade and go back">×</a>{% endblock %}
 {% block content %}
-{#- 31g: the post-auth landing blade. The master-only activation banner
-    lives HERE (and the account-menu tag in base.html) — the profile blade
-    is a public-content surface and carries none of it. -#}
-{% if membership and "owner" in membership.roles and not ctx.email_verified %}
-<div class="notice" role="status">Verify your email to activate your public page.
-  <form method="post" action="/org/verification/resend" class="sv-inline-form">
-    <button type="submit" class="sv-link-btn">Resend verification email</button>
-  </form>
-</div>
-{% endif %}
-
-{% if resent == "ok" %}<p class="notice success" role="status">A new verification
-   email is on its way.</p>{% endif %}
-{% if resent == "limited" %}<p class="sv-form-error" role="alert">too many requests
-   — try again later</p>{% endif %}
-{% if resent == "failed" %}<p class="sv-form-error" role="alert">could not resend the
-   email — try again later</p>{% endif %}
-
+{#- 31g: the post-auth landing blade. 31i: it carries zero verification
+    state — login gates on a verified email, so no banner/tag/resend may
+    render anywhere post-auth; the only verification UI is the pre-login
+    gate screen. -#}
 <section class="card">
   <p>Your operational overview will live here — jobs, RFQs and activity arrive in upcoming releases.</p>
 </section>

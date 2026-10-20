@@ -7,9 +7,11 @@ public page through the SAME content partial as /<slug> (WYSIWYG by
 construction); edit mode (org.profile.edit) carries the Save button that
 persists about + slug + ports of operation in one PUT.
 
-31g: /dashboard is the post-auth landing blade (home_for); the
-master-only verification banner lives there, never on the profile blade.
-"""
+31g: /dashboard is the post-auth landing blade (home_for).
+
+31i: login gates on a verified email, so every post-auth surface carries
+ZERO verification state — no banner, no account-menu tag, no resend. The
+only verification UI is the pre-login gate screen (auth_pages)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -260,7 +262,7 @@ async def org_profile_logo(
 
 
 @router.get("/org/home", response_class=HTMLResponse)
-async def org_home(request: Request, resent: str = "", ctx: AuthContext = Depends(require_auth)):
+async def org_home(request: Request, ctx: AuthContext = Depends(require_auth)):
     membership = _first_membership(ctx)
     org = await _org_summary(membership.slug) if membership else None
     return templates.TemplateResponse(
@@ -268,18 +270,18 @@ async def org_home(request: Request, resent: str = "", ctx: AuthContext = Depend
         "org_home.html",
         {"request": request, "ctx": ctx, "membership": membership, "org": org,
          "rail_org": _rail_org(org, membership),
-         "keepalive": _KEEPALIVE, "resent": resent},
+         "keepalive": _KEEPALIVE},
     )
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, resent: str = "",
+async def dashboard(request: Request,
                     ctx: AuthContext = Depends(require_auth)):
     """31g: the post-auth landing blade — every active member lands here
     after sign-in (home_for), and signed-in "/" redirects here. Until the
     operational surfaces (jobs, RFQs, activity) ship, the body is an
-    honest placeholder. The master-only verification banner lives HERE —
-    the profile blade is a public-content surface and carries none of it."""
+    honest placeholder. 31i: zero verification state — login gates on a
+    verified email, so post-auth chrome carries no banner, tag or resend."""
     membership = _first_membership(ctx)
     org = await _org_summary(membership.slug) if membership else None
     return templates.TemplateResponse(
@@ -287,27 +289,5 @@ async def dashboard(request: Request, resent: str = "",
         "dashboard.html",
         {"request": request, "ctx": ctx, "membership": membership, "org": org,
          "rail_org": _rail_org(org, membership),
-         "keepalive": _KEEPALIVE, "resent": resent},
+         "keepalive": _KEEPALIVE},
     )
-
-
-@router.post("/org/verification/resend")
-async def resend_verification(request: Request, ctx: AuthContext = Depends(require_auth)):
-    """31e: the signed-in "Resend verification email" action behind the
-    unverified tag in the ACCOUNT MENU (base.html) — never on the profile
-    blade, which is a public-content surface. 31g: the master banner and
-    the PRG target moved to /dashboard (the post-auth landing). Goes
-    through the identity verification-link pipeline — itself rate-limited
-    like every other send (shared per-email 5/hour window, 429 mapped to
-    ?resent=limited)."""
-    target = "/dashboard"
-    if ctx.email_verified:
-        return _redirect(target)
-    resp = await identity_request(
-        "POST", "/api/register/verify/send", json={"email": ctx.user.email}
-    )
-    if resp.status_code == 429:
-        return _redirect(f"{target}?resent=limited")
-    if resp.status_code != 200:
-        return _redirect(f"{target}?resent=failed")
-    return _redirect(f"{target}?resent=ok")

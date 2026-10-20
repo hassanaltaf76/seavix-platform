@@ -55,11 +55,33 @@ async def login_submit(
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
         return redirect
+    email = email.lower()
     resp = await identity_request(
         "POST",
         "/api/auth/login/start",
-        json={"email": email.lower(), "password": password},
+        json={"email": email, "password": password},
     )
+    if resp.status_code == 403:
+        # 31i: correct password, unverified email — the identity side sends
+        # NO OTP and issues no challenge. The ONLY verification UI is this
+        # pre-login gate: deliver a fresh link now, offer a rate-limited
+        # resend, and never advance toward a session.
+        detail = resp.json().get("detail", {})
+        if isinstance(detail, dict) and detail.get("code") == "email_unverified":
+            sent = await identity_request(
+                "POST", "/api/register/verify/send", json={"email": email}
+            )
+            error = None
+            if sent.status_code == 429:
+                error = "too many requests — try again later"
+            elif sent.status_code != 200:
+                error = "could not send the verification email — try again"
+            return templates.TemplateResponse(
+                request,
+                "verify_gate.html",
+                {"request": request, "email": email, "error": error,
+                 "resent": False},
+            )
     if resp.status_code != 200:
         error = "invalid credentials"
         if resp.status_code == 429:
@@ -75,6 +97,36 @@ async def login_submit(
         "login_otp.html",
         {"request": request, "email": resp.json()["email"], "error": None,
          "resent": False},
+    )
+
+
+@router.post("/login/verify-email/resend", response_class=HTMLResponse)
+@public_route
+async def login_verify_email_resend(
+    request: Request, email: str = Form(...)
+) -> HTMLResponse:
+    """31i: the gate screen's resend — the same identity verification-link
+    pipeline (itself rate-limited per email). Re-renders the gate with the
+    outcome; signed-in users never see this surface."""
+    redirect = await authenticated_home_redirect(request)
+    if redirect is not None:
+        return redirect
+    email = email.lower()
+    resp = await identity_request(
+        "POST", "/api/register/verify/send", json={"email": email}
+    )
+    error = None
+    resent = True
+    if resp.status_code == 429:
+        error = "too many requests — try again later"
+        resent = False
+    elif resp.status_code != 200:
+        error = "could not resend the email"
+        resent = False
+    return templates.TemplateResponse(
+        request,
+        "verify_gate.html",
+        {"request": request, "email": email, "error": error, "resent": resent},
     )
 
 

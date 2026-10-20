@@ -1,0 +1,36 @@
+{% extends "base_auth.html" %}{% block title %}Verify your email — SeaVix{% endblock %}
+{% block content %}
+<h1>Verify your email to continue</h1>
+<p class="sv-auth-sub">We've sent a verification link to <strong>{{ email }}</strong>.
+   Click the link in that email, then sign in here.</p>
+{% if error %}<p class="sv-form-error" role="alert">{{ error }}</p>{% endif %}
+{% if resent %}<p class="sv-auth-sub" role="status">A new link is on its way.</p>{% endif %}
+<div class="sv-auth-links">
+  <form method="post" action="/login/verify-email/resend" id="resend-form">
+    <input type="hidden" name="email" value="{{ email }}">
+    <button type="submit" class="sv-resend" id="resend-btn">Resend link</button>
+  </form>
+  <p><a href="/login">Back to sign in</a></p>
+</div>
+<script>
+(function () {
+  var form = document.getElementById("resend-form");
+  var btn = document.getElementById("resend-btn");
+  form.addEventListener("submit", function () {
+    var left = 30;
+    btn.disabled = true;
+    btn.textContent = "Resend link (" + left + "s)";
+    var tick = setInterval(function () {
+      left -= 1;
+      if (left <= 0) {
+        clearInterval(tick);
+        btn.disabled = false;
+        btn.textContent = "Resend link";
+      } else {
+        btn.textContent = "Resend link (" + left + "s)";
+      }
+    }, 1000);
+  });
+})();
+</script>
+{% endblock %}

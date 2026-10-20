@@ -31,6 +31,20 @@ def _web() -> httpx.AsyncClient:
     )
 
 
+async def _verify_email(email: str) -> None:
+    """31i: login gates on a verified email — mark it in the identity DB."""
+    from sqlalchemy import text as sql
+
+    from app.db import SessionLocal
+
+    async with SessionLocal() as s:
+        await s.execute(
+            sql("UPDATE app_user SET email_verified = true WHERE email = :e"),
+            {"e": email},
+        )
+        await s.commit()
+
+
 async def _role_session(idc: httpx.AsyncClient, email: str, roles: list[str]) -> str:
     """Register a fresh org, swap the caller's own roles, and return the
     identity session id (used as the web session cookie)."""
@@ -45,6 +59,7 @@ async def _role_session(idc: httpx.AsyncClient, email: str, roles: list[str]) ->
         },
     )
     assert resp.status_code == 201, resp.text
+    await _verify_email(email)  # 31i: login requires verified
     start = await idc.post(
         "/api/auth/login/start",
         json={"email": email, "password": "secret-123"},

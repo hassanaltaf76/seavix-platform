@@ -86,6 +86,8 @@ WEB_PUBLIC = {
     "/login",
     "/login/otp",
     "/login/otp/resend",
+    # 31i: the pre-login gate's resend (proxies the verification-link send)
+    "/login/verify-email/resend",
     "/logout",
     "/forgot-password",
     "/reset-password",
@@ -102,8 +104,6 @@ WEB_PROTECTED = {
     "/org/home",
     # 31g: the post-auth landing blade
     "/dashboard",
-    # 31e: signed-in "resend verification email" action (POST only)
-    "/org/verification/resend",
     # 31f: port-picker combobox backend (proxies the registry)
     "/org/ports/search",
 }

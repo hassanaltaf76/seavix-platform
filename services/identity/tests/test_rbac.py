@@ -39,7 +39,24 @@ async def _register(c, email, org_type="survey_company"):
     return resp.json()
 
 
+async def _verify_email(c, email):
+    """31i: login gates on a verified email. The helper marks the address
+    verified directly in the dev DB so the per-email SEND window stays
+    pristine for send-budget assertions."""
+    from sqlalchemy import text as sql
+
+    from app.db import SessionLocal
+
+    async with SessionLocal() as s:
+        await s.execute(
+            sql("UPDATE app_user SET email_verified = true WHERE email = :e"),
+            {"e": email},
+        )
+        await s.commit()
+
+
 async def _login(c, email):
+    await _verify_email(c, email)
     start = await c.post(
         "/api/auth/login/start",
         json={"email": email, "password": "secret-123"},

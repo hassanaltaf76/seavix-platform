@@ -14,11 +14,11 @@
 </nav>{% endblock %}
 
 {% block content %}
-{#- 31e (amended per owner feedback): the profile blade is a PUBLIC-CONTENT
-    surface — no account email line, no tag, and no go-live notice may
-    render here: on a public-content surface account state misreads as
-    company state. It lives in the signed-in account menu (base.html)
-    and the master banner on org home. -#}
+{#- 31e (amended per owner feedback; 31i reaffirms): the profile blade is a
+    PUBLIC-CONTENT surface — no account email line, no tag, and no go-live
+    notice may render here: on a public-content surface account state
+    misreads as company state. 31i: post-auth surfaces carry zero
+    verification state — the only verification UI is the pre-login gate. -#}
 
 {% if saved %}<p class="notice success" role="status">Saved.</p>{% endif %}
 

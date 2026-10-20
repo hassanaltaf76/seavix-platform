@@ -37,6 +37,20 @@ async def _register_identity(c: httpx.AsyncClient, email: str,
     return resp.json()
 
 
+async def _verify_email(email: str) -> None:
+    """31i: login gates on a verified email — mark it in the identity DB."""
+    from sqlalchemy import text as sql
+
+    from app.db import SessionLocal
+
+    async with SessionLocal() as s:
+        await s.execute(
+            sql("UPDATE app_user SET email_verified = true WHERE email = :e"),
+            {"e": email},
+        )
+        await s.commit()
+
+
 def _web() -> httpx.AsyncClient:
     from webapp.main import app as web_app
 
@@ -54,6 +68,7 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
             email = f"wl-{u}@example.com"
             reg = await _register_identity(idc, email)
             slug = reg["slug"]
+            await _verify_email(email)  # 31i: login requires verified
 
             async with _web() as w:
                 # login page renders
@@ -121,11 +136,13 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 assert email not in body
                 assert "unverified" not in body
                 assert "/org/verification/resend" not in body
-                # ...while the signed-in account menu carries the tag
+                # 31i: the signed-in account menu carries NO verification
+                # tag either — a signed-in user is always verified
                 topnav = re.search(
                     r'<nav class="sv-topnav".*?</nav>', home.text, re.S
                 ).group(0)
-                assert "unverified — resend" in topnav
+                assert "unverified" not in topnav
+                assert "verification/resend" not in topnav
                 # rail: company name present, zero favorites/services/home items
                 assert "Favorites" not in home.text
                 assert "All services" not in home.text
@@ -175,6 +192,7 @@ def test_management_login_redirects_to_dashboard(arun, id_asgi):
             u = uuid.uuid4().hex[:8]
             email = f"wc-{u}@example.com"
             await _register_identity(idc, email, org_type="management")
+            await _verify_email(email)  # 31i: login requires verified
 
             async with _web() as w:
                 await w.post("/login", data={"email": email, "password": "secret-123"})
@@ -217,10 +235,12 @@ def test_signed_out_only_dual_guard_on_auth_pages_and_landing(arun, id_asgi):
             u = uuid.uuid4().hex[:8]
             email = f"wg-{u}@example.com"
             await _register_identity(idc, email)
+            await _verify_email(email)  # 31i: login requires verified
             # a second account: proves a signed-in POST /login starts no
             # OTP challenge for it
             other = f"wi-{u}@example.com"
             await _register_identity(idc, other)
+            await _verify_email(other)
 
             async with _web() as w:
                 await w.post("/login", data={"email": email, "password": "secret-123"})
@@ -391,6 +411,7 @@ def test_profile_settings_slug_update(arun, id_asgi):
             reg = await _register_identity(idc, email)
             placeholder = reg["slug"]
             new_slug = f"harbor-{u}"
+            await _verify_email(email)  # 31i: login requires verified
 
             async with _web() as w:
                 # login via OTP to get the session cookie
@@ -497,6 +518,7 @@ def test_password_reset_pages(arun, id_asgi):
             u = uuid.uuid4().hex[:8]
             email = f"wp-{u}@example.com"
             await _register_identity(idc, email)
+            await _verify_email(email)  # 31i: login requires verified
 
             async with _web() as w:
                 fp = await w.get("/forgot-password")

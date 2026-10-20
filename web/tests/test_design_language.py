@@ -13,7 +13,12 @@ blade is the public-page editor (framing "Your public page — seavix.ai/<slug>"
 31b-7: breadcrumbs are the blade navigation — the crumb trail roots at the
 dashboard ("Home > Profile"), × closes to its parent crumb (the dashboard
 at top level), and no post-auth chrome link (crumbs, ×, logo) drops a
-signed-in user onto the public landing.
+signed-in user onto the public landing. 31h: the services description
+renders as escaped <p> blocks via the shared `paragraphs` filter (public
+page + blade preview at once). 31i: login gates on a verified email — the
+only verification UI is the pre-login gate (verify_gate), every post-auth
+template carries zero verification markup, and the rail company cell
+marks itself aria-current while the profile blade is open.
 """
 import json
 import re
@@ -28,7 +33,7 @@ TEMPLATES = WEB_ROOT / "templates"
 
 AUTH_TEMPLATES = ("login", "register", "forgot_password", "reset_password",
                   "login_otp", "verify_email", "verify_email_confirm",
-                  "verify_email_done")
+                  "verify_email_done", "verify_gate")
 PUBLIC_TEMPLATES = ("landing", "profile", "profile_unavailable",
                     "rfq_form", "rfq_thanks")
 BLADE_TEMPLATES = ("org_home", "org_profile", "org_not_found", "dashboard")
@@ -347,6 +352,12 @@ def test_rail_company_cell_31g():
     assert "rail_org.initials" in BASE
     assert "rail_org.name" in BASE
     assert "◉" not in BASE  # the placeholder glyph is gone
+    # 31i: the rail carries ONE clear active-state indicator — the company
+    # cell marks itself aria-current while its blade is open (styled by
+    # .sv-rail a[aria-current] in the stylesheet)
+    assert 'request.url.path == "/org/profile"' in BASE
+    assert 'aria-current="page"' in BASE
+    assert ".sv-rail a[aria-current]" in STYLE
     # every blade route feeds the cell the same rail_org shape
     routes = Path(__file__).resolve().parents[1] / "webapp" / "org_pages.py"
     text = routes.read_text()
@@ -428,38 +439,31 @@ def test_port_picker_markup_31f():
     assert picker and "max" not in picker.group(1)
 
 
-def test_verification_resend_action_wired_31e():
-    """31e (amended 31g): the unverified tag + resend live in the signed-in
-    ACCOUNT MENU (base.html) and the master banner on /dashboard. The
-    profile blade, its edit mode, the account page (org home) and the
-    shared public partial carry ZERO verification or account state."""
-    base = BASE
-    assert 'action="/org/verification/resend"' in base
-    assert "sv-tag-warn" in base
-    assert "unverified — resend" in base
-    assert 'aria-label="Account"' in base  # the tag sits in the account menu
+def test_zero_verification_markup_post_auth_31i():
+    """31i (replaces the 31e resend-wiring test): login gates on a verified
+    email, so a signed-in user is ALWAYS verified and every POST-AUTH
+    template — the blade shell itself and every blade — carries ZERO
+    verification markup: no banner, no account-menu tag, no resend action,
+    no resent= PRG flash. The ONLY verification UI is the pre-login gate
+    (verify_gate.html, an AUTH template) and the registration family."""
+    banned = ("unverified", "verification/resend", "Verify your email",
+              "Resend verification", "activate your public page",
+              "sv-tag-warn", "sv-tag", "resent=", "email_verified")
+    post_auth = [BASE] + [
+        (TEMPLATES / f"{name}.html").read_text()
+        for name in BLADE_TEMPLATES
+    ]
+    for label, text in zip(["base"] + list(BLADE_TEMPLATES), post_auth):
+        for word in banned:
+            assert word not in text, f"{label}: verification markup {word!r}"
 
-    dash = (TEMPLATES / "dashboard.html").read_text()
-    assert "Verify your email to activate your public page." in dash
-    assert '"owner" in membership.roles' in dash
-    assert 'method="post" action="/org/verification/resend"' in dash
-
-    home = (TEMPLATES / "org_home.html").read_text()
-    for banned in ("Verify your email", "verification/resend", "unverified"):
-        assert banned not in home, f"org home leaks verification state: {banned!r}"
-
-    # the blade is a public-content surface: NO verification state, NO
-    # account email line, NO roles — in either mode
-    blade = (TEMPLATES / "org_profile.html").read_text()
-    for banned in ("/org/verification/resend", "unverified",
-                   "Verify your email", "Signed in as", "email_verified",
-                   "membership.roles"):
-        assert banned not in blade, f"blade leaks account state: {banned!r}"
-
-    # the shared public partial (blade preview == /<slug>) is account-free
-    partial = (TEMPLATES / "_public_org_content.html").read_text()
-    for banned in ("unverified", "verification", "ctx.user", "membership"):
-        assert banned not in partial, f"public partial leaks account state: {banned!r}"
+    # the gate IS the verification UI — pre-auth, with the resend wired
+    gate = (TEMPLATES / "verify_gate.html").read_text()
+    assert "Verify your email to continue" in gate
+    assert 'method="post" action="/login/verify-email/resend"' in gate
+    assert "Resend link" in gate
+    assert 'href="/login"' in gate  # Back to sign in
+    assert 'type="password"' not in gate
 
 
 def test_favicon_and_pwa_icons_derived_from_logo():

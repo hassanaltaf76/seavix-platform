@@ -138,6 +138,18 @@ async def _register_and_login(c, email):
         },
     )
     assert r.status_code == 201, r.text
+    # 31i: login gates on a verified email — mark it directly in the dev DB
+    # so the per-email SEND window stays pristine for send-budget assertions.
+    from sqlalchemy import text as sql
+
+    from app.db import SessionLocal
+
+    async with SessionLocal() as s:
+        await s.execute(
+            sql("UPDATE app_user SET email_verified = true WHERE email = :e"),
+            {"e": email},
+        )
+        await s.commit()
     start = await c.post(
         "/api/auth/login/start",
         json={"email": email, "password": "secret-123"},

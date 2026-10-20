@@ -1,18 +1,19 @@
-"""31e email-verification UX (AMENDED per owner feedback): the unverified
-tag (or ANY account-level verification state) must NEVER render on the
-company profile blade or its public preview — on a public-content surface
-it misreads as "the company is unverified".
+"""31i email-verification UX: the PRE-LOGIN GATE (owner decision 20 Oct).
 
-Where the state lives:
-- the signed-in ACCOUNT MENU (base.html topnav) — a subtle, actionable
-  tag that POSTs the resend;
-- a banner on /DASHBOARD for unverified MASTER accounts only ("Verify your
-  email to activate your public page." + Resend verification email) — 31g
-  moved it from org home to the post-auth landing blade.
+Invariant: an unverified email NEVER completes login. After the password
+check and BEFORE any OTP challenge, identity refuses with 403
+email_unverified — no session is created and no sign-in OTP is issued.
+The web app renders the dedicated gate screen ("Verify your email to
+continue"), delivers a fresh verification link on arrival, and offers a
+rate-limited resend plus a way back to sign-in.
 
-The resend goes through the identity verification-link pipeline,
-rate-limited like every other send (shared per-email 5/hour window).
-Verified accounts see neither tag nor banner, and the blade stays clean.
+Consequence: a signed-in user is ALWAYS verified, so every POST-AUTH
+surface (dashboard, account page, profile blade in both modes, top
+chrome) carries ZERO verification markup — no banner, no account-menu
+tag, no resend action anywhere. The old signed-in resend route is gone.
+
+Registration is unchanged: it still ends on the post-registration
+check-your-inbox screen with its own resend.
 """
 import re
 import uuid
@@ -21,6 +22,12 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 
 from webapp.auth import SESSION_COOKIE
+
+BANNED_POST_AUTH = (
+    "unverified", "verification/resend", "Verify your email",
+    "Resend verification", "activate your public page", "sv-tag-warn",
+    "resent=ok", "resent=limited", "resent=failed",
+)
 
 
 def _web() -> httpx.AsyncClient:
@@ -31,11 +38,18 @@ def _web() -> httpx.AsyncClient:
     )
 
 
-def _sid_from(response: httpx.Response) -> str:
-    set_cookie = response.headers.get("set-cookie", "")
-    match = re.search(rf"{SESSION_COOKIE}=([^;]+)", set_cookie)
-    assert match, f"no {SESSION_COOKIE} cookie in response"
-    return match.group(1)
+async def _register(idc: httpx.AsyncClient, email: str, org: str = "Gate Org") -> None:
+    resp = await idc.post(
+        "/api/register",
+        json={
+            "org_name": org,
+            "org_type": "survey_company",
+            "email": email,
+            "password": "secret-123",
+            "confirm_password": "secret-123",
+        },
+    )
+    assert resp.status_code == 201, resp.text
 
 
 def _verify_mails(email: str) -> list:
@@ -48,254 +62,198 @@ def _verify_mails(email: str) -> list:
     ]
 
 
-def _last_oob(email: str) -> str:
+async def _confirm_link(idc: httpx.AsyncClient, email: str) -> None:
+    """Verify through the REAL link pipeline (send -> confirm)."""
+    sent = await idc.post("/api/register/verify/send", json={"email": email})
+    assert sent.status_code == 200, sent.text
     mail = _verify_mails(email)[-1]
     line = next(l for l in mail.body_text.splitlines() if "oob_code=" in l)
-    return parse_qs(urlparse(line.strip()).query)["oob_code"][0]
-
-
-def _topnav(html: str) -> str:
-    return re.search(r'<nav class="sv-topnav".*?</nav>', html, re.S).group(0)
-
-
-def _blade_body(html: str) -> str:
-    """The blade content proper — account MENU chrome excluded."""
-    return re.search(r'<div class="sv-blade-body".*', html, re.S).group(0)
-
-
-def _assert_no_verification_state(html: str, email: str) -> None:
-    body = _blade_body(html)
-    for banned in ("unverified", "verification/resend", "Verify your email",
-                   "Signed in as", "Roles:", email):
-        assert banned not in body, f"verification/account state on blade: {banned!r}"
-
-
-async def _register_and_login_web(idc: httpx.AsyncClient, w: httpx.AsyncClient,
-                                  email: str) -> None:
-    """Identity-register (no verification mail sent by that API) then web
-    login; leaves the web client carrying the session cookie."""
-    resp = await idc.post(
-        "/api/register",
-        json={
-            "org_name": "Verify UX Org",
-            "org_type": "survey_company",
-            "email": email,
-            "password": "secret-123",
-            "confirm_password": "secret-123",
-        },
+    oob = parse_qs(urlparse(line.strip()).query)["oob_code"][0]
+    ok = await idc.post(
+        "/api/register/verify/confirm", json={"email": email, "oob_code": oob}
     )
-    assert resp.status_code == 201, resp.text
-    start = await w.post("/login", data={"email": email, "password": "secret-123"})
-    assert start.status_code == 200, start.text
-    code = (await idc.get("/api/dev/last-otp", params={"email": email})).json()["code"]
-    ok = await w.post(
-        "/login/otp", data={"email": email, "code": code}, follow_redirects=False
-    )
-    assert ok.status_code == 303
-    w.cookies.set(SESSION_COOKIE, _sid_from(ok))
+    assert ok.status_code == 200, ok.text
 
 
-async def _identity_session(idc: httpx.AsyncClient, email: str,
-                            password: str = "secret-123") -> str:
-    start = await idc.post(
-        "/api/auth/login/start", json={"email": email, "password": password}
-    )
-    assert start.status_code == 200, start.text
-    code = (await idc.get("/api/dev/last-otp", params={"email": email})).json()["code"]
-    done = await idc.post(
-        "/api/auth/login/verify", json={"email": email, "code": code}
-    )
-    assert done.status_code == 200, done.text
-    return done.json()["session_id"]
+def _assert_zero_verification_markup(html: str, where: str) -> None:
+    for banned in BANNED_POST_AUTH:
+        assert banned not in html, f"{where}: verification markup {banned!r}"
 
 
-async def _add_member(org_id: str, email: str) -> str:
-    """Emulator Firebase user + app_user + membership rows (same scaffolding
-    pattern as services/identity/tests/test_rbac.py)."""
-    import uuid as _uuid
-
-    from sqlalchemy import text as sql
-
-    from app.db import SessionLocal
-
-    async with httpx.AsyncClient(base_url="http://localhost:9099") as fc:
-        resp = await fc.post(
-            "/identitytoolkit.googleapis.com/v1/accounts:signUp",
-            params={"key": "demo-any-key"},
-            json={"email": email, "password": "secret-123",
-                  "returnSecureToken": True},
-        )
-    fb_uid = resp.json()["localId"]
-    user_id = str(_uuid.uuid4())
-    async with SessionLocal() as s:
-        await s.execute(
-            sql(
-                "INSERT INTO app_user (id, email, firebase_uid) "
-                "VALUES (:id, :email, :fb)"
-            ),
-            {"id": user_id, "email": email, "fb": fb_uid},
-        )
-        await s.execute(
-            sql(
-                "INSERT INTO membership (user_id, org_id, role) "
-                "VALUES (:uid, :org, 'member')"
-            ),
-            {"uid": user_id, "org": org_id},
-        )
-        await s.commit()
-    return user_id
-
-
-def test_unverified_master_account_menu_tag_and_dashboard_banner(arun, id_asgi):
-    """Unverified master: banner on /dashboard, actionable tag in the
-    account menu — and ZERO verification markup on the profile blade
-    (view and edit), its public preview, or the account page. Resend
-    works; verifying clears both."""
+def test_unverified_correct_password_hits_gate_no_session_no_otp(arun, id_asgi):
+    """Correct password + unverified email -> the gate screen; NO session
+    cookie, NO OTP challenge, and a fresh verification link is delivered."""
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
         ) as idc:
             u = uuid.uuid4().hex[:8]
-            email = f"vx-{u}@example.com"
+            email = f"gate-{u}@example.com"
+            await _register(idc, email)
+
             async with _web() as w:
-                await _register_and_login_web(idc, w, email)
-
-                dash = await w.get("/dashboard")
-                assert dash.status_code == 200
-                # the master banner lives on the DASHBOARD
-                assert "Verify your email to activate your public page." in dash.text
-                assert 'method="post" action="/org/verification/resend"' in dash.text
-                # the subtle actionable tag lives in the ACCOUNT MENU
-                assert "unverified — resend" in _topnav(dash.text)
-                # org home is the account surface: email line, NO banner
-                home = await w.get("/org/home")
-                assert f"Signed in as {email}" in home.text
-                assert "activate your public page" not in home.text
-
-                # the profile blade carries NO account/verification state
-                blade = await w.get("/org/profile")
-                _assert_no_verification_state(blade.text, email)
-                editor = await w.get("/org/profile?view=edit")
-                _assert_no_verification_state(editor.text, email)
-
-                # resend from the account menu: PRG to the dashboard + a REAL mail
                 before = len(_verify_mails(email))
-                r = await w.post("/org/verification/resend", follow_redirects=False)
-                assert r.status_code == 303
-                assert r.headers["location"] == "/dashboard?resent=ok"
-                assert len(_verify_mails(email)) == before + 1
-                followed = await w.get(r.headers["location"])
-                assert "on its way" in followed.text
-
-                # verify through the link that was just resent
-                oob = _last_oob(email)
-                confirmed = await idc.post(
-                    "/api/register/verify/confirm",
-                    json={"email": email, "oob_code": oob},
+                r = await w.post(
+                    "/login", data={"email": email, "password": "secret-123"}
                 )
-                assert confirmed.status_code == 200
+                assert r.status_code == 200, r.text
+                # the dedicated gate screen — not the OTP challenge
+                assert "Verify your email to continue" in r.text
+                assert f"<strong>{email}</strong>" in r.text
+                assert "Click the link in that email, then sign in here" in r.text
+                assert 'action="/login/verify-email/resend"' in r.text
+                assert "Resend link" in r.text
+                assert 'href="/login"' in r.text  # Back to sign in
+                assert 'name="code"' not in r.text  # no OTP field
+                # no session is established anywhere
+                assert SESSION_COOKIE not in r.headers.get("set-cookie", "")
+                dash = await w.get("/dashboard", follow_redirects=False)
+                assert dash.status_code == 303
+                assert dash.headers["location"] == "/login"
+                # NO sign-in OTP was issued for the unverified address
+                peek = await idc.get(
+                    "/api/dev/last-otp", params={"email": email}
+                )
+                assert peek.status_code == 404
+                # ...and the gate auto-delivered exactly one verification link
+                assert len(_verify_mails(email)) == before + 1
 
-                # verified: tag AND banner are gone; the blade was always clean
-                dash2 = await w.get("/dashboard")
-                assert "activate your public page" not in dash2.text
-                assert "unverified" not in _topnav(dash2.text)
-                blade2 = await w.get("/org/profile")
-                _assert_no_verification_state(blade2.text, email)
-
-                # resending a verified account is a plain no-op redirect
-                noop = await w.post("/org/verification/resend", follow_redirects=False)
-                assert noop.status_code == 303
-                assert noop.headers["location"] == "/dashboard"
+                # wrong password still gets the plain 401 (gate is post-check)
+                bad = await w.post(
+                    "/login", data={"email": email, "password": "nope-nope"}
+                )
+                assert bad.status_code == 401
+                assert "invalid credentials" in bad.text
 
     arun(scenario())
 
 
-def test_unverified_non_master_tag_in_menu_but_no_banner(arun, id_asgi):
-    """The activation banner is for the master (owner) account only; other
-    unverified members still get the account-menu tag (never blade state)."""
+def test_gate_resend_is_rate_limited(arun, id_asgi):
+    """The gate resend goes through the identity verification-link pipeline
+    (shared per-email 5/hour send window). The arrival send consumed one
+    slot; four resends succeed, the fifth is refused with the inline error
+    and no mail goes out."""
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
         ) as idc:
             u = uuid.uuid4().hex[:8]
-            owner_email = f"no-{u}@example.com"
-            reg = await idc.post(
-                "/api/register",
-                json={
-                    "org_name": "Non Master Org",
-                    "org_type": "survey_company",
-                    "email": owner_email,
-                    "password": "secret-123",
-                    "confirm_password": "secret-123",
-                },
-            )
-            assert reg.status_code == 201, reg.text
-            owner_sid = await _identity_session(idc, owner_email)
-            auth = {"X-Seavix-Session": owner_sid}
-            org_id = (await idc.get("/api/auth/session", headers=auth)).json()[
-                "memberships"
-            ][0]["org_id"]
+            email = f"gateresend-{u}@example.com"
+            await _register(idc, email)
 
-            member_email = f"nm-{u}@example.com"
-            member_uid = await _add_member(org_id, member_email)
-            roles = (await idc.get("/api/orgs/me/roles", headers=auth)).json()["roles"]
-            viewer = next(r for r in roles if r["name"] == "viewer")
-            put = await idc.put(
-                f"/api/orgs/me/members/{member_uid}/roles",
-                headers=auth,
-                json={"role_ids": [viewer["role_id"]]},
-            )
-            assert put.status_code == 200, put.text
-
-            member_sid = await _identity_session(idc, member_email)
             async with _web() as w:
-                w.cookies.set(SESSION_COOKIE, member_sid)
+                gate = await w.post(
+                    "/login", data={"email": email, "password": "secret-123"}
+                )
+                assert "Verify your email to continue" in gate.text
+                assert len(_verify_mails(email)) == 1  # the arrival send
+
+                for i in range(4):  # sends 2-5 in the window
+                    r = await w.post(
+                        "/login/verify-email/resend", data={"email": email}
+                    )
+                    assert r.status_code == 200, r.text
+                    assert "A new link is on its way." in r.text
+                    assert "Verify your email to continue" in r.text
+                    assert len(_verify_mails(email)) == 2 + i
+
+                refused = await w.post(
+                    "/login/verify-email/resend", data={"email": email}
+                )
+                assert refused.status_code == 200
+                assert "too many requests" in refused.text
+                assert len(_verify_mails(email)) == 5  # nothing more sent
+
+    arun(scenario())
+
+
+def test_verified_user_logs_in_normally_and_post_auth_is_verification_free(arun, id_asgi):
+    """Verified email -> the normal OTP flow -> /dashboard. Every post-auth
+    surface then carries ZERO verification markup, and the old signed-in
+    resend route no longer exists."""
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
+        ) as idc:
+            u = uuid.uuid4().hex[:8]
+            email = f"verified-{u}@example.com"
+            await _register(idc, email)
+            await _confirm_link(idc, email)  # the REAL link pipeline
+
+            async with _web() as w:
+                start = await w.post(
+                    "/login", data={"email": email, "password": "secret-123"}
+                )
+                assert start.status_code == 200
+                assert "Check your inbox" in start.text  # OTP challenge
+                code = (await idc.get("/api/dev/last-otp", params={"email": email})).json()["code"]
+                ok = await w.post(
+                    "/login/otp", data={"email": email, "code": code},
+                    follow_redirects=False,
+                )
+                assert ok.status_code == 303
+                assert ok.headers["location"] == "/dashboard"
+                m = re.search(rf"{SESSION_COOKIE}=([^;]+)", ok.headers["set-cookie"])
+                w.cookies.set(SESSION_COOKIE, m.group(1))
+
                 dash = await w.get("/dashboard")
                 assert dash.status_code == 200
-                # account-menu tag yes, master banner NO (viewer is not
-                # the master account)
-                assert "unverified — resend" in _topnav(dash.text)
-                assert "activate your public page" not in dash.text
-                # the blade stays clean for non-masters too
-                blade = await w.get("/org/profile", follow_redirects=False)
-                assert blade.status_code == 404  # viewer: no profile access
-                _assert_no_verification_state(blade.text, member_email)
+                _assert_zero_verification_markup(dash.text, "dashboard")
+                home = await w.get("/org/home")
+                assert home.status_code == 200
+                _assert_zero_verification_markup(home.text, "org home")
+                blade = await w.get("/org/profile")
+                assert blade.status_code == 200
+                _assert_zero_verification_markup(blade.text, "profile blade")
+                editor = await w.get("/org/profile?view=edit")
+                _assert_zero_verification_markup(editor.text, "profile editor")
+                # the account menu itself: no tag, just account + sign out
+                topnav = re.search(
+                    r'<nav class="sv-topnav".*?</nav>', dash.text, re.S
+                ).group(0)
+                assert 'href="/org/home"' in topnav
+                assert 'action="/logout"' in topnav
+                assert "unverified" not in topnav
 
-                # the member's resend works too
-                before = len(_verify_mails(member_email))
-                r = await w.post("/org/verification/resend", follow_redirects=False)
-                assert r.status_code == 303
-                assert r.headers["location"] == "/dashboard?resent=ok"
-                assert len(_verify_mails(member_email)) == before + 1
+                # the old signed-in resend route is gone entirely
+                gone = await w.post("/org/verification/resend",
+                                    follow_redirects=False)
+                assert gone.status_code == 404
 
     arun(scenario())
 
 
-def test_resend_is_rate_limited(arun, id_asgi):
-    """31e: the resend uses the existing verification-link pipeline,
-    rate-limited as the other sends — one shared per-email 5/hour window.
-    The login OTP consumed one slot; the fifth resend is refused."""
+def test_registration_flow_unchanged_by_the_gate(arun, id_asgi):
+    """Registration still auto-sends the link and lands on the
+    post-registration check-your-inbox screen (a pre-auth surface, not the
+    gate); confirming it then allows a normal sign-in."""
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
         ) as idc:
             u = uuid.uuid4().hex[:8]
-            email = f"vl-{u}@example.com"
+            email = f"reg-{u}@example.com"
+
             async with _web() as w:
-                await _register_and_login_web(idc, w, email)
+                created = await w.post(
+                    "/register",
+                    data={
+                        "org_name": "Gate Reg Org",
+                        "org_type": "survey_company",
+                        "email": email,
+                        "password": "secret-123",
+                        "confirm_password": "secret-123",
+                    },
+                )
+                assert created.status_code == 200
+                assert "verification link" in created.text.lower()
+                assert 'action="/register/verify/resend"' in created.text
+                assert len(_verify_mails(email)) == 1
 
-                for i in range(4):  # budget: login send + 4 resends = 5
-                    r = await w.post("/org/verification/resend",
-                                     follow_redirects=False)
-                    assert r.status_code == 303
-                    assert r.headers["location"] == "/dashboard?resent=ok", i
-                r = await w.post("/org/verification/resend", follow_redirects=False)
-                assert r.status_code == 303
-                assert r.headers["location"] == "/dashboard?resent=limited"
-
-                page = await w.get(r.headers["location"])
-                assert "too many requests" in page.text
-                # exactly four verification mails went out for this account
-                assert len(_verify_mails(email)) == 4
+                await _confirm_link(idc, email)
+                start = await w.post(
+                    "/login", data={"email": email, "password": "secret-123"}
+                )
+                assert "Check your inbox" in start.text
 
     arun(scenario())

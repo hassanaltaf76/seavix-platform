@@ -41,6 +41,21 @@ async def _dev_code(c, email) -> str:
     return resp.json()["code"]
 
 
+async def _verify_email(c, email):
+    """31i: login gates on a verified email. The helper marks the address
+    verified directly in the dev DB so the per-email SEND window stays
+    pristine for send-budget assertions; the real link pipeline is covered
+    by the dedicated verification tests below."""
+    from sqlalchemy import text as sql
+
+    async with SessionLocal() as s:
+        await s.execute(
+            sql("UPDATE app_user SET email_verified = true WHERE email = :e"),
+            {"e": email},
+        )
+        await s.commit()
+
+
 async def _login(c, email, code) -> httpx.Response:
     return await c.post(
         "/api/auth/login/verify", json={"email": email, "code": code}
@@ -89,6 +104,7 @@ def test_login_happy_path_and_logout(arun, client):
             email = f"au-{u}@example.com"
 
             slug = (await _register(c, email))["slug"]
+            await _verify_email(c, email)  # 31i: login requires verified
 
             start = await c.post(
                 "/api/auth/login/start",
@@ -103,7 +119,8 @@ def test_login_happy_path_and_logout(arun, client):
             body = done.json()
             sid = body["session_id"]
             assert body["email"] == email
-            assert body["email_verified"] is False  # registration verifies separately
+            # 31i invariant: a signed-in user is ALWAYS verified
+            assert body["email_verified"] is True
             assert body["memberships"][0]["slug"] == slug
             assert body["memberships"][0]["type"] == "survey_company"
 
@@ -152,6 +169,74 @@ def test_login_start_rejects_bad_credentials_and_unknown_email(arun, client):
     arun(scenario())
 
 
+def test_unverified_email_never_completes_login_31i(arun, client):
+    """31i invariant: an unverified email NEVER completes login.
+
+    - login/start with the CORRECT password: 403 email_unverified, and NO
+      OTP is issued (the dev peek finds no code);
+    - login/resend issues no sign-in code for the unverified address
+      (constant response, but nothing sent);
+    - even with a code in hand, login/verify refuses before consuming it
+      (defense in depth) — no session is ever created;
+    - verifying the address restores the normal OTP flow."""
+    async def scenario():
+        async with await client() as c:
+            u = uuid.uuid4().hex[:8]
+            email = f"gate-{u}@example.com"
+            await _register(c, email)
+
+            start = await c.post(
+                "/api/auth/login/start",
+                json={"email": email, "password": "secret-123"},
+            )
+            assert start.status_code == 403
+            assert start.json()["detail"] == {
+                "code": "email_unverified", "email": email,
+            }
+            peek = await c.get("/api/dev/last-otp", params={"email": email})
+            assert peek.status_code == 404  # no OTP was issued
+
+            # resend stays enum-free but sends nothing
+            resend = await c.post(
+                "/api/auth/login/resend", json={"email": email}
+            )
+            assert resend.status_code == 200
+            peek2 = await c.get("/api/dev/last-otp", params={"email": email})
+            assert peek2.status_code == 404
+
+            # wrong-password posture is unchanged (401, not the gate)
+            wrong = await c.post(
+                "/api/auth/login/start",
+                json={"email": email, "password": "nope-nope"},
+            )
+            assert wrong.status_code == 401
+
+            # verify through the REAL link pipeline, then the normal flow
+            # works end to end
+            sent = await c.post(
+                "/api/register/verify/send", json={"email": email}
+            )
+            assert sent.status_code == 200, sent.text
+            mail = await _last_mail(email, "Verify your SeaVix")
+            oob = _oob_from_body(mail.body_text)
+            confirmed = await c.post(
+                "/api/register/verify/confirm",
+                json={"email": email, "oob_code": oob},
+            )
+            assert confirmed.status_code == 200, confirmed.text
+            ok = await c.post(
+                "/api/auth/login/start",
+                json={"email": email, "password": "secret-123"},
+            )
+            assert ok.status_code == 200
+            code = await _dev_code(c, email)
+            done = await _login(c, email, code)
+            assert done.status_code == 200
+            assert done.json()["email_verified"] is True
+
+    arun(scenario())
+
+
 def test_wrong_code_then_lockout_then_replay(arun, client):
     """D1: 5 attempts/code. Wrong codes burn attempts; the 5th failure
     invalidates the code (lockout) so even the right code afterwards fails;
@@ -162,6 +247,7 @@ def test_wrong_code_then_lockout_then_replay(arun, client):
             email = f"lk-{u}@example.com"
 
             slug = (await _register(c, email))["slug"]
+            await _verify_email(c, email)  # 31i: login requires verified
             await c.post(
                 "/api/auth/login/start",
                 json={"email": email, "password": "secret-123"},
@@ -196,6 +282,7 @@ def test_expired_code_rejected(arun, client):
             email = f"ex-{u}@example.com"
 
             slug = (await _register(c, email))["slug"]
+            await _verify_email(c, email)  # 31i: login requires verified
             await c.post(
                 "/api/auth/login/start",
                 json={"email": email, "password": "secret-123"},
@@ -230,6 +317,7 @@ def test_send_rate_limit_5_per_hour(arun, client):
             email = f"rl-{u}@example.com"
 
             slug = (await _register(c, email))["slug"]
+            await _verify_email(c, email)  # 31i: login requires verified
             results = []
             for _ in range(6):
                 r = await c.post(
@@ -247,12 +335,16 @@ def test_verification_link_send_rate_limit(arun, client):
     """31e: verification-link sends share the per-email 5/hour window with
     OTP codes (the ONE send budget per email). The 6th send is 429; the
     budget is per-email, and an exhausted window blocks the OTP pipeline
-    for that address too — and only that address."""
+    for that address too — and only that address.
+
+    31i: both accounts are marked verified first (login now gates on it)
+    via the DB helper, which leaves the send window untouched."""
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
             email = f"vr-{u}@example.com"
             await _register(c, email)
+            await _verify_email(c, email)
 
             results = []
             for _ in range(6):
@@ -263,17 +355,18 @@ def test_verification_link_send_rate_limit(arun, client):
             assert results[:5] == [200] * 5
             assert results[5] == 429
 
-            # the window is per-email: another address still sends
+            # the window is per-email: another verified address still sends
             other = f"vo-{u}@example.com"
             await _register(c, other)
+            await _verify_email(c, other)
             fresh = await c.post(
                 "/api/register/verify/send", json={"email": other}
             )
             assert fresh.status_code == 200
 
-            # the shared budget: the 5 verification sends above consumed
-            # the hour window for `email`, so the OTP pipeline is limited
-            # for that address too (and only that address)
+            # the shared budget: the 5 sends above consumed the hour window
+            # for `email`, so the OTP pipeline is limited for that address
+            # too (and only that address)
             blocked = await c.post(
                 "/api/auth/login/start",
                 json={"email": email, "password": "secret-123"},
@@ -354,6 +447,7 @@ def test_mail_pipeline_delivers_every_flow(arun, client):
             await c.post(  # verification link
                 "/api/register/verify/send", json={"email": email}
             )
+            await _verify_email(c, email)  # 31i: login requires verified
             await c.post(  # OTP (login start)
                 "/api/auth/login/start",
                 json={"email": email, "password": "secret-123"},
@@ -402,7 +496,9 @@ def test_password_reset_round_trip(arun, client):
             )
             assert fin.status_code == 200
 
-            # old password dead, new password works
+            # 31i: verify the address — login gates on it — then the new
+            # password works
+            await _verify_email(c, email)
             old = await c.post(
                 "/api/auth/login/start",
                 json={"email": email, "password": "secret-123"},

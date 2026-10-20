@@ -51,6 +51,20 @@ async def _pin_ports() -> None:
         await s.commit()
 
 
+async def _verify_email(email: str) -> None:
+    """31i: login gates on a verified email — mark it in the identity DB."""
+    from sqlalchemy import text as sql
+
+    from app.db import SessionLocal
+
+    async with SessionLocal() as s:
+        await s.execute(
+            sql("UPDATE app_user SET email_verified = true WHERE email = :e"),
+            {"e": email},
+        )
+        await s.commit()
+
+
 async def _register_and_login(idc, w, email, slug):
     resp = await idc.post(
         "/api/register",
@@ -63,7 +77,9 @@ async def _register_and_login(idc, w, email, slug):
         },
     )
     assert resp.status_code == 201, resp.text
-    await w.post("/login", data={"email": email, "password": "secret-123"})
+    await _verify_email(email)  # 31i: login requires verified
+    start = await w.post("/login", data={"email": email, "password": "secret-123"})
+    assert "Check your inbox" in start.text  # OTP challenge, not the gate
     code = (await idc.get("/api/dev/last-otp", params={"email": email})).json()["code"]
     ok = await w.post(
         "/login/otp", data={"email": email, "code": code}, follow_redirects=False

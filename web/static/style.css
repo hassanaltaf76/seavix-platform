@@ -479,29 +479,7 @@ h2 { font-size: 1.08rem; }
 }
 .notice.success { border-left-color: var(--seavix-success); }
 
-/* 31e verification UX (amended): the unverified tag IS the resend action,
-   and it lives in the signed-in ACCOUNT MENU — never on the profile blade
-   (a public-content surface) or its preview. */
-.sv-tag {
-  display: inline-block;
-  font-size: 0.78rem;
-  font-weight: 600;
-  line-height: 1.2;
-  padding: 0.12rem 0.6rem;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  vertical-align: middle;
-  font-family: inherit;
-}
-.sv-tag-warn {
-  color: var(--seavix-danger);
-  background: var(--seavix-danger-bg);
-  border-color: #f2c1bd;
-}
-.sv-tag-warn:hover { text-decoration: underline; }
-
-/* link-styled buttons outside the topnav (e.g. the banner resend action) */
+/* link-styled buttons outside the topnav */
 .sv-link-btn {
   background: none;
   border: none;
@@ -512,7 +490,6 @@ h2 { font-size: 1.08rem; }
   font-size: inherit;
   text-decoration: underline;
 }
-.notice .sv-link-btn { margin-left: 0.4rem; }
 
 /* 31f: profile view mode = WYSIWYG public preview */
 .sv-preview { border: 1px dashed var(--seavix-border); }

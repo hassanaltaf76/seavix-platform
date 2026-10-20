@@ -6,9 +6,9 @@
 {% block content %}
 <p>Signed in as {{ ctx.user.email }}</p>
 
-{#- 31g: the account surface. Verification state lives in the signed-in
-    ACCOUNT MENU (base.html, subtle actionable tag) and the master-only
-    banner on /dashboard. The profile blade carries none of it. -#}
+{#- 31i: zero verification state on the account surface — a signed-in user
+    is always verified, so there is nothing to surface and no resend to
+    offer. The only verification UI is the pre-login gate screen. -#}
 
 {% if membership %}
 <section class="card">

@@ -22,15 +22,9 @@
             x-bind:aria-expanded="!railCollapsed.toString()">☰</button>
     <nav class="sv-topnav" aria-label="Account">
       {% if ctx is defined and ctx %}
-        {#- 31e (amended): the unverified tag lives HERE — the signed-in
-            account menu — subtle and actionable. It must never render on
-            the company profile blade or its public preview. -#}
-        {% if not ctx.email_verified %}
-        <form method="post" action="/org/verification/resend" class="sv-inline-form">
-          <button type="submit" class="sv-tag sv-tag-warn"
-                  title="Click to resend the verification email">unverified — resend</button>
-        </form>
-        {% endif %}
+        {#- 31i: a signed-in user is ALWAYS verified (login gates on it), so
+            post-auth chrome carries zero verification state — the only
+            verification UI is the pre-login gate screen. -#}
         <a href="/org/home">Your account</a>
         <form method="post" action="/logout" class="sv-inline-form">
           <button type="submit" class="sv-link-btn">Sign out</button>
@@ -52,12 +46,14 @@
           blade, so it renders ONLY when the membership holds
           org.profile.view — visibility is permission-driven, never
           role-name-driven. The cell shows the org logo when set, else
-          initials derived from the company name, plus the name. -#}
+          initials derived from the company name, plus the name.
+          31i: aria-current marks the cell while its blade is open — the
+          rail's single clear active-state indicator. -#}
       {% set can_view_profile = ctx is defined and ctx and ctx.memberships
               and 'org.profile.view' in ctx.memberships[0].permissions %}
       {% if can_view_profile %}
       <div class="sv-rail-tenant">
-        <a href="/org/profile">
+        <a href="/org/profile"{% if request.url.path == "/org/profile" %} aria-current="page"{% endif %}>
           {% if rail_org.logo_url %}
           <img class="sv-rail-company-logo" src="{{ rail_org.logo_url }}" alt="">
           {% else %}

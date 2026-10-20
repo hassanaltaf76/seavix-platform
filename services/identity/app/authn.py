@@ -135,12 +135,19 @@ async def login_start(payload: EmailPassword, request: Request) -> dict:
 
     Failures are normalized to a single 401 so the endpoint cannot be used
     to enumerate accounts.
+
+    31i: a VERIFIED email is a hard precondition of the challenge itself.
+    After the password check, BEFORE any OTP send, an unverified account
+    is refused with 403 email_unverified — no session path, no OTP issued.
+    The reveal is safe: it only answers someone who already holds the
+    password (and registration already discloses account existence).
     """
+    email = payload.email.lower()
     async with SessionLocal() as session:
         known = (
             await session.execute(
                 text("SELECT 1 FROM app_user WHERE email = :email"),
-                {"email": payload.email.lower()},
+                {"email": email},
             )
         ).first()
     if known is None:
@@ -148,25 +155,39 @@ async def login_start(payload: EmailPassword, request: Request) -> dict:
 
     fb = await _firebase_post(
         "/accounts:signInWithPassword",
-        {"email": payload.email.lower(), "password": payload.password,
+        {"email": email, "password": payload.password,
          "returnSecureToken": True},
     )
     if fb["status"] != 200:
         raise HTTPException(status_code=401, detail="invalid credentials")
 
     async with SessionLocal() as session:
-        await otp.send_code(session, payload.email, "login")
-    await _publish(request, "auth.otp_sent", "app_user", payload.email.lower(),
+        verified = (
+            await session.execute(
+                text("SELECT email_verified FROM app_user WHERE email = :email"),
+                {"email": email},
+            )
+        ).scalar()
+        if not verified:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "email_unverified", "email": email},
+            )
+        await otp.send_code(session, email, "login")
+    await _publish(request, "auth.otp_sent", "app_user", email,
                    {"purpose": "login"})
-    return {"email": payload.email.lower(), "otp_sent": True}
+    return {"email": email, "otp_sent": True}
 
 
 @router.post("/api/auth/login/verify")
 @public_route
 async def login_verify(payload: OtpChallenge, request: Request) -> dict:
-    """Factor 2: the OTP. Only here is a session issued (D1 enforcement)."""
+    """Factor 2: the OTP. Only here is a session issued (D1 enforcement).
+
+    31i (defense in depth): the verified precondition is re-checked BEFORE
+    the code is consumed — a signed-in user is ALWAYS verified, even if a
+    stale challenge somehow exists."""
     async with SessionLocal() as session:
-        await otp.verify_code(session, payload.email, "login", payload.code)
         user = (
             await session.execute(
                 text(
@@ -178,6 +199,12 @@ async def login_verify(payload: OtpChallenge, request: Request) -> dict:
         ).mappings().first()
         if user is None:
             raise HTTPException(status_code=401, detail="invalid credentials")
+        if not user["email_verified"]:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "email_unverified", "email": payload.email.lower()},
+            )
+        await otp.verify_code(session, payload.email, "login", payload.code)
         active = (
             await session.execute(
                 text(
@@ -215,16 +242,20 @@ async def login_resend(payload: OtpResend, request: Request) -> dict:
     endpoint stays enum-free. Posture note: mailbox access already implies
     full account access via the password-reset flow, so an email-only resend
     does not weaken the model.
+
+    31i: never sends for an unverified account — the challenge cannot have
+    started (login/start gates it), and an unverified address must receive
+    no sign-in OTP at all. The response stays constant either way.
     """
     email = payload.email.lower()
     async with SessionLocal() as session:
         known = (
             await session.execute(
-                text("SELECT 1 FROM app_user WHERE email = :email"),
+                text("SELECT email_verified FROM app_user WHERE email = :email"),
                 {"email": email},
             )
         ).first()
-        if known is not None:
+        if known is not None and known[0]:
             try:
                 await otp.send_code(session, email, "login")
             except HTTPException as exc:
