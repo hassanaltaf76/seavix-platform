@@ -238,3 +238,69 @@ def test_ports_search_requires_session(arun):
             assert r.headers["location"] == "/login"
 
     arun(scenario())
+
+
+def test_description_renders_as_escaped_blocks_31h(arun, id_asgi):
+    """31h: the services description renders as BLOCKS on the public page
+    AND the blade preview — blank lines delimit <p> blocks, single
+    newlines become <br>, and user text is HTML-escaped first (a <script>
+    typed in the textarea renders inert, never executes). Both surfaces
+    share the content partial, so the articles stay byte-equal."""
+    ABOUT = (
+        "Independent marine surveyors.\n"
+        "Serving the Gulf and beyond.\n"
+        "\n"
+        "Condition & bunker surveys.\n"
+        "\n"
+        "<script>alert('x')</script>"
+    )
+    async def scenario():
+        await _pin_ports()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
+        ) as idc:
+            u = uuid.uuid4().hex[:8]
+            email = f"blocks-{u}@example.com"
+            slug = f"blocks-{u}"
+            async with _web() as w:
+                sid = await _register_and_login(idc, w, email, slug)
+                saved = await w.post(
+                    "/org/profile",
+                    data={"slug": slug, "about": ABOUT, "ports": []},
+                    follow_redirects=False,
+                )
+                assert saved.status_code == 303
+
+                # draft preview: three <p> blocks inside the prose div
+                view = await w.get(saved.headers["location"])
+                assert view.status_code == 200
+                assert view.text.count('<div class="sv-prose">') == 1
+                prose = re.search(
+                    r'<div class="sv-prose">(.*?)</div>', view.text, re.S
+                ).group(1)
+                assert prose.count("<p>") == 3
+                assert "Independent marine surveyors.<br>\nServing the Gulf" \
+                    in view.text
+                # escaped — the script can never execute
+                assert "<script>alert" not in view.text
+                assert "&lt;script&gt;alert(&#x27;x&#x27;)&lt;/script&gt;" \
+                    in view.text
+
+                # go live, then the PUBLIC page renders the same blocks
+                await _verify_email_and_go_live(idc, email, sid)
+                pub = await w.get(f"/{slug}")
+                assert pub.status_code == 200
+                assert pub.text.count('<div class="sv-prose">') == 1
+                pub_prose = re.search(
+                    r'<div class="sv-prose">(.*?)</div>', pub.text, re.S
+                ).group(1)
+                assert pub_prose.count("<p>") == 3
+                assert "<script>alert" not in pub.text
+                assert "&lt;script&gt;alert(&#x27;x&#x27;)&lt;/script&gt;" \
+                    in pub.text
+
+                # preview == public, byte for byte (31f contract holds)
+                blade = await w.get("/org/profile")
+                assert _article(blade.text) == _article(pub.text)
+
+    arun(scenario())

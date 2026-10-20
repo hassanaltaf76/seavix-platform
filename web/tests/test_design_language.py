@@ -392,6 +392,22 @@ def test_profile_view_mode_is_public_preview_31f():
     assert '{% if mode == "view" %}' in blade
 
 
+def test_description_renders_as_blocks_31h():
+    """31h: the description renders through the `paragraphs` filter in the
+    SHARED partial (public page + blade preview at once) — escaped first,
+    blank lines -> <p> blocks, single newlines -> <br> — with the prose
+    rhythm locked in the stylesheet."""
+    partial = (TEMPLATES / "_public_org_content.html").read_text()
+    assert "org.about | paragraphs" in partial
+    assert 'class="sv-prose"' in partial
+    # user text is NEVER raw HTML: the filter escapes before structuring
+    filters = (Path(__file__).resolve().parents[1]
+               / "webapp" / "filters.py").read_text()
+    assert "html.escape" in filters
+    assert "Markup" in filters
+    assert ".sv-prose p { margin: 0 0 0.75rem; }" in STYLE
+
+
 def test_port_picker_markup_31f():
     """31f: the edit-mode port picker is an Alpine combobox wired to the
     registry search endpoint, with removable chips persisted as repeated

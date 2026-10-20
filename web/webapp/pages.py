@@ -11,12 +11,14 @@ from fastapi.templating import Jinja2Templates
 
 from .auth import authenticated_home_redirect
 from .config import blob_root, work_base_url
+from .filters import install as install_template_filters
 from .identity_client import identity_request
 from .ratelimit import RateLimiter
 from .registry_client import resolve_ports
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+install_template_filters(templates.env)
 limiter = RateLimiter(limit=5, window_seconds=3600)
 
 SURVEY_TYPES = ("pre-purchase", "condition", "bunker", "loading-discharging")

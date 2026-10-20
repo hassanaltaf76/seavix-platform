@@ -23,10 +23,12 @@ from .auth import (
     session_id_from,
     set_session_cookie,
 )
+from .filters import install as install_template_filters
 from .identity_client import identity_request
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+install_template_filters(templates.env)
 
 
 # ------------------------------------------------------------------- login

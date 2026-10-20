@@ -454,7 +454,9 @@ h2 { font-size: 1.08rem; }
 
 .profile-header { display: flex; align-items: center; gap: 1rem; }
 .logo { max-height: 72px; width: auto; border-radius: var(--seavix-radius); }
-.about { white-space: pre-wrap; }
+/* 31h: description blocks — <p> per blank-line paragraph, <br> for soft
+   newlines (markup comes from the `paragraphs` filter, never raw HTML) */
+.sv-prose p { margin: 0 0 0.75rem; }
 .facts { color: var(--seavix-text-secondary); font-size: 0.92rem; list-style: none; padding: 0; }
 .hp { position: absolute; left: -9999px; opacity: 0; height: 0; }
 

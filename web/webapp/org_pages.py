@@ -28,11 +28,13 @@ from fastapi.templating import Jinja2Templates
 from seavix_ports import AuthContext, MembershipContext, require_auth
 
 from .auth import SESSION_HEADER, home_for, session_id_from
+from .filters import install as install_template_filters
 from .identity_client import identity_request
 from .registry_client import registry_request, resolve_ports
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+install_template_filters(templates.env)
 
 _KEEPALIVE = """
 <script>

@@ -12,7 +12,10 @@
     {% endif %}
     <div>
       <h1>{{ org.name }}</h1>
-      {% if org.about %}<p class="about">{{ org.about }}</p>{% endif %}
+      {#- 31h: description renders as escaped <p> blocks (blank-line
+          separated, single newlines -> <br>) via the shared `paragraphs`
+          filter — user text is never raw HTML. -#}
+      {% if org.about %}<div class="sv-prose">{{ org.about | paragraphs }}</div>{% endif %}
     </div>
   </header>
   <ul class="sv-org-facts">
