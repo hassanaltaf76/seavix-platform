@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+# seavix — SeaVix dev service control.
+#
+# Usage:
+#   ./seavix start            ensure infra (colima + docker compose up -d),
+#                             then start identity :8001, registry :8003,
+#                             web :8000 as background processes
+#                             (pidfiles in var/run/, logs in var/logs/);
+#                             skips services already alive (idempotent)
+#   ./seavix stop [--infra]   stop services by pidfile (TERM, KILL after 3s);
+#                             --infra also runs docker compose down
+#   ./seavix restart          stop (services only) + start
+#   ./seavix status           freshness table: infra containers + per-service
+#                             port / pid / healthz code; a live port with no
+#                             pidfile is flagged FOREIGN (stale squatter)
+#   ./seavix logs <svc>       tail -f a service log (identity|registry|web)
+#
+# Resolves its own directory; safe to run from any cwd. Never reads or
+# prints .env contents. var/run/ and var/logs/ live under the gitignored
+# var/. Requires only lsof, docker and curl.
+set -u
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+RUN_DIR="$ROOT/var/run"
+LOG_DIR="$ROOT/var/logs"
+COMPOSE="$ROOT/docker-compose.yml"
+mkdir -p "$RUN_DIR" "$LOG_DIR"
+
+SERVICES="identity registry web"
+
+svc_port() {
+  case "$1" in
+    identity) echo 8001 ;;
+    registry) echo 8003 ;;
+    web)      echo 8000 ;;
+    *) return 1 ;;
+  esac
+}
+
+svc_dir() {
+  case "$1" in
+    identity) echo "$ROOT/services/identity" ;;
+    registry) echo "$ROOT/services/registry" ;;
+    web)      echo "$ROOT/web" ;;
+    *) return 1 ;;
+  esac
+}
+
+svc_target() {
+  case "$1" in
+    identity) echo "app.main:app" ;;
+    registry) echo "registry.main:app" ;;
+    web)      echo "webapp.main:app" ;;
+    *) return 1 ;;
+  esac
+}
+
+svc_health_url() {
+  case "$1" in
+    web) echo "http://localhost:$(svc_port web)/" ;;
+    *)   echo "http://localhost:$(svc_port "$1")/healthz" ;;
+  esac
+}
+
+svc_pidfile() { echo "$RUN_DIR/$1.pid"; }
+svc_log()     { echo "$LOG_DIR/$1.log"; }
+
+port_holders() { lsof -nP -ti "tcp:$1" -sTCP:LISTEN 2>/dev/null || true; }
+
+pid_alive() { kill -0 "$1" 2>/dev/null; }
+
+# ------------------------------------------------------------------ infra
+
+docker_ok() { docker info >/dev/null 2>&1; }
+
+compose() { docker compose -f "$COMPOSE" --project-directory "$ROOT" "$@"; }
+
+ensure_infra() {
+  if ! docker_ok; then
+    if command -v colima >/dev/null 2>&1; then
+      echo "docker unreachable — starting colima..."
+      colima start || { echo "ERROR: colima start failed" >&2; return 1; }
+    else
+      echo "ERROR: docker is not running and colima is not installed" >&2
+      return 1
+    fi
+  fi
+  docker_ok || { echo "ERROR: docker still unreachable" >&2; return 1; }
+  local running
+  running=$(compose ps -q 2>/dev/null | grep -c . || true)
+  if [ "$running" -eq 0 ]; then
+    echo "infra containers down — docker compose up -d..."
+    compose up -d || { echo "ERROR: docker compose up failed" >&2; return 1; }
+  else
+    echo "infra containers already up ($running running)"
+  fi
+}
+
+infra_status() {
+  echo "INFRA (docker compose)"
+  if ! docker_ok; then
+    echo "  docker: UNREACHABLE"
+    return
+  fi
+  local line
+  compose ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null | \
+  while IFS= read -r line; do echo "  $line"; done
+}
+
+# ------------------------------------------------------------- svc start
+
+start_svc() {
+  local svc="$1" port dir target pidfile log pid
+  port=$(svc_port "$svc"); dir=$(svc_dir "$svc"); target=$(svc_target "$svc")
+  pidfile=$(svc_pidfile "$svc"); log=$(svc_log "$svc")
+
+  if [ -f "$pidfile" ]; then
+    pid=$(cat "$pidfile" 2>/dev/null || true)
+    if [ -n "$pid" ] && pid_alive "$pid"; then
+      echo "$svc: already running (pid $pid) — skipped"
+      return 0
+    fi
+    rm -f "$pidfile"  # stale pidfile
+  fi
+
+  local holders
+  holders=$(port_holders "$port")
+  if [ -n "$holders" ]; then
+    echo "$svc: FOREIGN — port :$port held by pid $holders, no pidfile;" >&2
+    echo "       not starting a duplicate (see: ./seavix status)" >&2
+    return 1
+  fi
+
+  : >>"$log"
+  ( cd "$dir" && exec uv run uvicorn "$target" --port "$port" >>"$log" 2>&1 ) &
+  pid=$!
+  echo "$pid" >"$pidfile"
+  echo "$svc: started pid $pid on :$port (log var/logs/$svc.log)"
+}
+
+poll_health() {  # prints HTTP code; 000 when no answer
+  local url="$1" code i
+  for i in $(seq 1 30); do
+    code=$(curl -s -o /dev/null -m 2 -w "%{http_code}" "$url" 2>/dev/null || true)
+    [ "$code" = "200" ] && { echo "$code"; return 0; }
+    sleep 0.5
+  done
+  echo "${code:-000}"
+  return 1
+}
+
+# -------------------------------------------------------------- svc stop
+
+stop_svc() {
+  local svc="$1" port pidfile pid holders i
+  port=$(svc_port "$svc"); pidfile=$(svc_pidfile "$svc")
+
+  if [ ! -f "$pidfile" ]; then
+    holders=$(port_holders "$port")
+    if [ -n "$holders" ]; then
+      echo "$svc: no pidfile; port :$port held by pid $holders (foreign — left alone)"
+    else
+      echo "$svc: not running"
+    fi
+    return 0
+  fi
+
+  pid=$(cat "$pidfile" 2>/dev/null || true)
+  rm -f "$pidfile"
+  if [ -z "$pid" ] || ! pid_alive "$pid"; then
+    echo "$svc: pidfile removed (pid ${pid:-?} already dead)"
+  else
+    kill "$pid" 2>/dev/null || true
+    for i in $(seq 1 30); do pid_alive "$pid" || break; sleep 0.1; done
+    if pid_alive "$pid"; then
+      kill -9 "$pid" 2>/dev/null || true
+      echo "$svc: killed pid $pid (KILL after TERM timeout)"
+    else
+      echo "$svc: stopped pid $pid"
+    fi
+  fi
+
+  # uv run may leave a child holding the port; we own this pidfile's tree,
+  # so clean up any leftover holder of our port.
+  holders=$(port_holders "$port")
+  if [ -n "$holders" ]; then
+    echo "$svc: cleaning leftover port holder pid $holders"
+    kill $holders 2>/dev/null || true
+    sleep 0.5
+    holders=$(port_holders "$port")
+    [ -n "$holders" ] && kill -9 $holders 2>/dev/null || true
+  fi
+}
+
+# ---------------------------------------------------------------- status
+
+svc_row() {
+  local svc="$1" port pidfile pid holders health state
+  port=$(svc_port "$svc"); pidfile=$(svc_pidfile "$svc")
+  pid=""; holders=""
+  [ -f "$pidfile" ] && pid=$(cat "$pidfile" 2>/dev/null || true)
+  if [ -n "$pid" ] && ! pid_alive "$pid"; then pid=""; fi
+  holders=$(port_holders "$port")
+
+  health=$(curl -s -o /dev/null -m 2 -w "%{http_code}" "$(svc_health_url "$svc")" 2>/dev/null || true)
+  [ -z "$health" ] && health="000"
+
+  if [ -n "$pid" ] && [ "$health" = "200" ]; then
+    state="OK"
+  elif [ -n "$pid" ]; then
+    state="UP (not healthy yet)"
+  elif [ -n "$holders" ]; then
+    state="FOREIGN (pid $holders, no pidfile)"
+    pid="—"
+  else
+    state="DOWN"
+    pid="—"
+  fi
+  printf "  %-9s %-6s %-8s %-7s %s\n" "$svc" ":$port" "$pid" "$health" "$state"
+}
+
+status_all() {
+  infra_status
+  echo
+  echo "SERVICES"
+  printf "  %-9s %-6s %-8s %-7s %s\n" SERVICE PORT PID HEALTH STATE
+  local svc
+  for svc in $SERVICES; do svc_row "$svc"; done
+}
+
+# ----------------------------------------------------------------- verbs
+
+cmd_start() {
+  ensure_infra || exit 1
+  echo
+  local svc
+  for svc in $SERVICES; do start_svc "$svc"; done
+  echo
+  echo "HEALTH (polled up to 15s each)"
+  for svc in $SERVICES; do
+    code=$(poll_health "$(svc_health_url "$svc")")
+    printf "  %-9s %s -> %s\n" "$svc" "$(svc_health_url "$svc")" "$code"
+  done
+  echo
+  status_all
+}
+
+cmd_stop() {
+  local also_infra=""
+  [ "${1:-}" = "--infra" ] && also_infra="1"
+  local svc
+  for svc in $SERVICES; do stop_svc "$svc"; done
+  if [ -n "$also_infra" ]; then
+    if docker_ok; then
+      echo "docker compose down..."
+      compose down || echo "ERROR: docker compose down failed" >&2
+    else
+      echo "docker unreachable — nothing to take down"
+    fi
+  fi
+}
+
+cmd_logs() {
+  local svc="${1:-}"
+  case "$svc" in
+    identity|registry|web) ;;
+    *) echo "usage: ./seavix logs <identity|registry|web>" >&2; exit 2 ;;
+  esac
+  exec tail -f "$(svc_log "$svc")"
+}
+
+usage() {
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+case "${1:-}" in
+  start)            cmd_start ;;
+  stop)             shift; cmd_stop "${1:-}" ;;
+  restart)          cmd_stop ""; echo; cmd_start ;;
+  status)           status_all ;;
+  logs)             shift; cmd_logs "${1:-}" ;;
+  ""|-h|--help|help) usage 0 ;;
+  *) echo "unknown command: $1" >&2; usage 2 ;;
+esac
