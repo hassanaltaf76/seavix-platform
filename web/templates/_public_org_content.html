@@ -3,7 +3,7 @@
     Expects `org` with name/about/website/phone/logo_url/slug and `ports`
     as RESOLVED rows [{code, name, country}] (the web app resolves names
     via the registry before rendering). -#}
-<article>
+<article class="sv-ugc">
   <header class="sv-org-header">
     {% if org.logo_url %}
       <img class="logo" src="{{ org.logo_url }}" alt="{{ org.name }} logo">

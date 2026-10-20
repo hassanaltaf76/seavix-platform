@@ -3,7 +3,7 @@
 <h1>Confirm your email</h1>
 {% if error %}<p class="sv-form-error" role="alert">{{ error }}</p>{% endif %}
 {% if oob_code %}
-<p class="sv-auth-sub">Confirm <strong>{{ email }}</strong> as the email
+<p class="sv-auth-sub sv-ugc">Confirm <strong>{{ email }}</strong> as the email
    address for your SeaVix account.</p>
 <form method="post" action="/register/verify" class="sv-auth-form">
   <input type="hidden" name="email" value="{{ email }}">

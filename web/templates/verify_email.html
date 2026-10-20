@@ -1,7 +1,7 @@
 {% extends "base_auth.html" %}{% block title %}Verify your email — SeaVix{% endblock %}
 {% block content %}
 <h1>Check your inbox</h1>
-<p class="sv-auth-sub">We sent a verification link to <strong>{{ email }}</strong>.
+<p class="sv-auth-sub sv-ugc">We sent a verification link to <strong>{{ email }}</strong>.
    Open it to confirm your address — the link works once.</p>
 {% if error %}<p class="sv-form-error" role="alert">{{ error }}</p>{% endif %}
 {% if resent %}<p class="sv-auth-sub" role="status">A new verification email is

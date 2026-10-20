@@ -114,7 +114,8 @@ async def _verify_email_and_go_live(idc, email, sid):
 
 
 def _article(html: str) -> str:
-    match = re.search(r"<article>.*?</article>", html, re.S)
+    # 31l: the article now carries class="sv-ugc" — match any attributes
+    match = re.search(r"<article[^>]*>.*?</article>", html, re.S)
     assert match, "no <article> rendered"
     return match.group(0)
 

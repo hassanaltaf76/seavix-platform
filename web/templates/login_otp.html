@@ -1,7 +1,7 @@
 {% extends "base_auth.html" %}{% block title %}Check your inbox — SeaVix{% endblock %}
 {% block content %}
 <h1>Check your inbox</h1>
-<p class="sv-auth-sub">We've emailed a 6-digit sign-in code to
+<p class="sv-auth-sub sv-ugc">We've emailed a 6-digit sign-in code to
    <strong>{{ email }}</strong>. It expires in 10 minutes — if you don't see
    it, check your Junk or Spam folder.</p>
 {% if error %}<p class="sv-form-error" role="alert">{{ error }}</p>{% endif %}

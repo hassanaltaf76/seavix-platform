@@ -208,6 +208,15 @@ a:hover { color: var(--seavix-accent-bright); }
   overflow: hidden;
 }
 .sv-rail-tenant strong { color: var(--seavix-text-primary); }
+/* 31l: a long company name wraps inside the rail cell instead of
+   overflowing it — the .sv-rail a rule above pins white-space:nowrap;
+   this override lets the tenant link wrap, and .sv-ugc (base.html)
+   provides the break points. */
+.sv-rail-tenant a {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .sv-rail-initials {
   flex: 0 0 1.5rem;
   width: 1.5rem;
@@ -460,6 +469,15 @@ h2 { font-size: 1.08rem; }
 /* 31h: description blocks — <p> per blank-line paragraph, <br> for soft
    newlines (markup comes from the `paragraphs` filter, never raw HTML) */
 .sv-prose p { margin: 0 0 0.75rem; }
+/* 31l: user-generated content never escapes its box (owner screenshot
+   20 Oct: a long unbroken description string ran outside the profile
+   preview card). .sv-ugc goes on EVERY container that renders user
+   text; .sv-prose is UGC by definition, so it carries the rule too. */
+.sv-ugc,
+.sv-prose {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .facts { color: var(--seavix-text-secondary); font-size: 0.92rem; list-style: none; padding: 0; }
 .hp { position: absolute; left: -9999px; opacity: 0; height: 0; }
 

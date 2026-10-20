@@ -4,7 +4,7 @@
 {% block blade_title %}<h1>Your account</h1>{% endblock %}
 {% block blade_close %}<a class="sv-blade-close" href="/dashboard" aria-label="Close blade and go back">×</a>{% endblock %}
 {% block content %}
-<p>Signed in as {{ ctx.user.email }}</p>
+<p class="sv-ugc">Signed in as {{ ctx.user.email }}</p>
 
 {#- 31i: zero verification state on the account surface — a signed-in user
     is always verified, so there is nothing to surface and no resend to
@@ -12,7 +12,7 @@
 
 {% if membership %}
 <section class="card">
-  <h2>{{ membership.slug }} · {{ membership.org_type }}</h2>
+  <h2 class="sv-ugc">{{ membership.slug }} · {{ membership.org_type }}</h2>
   <p>Roles: {{ membership.roles|join(", ") }}</p>
   {% if membership.org_type == 'survey_company' and 'org.profile.view' in membership.permissions %}
   <p>{% if 'org.profile.edit' in membership.permissions %}

@@ -449,6 +449,41 @@ def test_description_renders_as_blocks_31h():
     assert ".sv-prose p { margin: 0 0 0.75rem; }" in STYLE
 
 
+def test_ugc_overflow_wrap_31l():
+    """31l (owner screenshot 20 Oct: a long unbroken description string
+    overflowed the profile preview card): a .sv-ugc utility pins
+    overflow-wrap:anywhere + word-break:break-word, .sv-prose carries it
+    by definition, and every UGC render point applies it — the shared
+    org-content article (name/description/website/phone/ports, covering
+    the public page AND the blade preview at once), the rail company
+    cell (whose anchor must also stop pinning nowrap), the account
+    surface, the RFQ org-name heading, the unavailable-page slug and the
+    email-bearing auth subs."""
+    assert "overflow-wrap: anywhere;" in STYLE
+    assert "word-break: break-word;" in STYLE
+    ugc = re.search(r"\.sv-ugc,\s*\.sv-prose\s*\{(.*?)\}", STYLE, re.S)
+    assert ugc and "overflow-wrap: anywhere;" in ugc.group(1)
+    assert "word-break: break-word;" in ugc.group(1)
+    # the rail cell link may wrap a long company name (no nowrap pinning)
+    tenant = re.search(r"\.sv-rail-tenant a\s*\{(.*?)\}", STYLE, re.S)
+    assert tenant and "white-space: normal;" in tenant.group(1)
+    partial = (TEMPLATES / "_public_org_content.html").read_text()
+    assert '<article class="sv-ugc">' in partial
+    base = (TEMPLATES / "base.html").read_text()
+    assert 'class="sv-rail-label sv-ugc"' in base
+    home = (TEMPLATES / "org_home.html").read_text()
+    assert '<p class="sv-ugc">Signed in as' in home
+    assert '<h2 class="sv-ugc">{{ membership.slug }}' in home
+    rfq = (TEMPLATES / "rfq_form.html").read_text()
+    assert '<span class="sv-ugc">{{ org_name }}</span>' in rfq
+    unavailable = (TEMPLATES / "profile_unavailable.html").read_text()
+    assert 'class="lede sv-ugc"' in unavailable
+    for tpl in ("login_otp", "forgot_password", "verify_email",
+                "verify_gate", "verify_email_confirm"):
+        text = (TEMPLATES / f"{tpl}.html").read_text()
+        assert 'class="sv-auth-sub sv-ugc"' in text, f"{tpl}: email sub"
+
+
 def test_port_picker_markup_31f():
     """31f: the edit-mode port picker is an Alpine combobox wired to the
     registry search endpoint, with removable chips persisted as repeated
