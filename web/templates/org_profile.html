@@ -42,6 +42,24 @@
 
 <section class="card">
   <h2>What visitors see</h2>
+  {#- 31j: the CURRENT public address state, stated plainly. An
+      auto-generated placeholder slug gets a loud "choose your address"
+      prompt; a chosen slug gets the plain "your public page" line with
+      a View link. -#}
+  {% if slug_is_placeholder %}
+  <p class="notice sv-slug-callout" role="status">
+    <strong>Choose your public address: seavix.ai/{{ org.slug }}</strong><br>
+    <span>This address was generated when you registered — pick one that
+          matches your company. It is where your SeaVix page lives.</span>
+  </p>
+  {% else %}
+  <p class="notice sv-slug-callout" role="status">
+    <strong>Your public page: seavix.ai/{{ org.slug }}</strong>
+    {% if org.profile_status == 'live' %}
+    — <a href="/{{ org.slug }}">View it live</a>
+    {% endif %}
+  </p>
+  {% endif %}
   <form method="post" action="/org/profile" class="sv-form"
         x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false, dirty: false,
                   async search() {
@@ -66,8 +84,16 @@
     <input id="slug" name="slug" required minlength="2" maxlength="64"
            pattern="[a-z0-9-]+" title="lowercase letters, digits and dashes"
            value="{{ membership.slug }}" @input="dirty = true">
-    <small>This becomes your public page address: seavix.ai/&lt;slug&gt; —
-           set it now or come back later.</small>
+    {#- 31j: exactly where the page is, and the draft→404 rule, inline. -#}
+    {% if org.profile_status == 'live' %}
+    <small>Your page is <strong>live</strong> — seavix.ai/{{ org.slug }} is
+           reachable for visitors right now.</small>
+    {% else %}
+    <small>Your page is at seavix.ai/{{ org.slug }} and becomes reachable
+           only when it is <strong>live</strong> — while it is a
+           <strong>{{ org.profile_status }}</strong>, that address shows
+           visitors a not-found page.</small>
+    {% endif %}
     {% if slug_error %}<p class="sv-field-error" role="alert">{{ slug_error }}</p>{% endif %}
 
     <div class="sv-port-picker">

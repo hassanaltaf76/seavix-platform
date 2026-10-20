@@ -25,4 +25,28 @@
 {% else %}
 <div class="sv-empty">No organization membership is attached to this account yet.</div>
 {% endif %}
+
+{#- 31j: trusted-device panel. Logout keeps trust, so a shared machine
+    stays convenient; revoke-all is the one-click undo for every browser
+    remembered at sign-in. -#}
+<section class="card">
+  <h2>Trusted devices</h2>
+  {% if devices_revoked %}
+  <p class="notice success" role="status">Signed out of all trusted devices —
+     the next sign-in on each one will ask for a sign-in code.</p>
+  {% endif %}
+  {% if trusted_device_count %}
+  <p>{{ trusted_device_count }} trusted device{{ "s" if trusted_device_count != 1 }}
+     — signing in on {{ "it" if trusted_device_count == 1 else "them" }} skips
+     the sign-in code for 30 days after the last visit.</p>
+  {% else %}
+  <p>No trusted devices. Tick "Trust this device for 30 days" at sign-in to
+     skip the sign-in code on a browser you own.</p>
+  {% endif %}
+  {% if trusted_device_count %}
+  <form method="post" action="/account/trusted-devices/revoke-all" class="sv-inline-form">
+    <button type="submit" class="button secondary">Sign out all trusted devices</button>
+  </form>
+  {% endif %}
+</section>
 {{ keepalive | safe }}{% endblock %}

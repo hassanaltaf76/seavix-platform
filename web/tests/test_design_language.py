@@ -164,6 +164,29 @@ def test_blade_shell_is_post_auth_only():
         assert "SeaVix home" not in text, f"{tpl.name}: home menu item"
 
 
+def test_rail_company_cell_is_top_placed_never_bottom_pinned_31j():
+    """31j (owner report 20 Oct: cell bottom-pinned/half-off-screen on an
+    empty rail, 'no profile'): the company cell must sit at the TOP of the
+    rail, directly under the SeaVix logo — never margin-top:auto'd to the
+    fold — so it is fully visible at 1440x900 and the profile blade stays
+    one click away for every member who holds org.profile.view."""
+    block = re.search(r"\.sv-rail-tenant\s*\{(.*?)\}", STYLE, re.S)
+    assert block, ".sv-rail-tenant rule missing"
+    assert "margin-top" not in block.group(1), (
+        "the company cell must never be bottom-pinned (margin-top:auto "
+        "pinned it to the fold on an empty rail)"
+    )
+    # markup order: logo first, company cell immediately after (top of rail)
+    logo_at = BASE.index('class="sv-rail-logo"')
+    tenant_at = BASE.index('class="sv-rail-tenant"')
+    assert logo_at < tenant_at
+    # and nothing else may sit between them (the logo's own closing tag
+    # is the only div in the slice)
+    between = BASE[logo_at:tenant_at]
+    assert "sv-rail-section" not in between
+    assert between.count("<div") == 1 and between.count("</div>") == 1
+
+
 def test_blade_navigation_never_drops_to_public_landing():
     """31b-7 (amended 31g): breadcrumbs ARE the blade navigation. The crumb
     trail roots at the dashboard (never the public landing), × closes to
@@ -314,7 +337,8 @@ def test_verify_templates_have_no_password_fields():
 def test_profile_settings_public_slug_section():
     """31b: the profile blade is the public-page editor — framing with the
     root-level URL, services description, slug + hint, logo upload. 31f:
-    the editor lives in edit mode; view mode is the WYSIWYG preview."""
+    the editor lives in edit mode; view mode is the WYSIWYG preview. 31j:
+    the slug hint became the address-state callout + reachability line."""
     text = (TEMPLATES / "org_profile.html").read_text()
     assert 'name="slug"' in text
     assert 'name="about"' in text
@@ -329,7 +353,13 @@ def test_profile_settings_public_slug_section():
     assert "Describe your services" in text
     assert 'action="/org/profile/logo"' in text
     assert 'name="file"' in text
-    assert "set it now or come back later" in text
+    # 31j: the address state is stated plainly — a loud prompt for the
+    # auto-generated placeholder, the plain URL once chosen, and the
+    # draft→404 reachability rule inline (the /pak-marines confusion)
+    assert "Choose your public address: seavix.ai/{{ org.slug }}" in text
+    assert "Your public page: seavix.ai/{{ org.slug }}" in text
+    assert "slug_is_placeholder" in text
+    assert "not-found page" in text
     assert ">Save public page</button>" in text  # 31d view-edit-save
     # 31g: Save stays disabled until the form is dirty — the Alpine
     # component lives on the form (fields + picker share one scope), the

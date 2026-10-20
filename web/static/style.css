@@ -193,8 +193,11 @@ a:hover { color: var(--seavix-accent-bright); }
 }
 
 .sv-rail-tenant {
-  margin-top: auto;
-  border-top: 1px solid var(--seavix-border);
+  /* 31j: the company cell sits at the TOP of the rail, directly under the
+     SeaVix logo — never bottom-pinned (auto top margins pinned it to the
+     fold on an empty rail, where it rendered half-off-screen) and never
+     dependent on rail content below it. */
+  border-bottom: 1px solid var(--seavix-border);
   padding: 0.6rem 0.75rem;
   display: flex;
   align-items: center;
@@ -478,6 +481,35 @@ h2 { font-size: 1.08rem; }
   max-width: 560px;
 }
 .notice.success { border-left-color: var(--seavix-success); }
+
+/* 31j: the profile editor's public-address callout — prominent by design,
+   not a subtle hint. */
+.notice.sv-slug-callout {
+  max-width: none;
+  font-size: 1rem;
+  background: var(--seavix-mist);
+}
+.notice.sv-slug-callout span {
+  color: var(--seavix-text-secondary);
+  font-size: 0.9rem;
+}
+
+/* 31j: "trust this device" checkbox on the OTP challenge */
+.sv-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.92rem;
+  color: var(--seavix-text-secondary);
+  cursor: pointer;
+}
+.sv-checkbox input[type="checkbox"] {
+  margin-top: 0.2rem;
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--seavix-primary);
+  flex: 0 0 auto;
+}
 
 /* link-styled buttons outside the topnav */
 .sv-link-btn {

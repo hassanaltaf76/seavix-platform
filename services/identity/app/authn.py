@@ -17,9 +17,9 @@ from sqlalchemy import text
 from seavix_ports import (AuthenticatedUser, FirebaseAuthProvider,
                           domain_event, public_route)
 
-from . import otp, sessions
+from . import otp, sessions, trusted_devices
 from .db import SessionLocal
-from .security import _ensure_firebase
+from .security import _ensure_firebase, current_user
 
 router = APIRouter()
 
@@ -102,11 +102,22 @@ async def _memberships(session, user_id: str) -> list[dict]:
 class EmailPassword(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
+    # 31j: the web app forwards the trusted-device cookie (if any) so a
+    # valid enrolment skips factor 2 entirely. The browser user-agent is
+    # forwarded too so a rotated enrolment keeps its display label.
+    trusted_device: str | None = Field(default=None, max_length=300)
+    device_user_agent: str | None = Field(default=None, max_length=300)
 
 
 class OtpChallenge(BaseModel):
     email: EmailStr
     code: str = Field(min_length=6, max_length=6)
+    # 31j: "Trust this device for 30 days" — enrol a trusted-device token
+    # on success and hand it back for the web app's HttpOnly cookie.
+    trust_device: bool = False
+    # Display metadata for the enrolment (the identity service cannot see
+    # the browser's user-agent through the web proxy; the web forwards it).
+    device_user_agent: str | None = Field(default=None, max_length=300)
 
 
 class OtpResend(BaseModel):
@@ -141,6 +152,12 @@ async def login_start(payload: EmailPassword, request: Request) -> dict:
     is refused with 403 email_unverified — no session path, no OTP issued.
     The reveal is safe: it only answers someone who already holds the
     password (and registration already discloses account existence).
+
+    31j: a valid trusted-device token presented with the password skips
+    factor 2 entirely — the session is issued right here and the token is
+    rotated (fresh 30-day window). An invalid/expired/revoked token falls
+    through to the normal OTP, flagged trusted_device_valid=False so the
+    web app can drop the stale cookie.
     """
     email = payload.email.lower()
     async with SessionLocal() as session:
@@ -162,21 +179,47 @@ async def login_start(payload: EmailPassword, request: Request) -> dict:
         raise HTTPException(status_code=401, detail="invalid credentials")
 
     async with SessionLocal() as session:
-        verified = (
+        user = (
             await session.execute(
-                text("SELECT email_verified FROM app_user WHERE email = :email"),
+                text(
+                    "SELECT id, email_verified FROM app_user WHERE email = :email"
+                ),
                 {"email": email},
             )
-        ).scalar()
-        if not verified:
+        ).mappings().first()
+        if not user["email_verified"]:
             raise HTTPException(
                 status_code=403,
                 detail={"code": "email_unverified", "email": email},
             )
+        if payload.trusted_device:
+            ok, rotated = await trusted_devices.consume(
+                session, str(user["id"]), payload.trusted_device,
+                user_agent=payload.device_user_agent or "",
+            )
+            if ok:
+                sid = await sessions.create_session(
+                    session, str(user["id"]),
+                    fb["body"]["localId"],
+                )
+                memberships = await _memberships(session, str(user["id"]))
+                await _publish(request, "auth.session_created", "app_user",
+                               str(user["id"]),
+                               {"email": email, "trusted_device": True})
+                return {
+                    "email": email,
+                    "otp_sent": False,
+                    "session_id": sid,
+                    "memberships": memberships,
+                    "trusted_device": rotated,
+                }
         await otp.send_code(session, email, "login")
     await _publish(request, "auth.otp_sent", "app_user", email,
                    {"purpose": "login"})
-    return {"email": email, "otp_sent": True}
+    body: dict = {"email": email, "otp_sent": True}
+    if payload.trusted_device:
+        body["trusted_device_valid"] = False
+    return body
 
 
 @router.post("/api/auth/login/verify")
@@ -220,15 +263,27 @@ async def login_verify(payload: OtpChallenge, request: Request) -> dict:
             session, str(user["id"]), user["firebase_uid"]
         )
         memberships = await _memberships(session, str(user["id"]))
+        trusted_token = None
+        if payload.trust_device:
+            # 31j: the OTP challenge carried "trust this device" — enrol
+            # the browser as a trusted device and hand back the cookie
+            # token (the web app sets it HttpOnly SameSite=Lax path=/).
+            trusted_token = await trusted_devices.issue(
+                session, str(user["id"]),
+                user_agent=payload.device_user_agent or "",
+            )
 
     await _publish(request, "auth.session_created", "app_user",
                    str(user["id"]), {"email": user["email"]})
-    return {
+    body: dict = {
         "session_id": sid,
         "email": user["email"],
         "email_verified": bool(user["email_verified"]),
         "memberships": memberships,
     }
+    if trusted_token:
+        body["trusted_device"] = trusted_token
+    return body
 
 
 @router.post("/api/auth/login/resend")
@@ -372,7 +427,60 @@ async def reset_finish(payload: ResetFinish) -> dict:
     if fb["status"] != 200:
         msg = fb["body"].get("error", {}).get("message", "reset failed")
         raise HTTPException(status_code=400, detail=f"reset failed: {msg}")
+    # 31j: a new password means every remembered device is untrusted — a
+    # reset is exactly the "someone else had my password" recovery path.
+    email = (fb["body"].get("email") or "").lower()
+    if email:
+        async with SessionLocal() as session:
+            user = (
+                await session.execute(
+                    text("SELECT id FROM app_user WHERE email = :email"),
+                    {"email": email},
+                )
+            ).mappings().first()
+            if user is not None:
+                await trusted_devices.revoke_all(session, str(user["id"]))
     return {"reset": True}
+
+
+# --------------------------------------------------------- trusted devices
+
+@router.get("/api/auth/trusted-devices")
+async def trusted_devices_list(request: Request) -> dict:
+    """31j account surface: active trusted devices (display metadata only).
+    Session-header auth via the deny-by-default middleware."""
+    user = await current_user(request)
+    async with SessionLocal() as session:
+        app_user = (
+            await session.execute(
+                text("SELECT id FROM app_user WHERE firebase_uid = :uid"),
+                {"uid": user.uid},
+            )
+        ).mappings().first()
+        if app_user is None:
+            raise HTTPException(status_code=401, detail="invalid session")
+        devices = await trusted_devices.list_active(session, str(app_user["id"]))
+    return {"devices": devices, "count": len(devices)}
+
+
+@router.delete("/api/auth/trusted-devices")
+async def trusted_devices_revoke_all(request: Request) -> dict:
+    """31j: 'Sign out all trusted devices' — every enrolment of the user is
+    revoked; the next sign-in on any device needs the OTP again."""
+    user = await current_user(request)
+    async with SessionLocal() as session:
+        app_user = (
+            await session.execute(
+                text("SELECT id FROM app_user WHERE firebase_uid = :uid"),
+                {"uid": user.uid},
+            )
+        ).mappings().first()
+        if app_user is None:
+            raise HTTPException(status_code=401, detail="invalid session")
+        revoked = await trusted_devices.revoke_all(session, str(app_user["id"]))
+    await _publish(request, "auth.trusted_devices_revoked", "app_user",
+                   str(app_user["id"]), {"revoked": revoked})
+    return {"revoked": revoked}
 
 
 # ------------------------------------------------------------------ sessions

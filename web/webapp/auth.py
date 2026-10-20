@@ -22,6 +22,12 @@ SESSION_COOKIE = "seavix_session"
 SESSION_HEADER = AUTH_SESSION_HEADER
 SESSION_MAX_AGE = 12 * 3600  # matches identity SEAVIX_SESSION_TTL_SECONDS
 
+# 31j: trusted-device cookie — the "remember this device for 30 days" MFA
+# bypass. HttpOnly SameSite=Lax path=/; the value is the opaque token the
+# identity service rotates on every trusted login. Logout keeps it.
+TRUSTED_COOKIE = "seavix_trusted_device"
+TRUSTED_MAX_AGE = 30 * 86400  # matches identity trusted_devices.TRUST_DAYS
+
 
 class WebAuthLoader:
     """Credential -> AuthContext via the identity service's
@@ -103,3 +109,25 @@ def set_session_cookie(response: RedirectResponse, session_id: str) -> None:
 
 def clear_session_cookie(response: RedirectResponse) -> None:
     response.delete_cookie(SESSION_COOKIE, path="/")
+
+
+def trusted_token_from(request: Request) -> str | None:
+    token = request.cookies.get(TRUSTED_COOKIE, "").strip()
+    return token or None
+
+
+def set_trusted_cookie(response: RedirectResponse, token: str) -> None:
+    response.set_cookie(
+        TRUSTED_COOKIE,
+        token,
+        max_age=TRUSTED_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        # secure=True in prod (HTTPS only); localhost dev is plain http.
+        secure=False,
+        path="/",
+    )
+
+
+def clear_trusted_cookie(response: RedirectResponse) -> None:
+    response.delete_cookie(TRUSTED_COOKIE, path="/")

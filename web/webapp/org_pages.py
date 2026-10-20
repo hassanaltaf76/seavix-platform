@@ -11,9 +11,14 @@ persists about + slug + ports of operation in one PUT.
 
 31i: login gates on a verified email, so every post-auth surface carries
 ZERO verification state — no banner, no account-menu tag, no resend. The
-only verification UI is the pre-login gate screen (auth_pages)."""
+only verification UI is the pre-login gate screen (auth_pages).
+
+31j: the account surface (/org/home) carries the trusted-device panel
+(count + revoke-all); the profile editor states the public address
+plainly (placeholder prompt vs live URL + draft→404 one-liner)."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi import (
@@ -29,7 +34,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from seavix_ports import AuthContext, MembershipContext, require_auth
 
-from .auth import SESSION_HEADER, home_for, session_id_from
+from .auth import (
+    SESSION_HEADER,
+    clear_trusted_cookie,
+    home_for,
+    session_id_from,
+)
 from .filters import install as install_template_filters
 from .identity_client import identity_request
 from .registry_client import registry_request, resolve_ports
@@ -86,6 +96,29 @@ def _rail_org(org: dict | None, membership: MembershipContext | None) -> dict:
             "initials": initials}
 
 
+# 31j: the registration flow never asks for a slug — identity's
+# create_organization generates "<slugified-name>-<6 hex>" (orgs.py
+# _generate_slug). A slug still matching that shape is an auto-generated
+# placeholder: the editor must say "choose your address" loudly instead
+# of presenting it as if it were the company's real public URL.
+def _is_generated_slug(name: str, slug: str) -> bool:
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-") or "org"
+    return re.fullmatch(re.escape(base) + r"-[0-9a-f]{6}", slug or "") is not None
+
+
+async def _trusted_device_count(request: Request) -> int:
+    """31j account surface: active trusted devices for the signed-in user."""
+    sid = session_id_from(request)
+    if not sid:
+        return 0
+    resp = await identity_request(
+        "GET", "/api/auth/trusted-devices", headers={SESSION_HEADER: sid}
+    )
+    if resp.status_code != 200:
+        return 0
+    return int(resp.json().get("count", 0))
+
+
 def _blade_not_found(request: Request, ctx: AuthContext) -> HTMLResponse:
     """404-over-403 (task-23 policy, extended to permission-gated blades):
     a surface the membership has no permission to know about renders the
@@ -118,6 +151,11 @@ def _edit_context(ctx, membership, org, *, slug_error=None, port_error=None,
         "can_edit": _has(membership, ORG_PROFILE_EDIT),
         "slug_error": slug_error, "port_error": port_error,
         "logo_saved": logo_saved, "logo_error": logo_error,
+        # 31j: the editor states the public address plainly — placeholder
+        # slug vs chosen slug, and draft vs live reachability.
+        "slug_is_placeholder": _is_generated_slug(
+            (org or {}).get("name") or "", (org or {}).get("slug") or ""
+        ),
     }
 
 
@@ -262,7 +300,8 @@ async def org_profile_logo(
 
 
 @router.get("/org/home", response_class=HTMLResponse)
-async def org_home(request: Request, ctx: AuthContext = Depends(require_auth)):
+async def org_home(request: Request, ctx: AuthContext = Depends(require_auth),
+                   devices: str = ""):
     membership = _first_membership(ctx)
     org = await _org_summary(membership.slug) if membership else None
     return templates.TemplateResponse(
@@ -270,8 +309,28 @@ async def org_home(request: Request, ctx: AuthContext = Depends(require_auth)):
         "org_home.html",
         {"request": request, "ctx": ctx, "membership": membership, "org": org,
          "rail_org": _rail_org(org, membership),
+         "trusted_device_count": await _trusted_device_count(request),
+         "devices_revoked": devices == "revoked",
          "keepalive": _KEEPALIVE},
     )
+
+
+@router.post("/account/trusted-devices/revoke-all")
+async def trusted_devices_revoke_all(
+    request: Request, ctx: AuthContext = Depends(require_auth),
+) -> RedirectResponse:
+    """31j: 'Sign out all trusted devices' — revokes every enrolment at the
+    identity service and drops THIS browser's cookie too, so the next
+    sign-in here needs the OTP like everywhere else."""
+    sid = session_id_from(request)
+    if sid:
+        await identity_request(
+            "DELETE", "/api/auth/trusted-devices",
+            headers={SESSION_HEADER: sid},
+        )
+    response = _redirect("/org/home?devices=revoked")
+    clear_trusted_cookie(response)
+    return response
 
 
 @router.get("/dashboard", response_class=HTMLResponse)

@@ -70,6 +70,8 @@ IDENTITY_PROTECTED = {
     "/api/orgs/me/idps/{idp_id}",
     "/api/auth/session",
     "/api/auth/session/refresh",
+    # 31j: trusted-device account surface (list + revoke-all)
+    "/api/auth/trusted-devices",
     "/api/internal/whoami",
     "/api/internal/auth-context",
 }
@@ -106,6 +108,8 @@ WEB_PROTECTED = {
     "/dashboard",
     # 31f: port-picker combobox backend (proxies the registry)
     "/org/ports/search",
+    # 31j: 'Sign out all trusted devices' (account surface action)
+    "/account/trusted-devices/revoke-all",
 }
 
 

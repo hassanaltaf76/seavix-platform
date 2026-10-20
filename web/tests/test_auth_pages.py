@@ -425,7 +425,11 @@ def test_profile_settings_slug_update(arun, id_asgi):
                 page = await w.get("/org/profile?view=edit")
                 assert page.status_code == 200
                 assert placeholder in page.text
-                assert "set it now or come back later" in page.text
+                # 31j: the placeholder state is a PROMPT, plus the
+                # draft→404 reachability line
+                assert (f"Choose your public address: seavix.ai/{placeholder}"
+                        in page.text)
+                assert "not-found page" in page.text
                 assert 'name="about"' in page.text
 
                 # save description + slug together (PRG back to view mode)

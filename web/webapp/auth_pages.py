@@ -18,10 +18,13 @@ from .auth import (
     SESSION_HEADER,
     authenticated_home_redirect,
     clear_session_cookie,
+    clear_trusted_cookie,
     home_for,
     login_redirect,
     session_id_from,
     set_session_cookie,
+    set_trusted_cookie,
+    trusted_token_from,
 )
 from .filters import install as install_template_filters
 from .identity_client import identity_request
@@ -56,10 +59,17 @@ async def login_submit(
     if redirect is not None:
         return redirect
     email = email.lower()
+    payload: dict = {"email": email, "password": password}
+    # 31j: forward the trusted-device cookie (if any) so the identity
+    # service can skip the OTP for a valid enrolment.
+    trusted = trusted_token_from(request)
+    if trusted:
+        payload["trusted_device"] = trusted
+        payload["device_user_agent"] = request.headers.get("user-agent", "")
     resp = await identity_request(
         "POST",
         "/api/auth/login/start",
-        json={"email": email, "password": password},
+        json=payload,
     )
     if resp.status_code == 403:
         # 31i: correct password, unverified email — the identity side sends
@@ -92,12 +102,26 @@ async def login_submit(
             {"request": request, "error": error, "form": {"email": email}},
             status_code=resp.status_code if resp.status_code == 429 else 401,
         )
-    return templates.TemplateResponse(
+    body = resp.json()
+    if body.get("session_id"):
+        # 31j trusted device: factor 2 skipped, session issued directly.
+        kind = body["memberships"][0]["type"] if body["memberships"] else None
+        response = RedirectResponse(home_for(kind), status_code=303)
+        set_session_cookie(response, body["session_id"])
+        if body.get("trusted_device"):
+            set_trusted_cookie(response, body["trusted_device"])
+        return response
+    otp_page = templates.TemplateResponse(
         request,
         "login_otp.html",
-        {"request": request, "email": resp.json()["email"], "error": None,
+        {"request": request, "email": body["email"], "error": None,
          "resent": False},
     )
+    if body.get("trusted_device_valid") is False:
+        # stale/rotated-elsewhere cookie — drop it so the browser stops
+        # presenting a dead token on every sign-in
+        clear_trusted_cookie(otp_page)
+    return otp_page
 
 
 @router.post("/login/verify-email/resend", response_class=HTMLResponse)
@@ -136,6 +160,7 @@ async def login_otp_submit(
     request: Request,
     email: str = Form(...),
     code: str = Form(...),
+    trust_device: str | None = Form(None),
 ):
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
@@ -143,7 +168,12 @@ async def login_otp_submit(
     resp = await identity_request(
         "POST",
         "/api/auth/login/verify",
-        json={"email": email.lower(), "code": code.strip()},
+        json={
+            "email": email.lower(),
+            "code": code.strip(),
+            "trust_device": bool(trust_device),
+            "device_user_agent": request.headers.get("user-agent", ""),
+        },
     )
     if resp.status_code != 200:
         return templates.TemplateResponse(
@@ -158,6 +188,9 @@ async def login_otp_submit(
     target = home_for(kind)
     response = RedirectResponse(target, status_code=303)
     set_session_cookie(response, body["session_id"])
+    if body.get("trusted_device"):
+        # 31j: the box was checked — enrol this browser for 30 days
+        set_trusted_cookie(response, body["trusted_device"])
     return response
 
 
@@ -204,6 +237,9 @@ async def logout(request: Request) -> RedirectResponse:
         )
     response = RedirectResponse("/", status_code=303)
     clear_session_cookie(response)
+    # 31j: logout KEEPS trusted-device enrolment — signing out of a shared
+    # browser does not forfeit the 30-day MFA bypass; only revoke-all and
+    # password reset do.
     return response
 
 
