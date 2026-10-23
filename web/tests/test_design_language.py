@@ -369,6 +369,40 @@ def test_public_profile_card_layout():
     assert "sv-org-wrap" in profile
 
 
+def test_logo_pinned_to_top_left_corner_31s():
+    """31s (owner 23 Oct): the logo was vertically centered with the
+    name/description block — brand marks belong in the card's TOP-LEFT
+    corner (reading-pattern standard). Contract: the header carries the
+    corner modifier; the logo (or the no-logo placeholder — same slot,
+    unchanged behavior) is the header's FIRST child; the alignment is
+    flex-start at BOTH the row level (align-items) and the logo itself
+    (align-self), so nothing can re-center the mark."""
+    partial = (TEMPLATES / "_public_org_content.html").read_text()
+    header = re.search(
+        r'<header class="([^"]*)">\s*(.*?)</header>', partial, re.S
+    )
+    assert header, "no <header> in the shared partial"
+    classes, body = header.group(1), header.group(2)
+    assert "sv-org-header--corner" in classes
+    # logo (or the placeholder occupying the same corner slot) is the
+    # first child — the name/description div follows it
+    assert re.search(
+        r'^\s*\{% if org\.logo_url %\}\s*'
+        r'<img class="logo"', body
+    ), "logo must be the header's first child"
+    assert re.search(
+        r'<div class="logo placeholder"[^>]*></div>', body
+    ), "no-logo placeholder occupies the same corner slot"
+    corner = re.search(r"\.sv-org-header--corner\s*\{(.*?)\}", STYLE, re.S)
+    assert corner and "align-items: flex-start" in corner.group(1)
+    logo_self = re.search(
+        r"\.sv-org-header--corner \.logo\s*\{(.*?)\}", STYLE, re.S
+    )
+    assert logo_self and "align-self: flex-start" in logo_self.group(1)
+    logo = re.search(r"\.sv-org-header \.logo\s*\{(.*?)\}", STYLE, re.S)
+    assert logo and "64px" in logo.group(1)
+
+
 def test_inline_svg_icons_constrained_31o():
     """31o (owner screenshot 23 Oct): viewBox-only inline SVGs rendered at
     their default viewport size — huge icons on the profile preview and

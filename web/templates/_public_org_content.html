@@ -21,7 +21,13 @@
     stripped for the href, the original number shown as the text).
     Everything stays inside .sv-ugc (31l). -#}
 <article class="sv-ugc sv-org-card">
-  <header class="sv-org-header">
+  {#- 31s: the header is a CORNER layout — the logo (64px) is pinned to
+      the card's TOP-LEFT corner (aligned to the corner, not vertically
+      centered), company name H1 + description to its right. Rationale:
+      top-left is the reading-pattern standard for brand placement.
+      Without a logo, the placeholder block occupies the same corner slot
+      (unchanged behavior). -#}
+  <header class="sv-org-header sv-org-header--corner">
     {% if org.logo_url %}
       <img class="logo" src="{{ org.logo_url }}" alt="{{ org.name }} logo">
     {% else %}

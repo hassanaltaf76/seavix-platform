@@ -668,7 +668,14 @@ button:disabled, button:disabled:hover {
   box-shadow: var(--e1);
   padding: 1.5rem;
 }
-.sv-org-header { display: flex; align-items: center; gap: 1.25rem; margin-bottom: 1.25rem; }
+/* 31s: corner header — the logo is pinned to the card's TOP-LEFT corner
+   (not vertically centered with the name/description block); the
+   name H1 + description sit to its right. flex-start at both levels:
+   the row's cross-axis alignment AND the logo's own align-self, so a
+   future row-level change can't re-center the mark. */
+.sv-org-header { display: flex; gap: 1.25rem; margin-bottom: 1.25rem; }
+.sv-org-header--corner { align-items: flex-start; }
+.sv-org-header--corner .logo { align-self: flex-start; }
 .sv-org-header .logo { max-height: 64px; max-width: 64px; object-fit: contain; }
 .sv-org-header .logo.placeholder {
   width: 64px; height: 64px;
