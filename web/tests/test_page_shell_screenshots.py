@@ -36,7 +36,7 @@ _FORCE_SAVE_BAR = "<style>.sv-save-bar{display:flex !important}</style>"
 
 
 def _shot(html: str, tmp_path: Path, name: str, width: int, height: int,
-          extra: str = "") -> None:
+          extra: str = "", prefix: str = "31p") -> None:
     """Render fetched app HTML with the real stylesheet AND scripts (Alpine
     actually runs — the mobile rail collapse and x-cloak are real) and
     screenshot it."""
@@ -49,14 +49,14 @@ def _shot(html: str, tmp_path: Path, name: str, width: int, height: int,
     )
     if extra:
         page = page.replace("</body>", extra + "\n</body>")
-    f = tmp_path / f"31p-{name}.html"
+    f = tmp_path / f"{prefix}-{name}.html"
     f.write_text(page)
     SHOTS.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [str(CHROME), "--headless=new", "--disable-gpu", "--no-first-run",
          "--virtual-time-budget=3000",
          f"--window-size={width},{height}",
-         f"--screenshot={SHOTS / f'31p-{name}.png'}", f.as_uri()],
+         f"--screenshot={SHOTS / f'{prefix}-{name}.png'}", f.as_uri()],
         capture_output=True, timeout=60,
     )
 
@@ -95,11 +95,12 @@ def test_page_shell_screenshot_set_31p(arun, id_asgi, tmp_path):
                 assert "sv-blade" not in dash.text
                 _shot(dash.text, tmp_path, "dashboard", 1280, 1000)
 
-                # 2. profile settings page with WYSIWYG preview (side-by-side
-                #    at ≥1280px)
+                # 2. profile editor — FULL-WIDTH form (31q: the preview
+                #    aside is retired from edit mode; the form owns the
+                #    whole content column)
                 editor = await w.get("/org/profile?view=edit")
                 assert editor.status_code == 200
-                assert "sv-editor-layout" in editor.text
+                assert "sv-editor-preview" not in editor.text
                 assert editor.text.count('class="sv-section-card"') >= 4
                 _shot(editor.text, tmp_path, "profile-settings", 1440, 1250)
 

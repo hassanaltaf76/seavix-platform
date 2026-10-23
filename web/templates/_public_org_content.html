@@ -3,12 +3,15 @@
     construction. Expects `org` with name/about/website/phone/address/
     contact_email/whatsapp/logo_url/slug and `ports` as RESOLVED rows
     [{code, name, country}] (the web app resolves names via the registry
-    before rendering).
+    before rendering). 31q: `services` and `vessel_types` arrive already
+    resolved to [{code, label}] rows — identity owns those catalogs and
+    joins labels in its public read model.
 
     v4 §6: the card is max-width 720 centered — logo+name header row,
-    "Ports we serve" chips, services prose, a flat Contact card whose
-    rows carry a 16px inline-SVG icon + caption + value link, and a navy
-    full-width Raise-an-RFQ CTA below.
+    services prose, then the chip sections (Services · Vessel types we
+    serve · Ports we serve — each hidden until the org sets at least one),
+    a flat Contact card whose rows carry a 16px inline-SVG icon + caption
+    + value link, and a navy full-width Raise-an-RFQ CTA below.
 
     31m: the Contact card renders only when at least one contact field is
     set — empty block, no markup at all. address is multi-line free text
@@ -32,6 +35,16 @@
       {% if org.about %}<div class="sv-prose">{{ org.about | paragraphs }}</div>{% endif %}
     </div>
   </header>
+  {% if org.services %}
+  <p class="sv-org-services"><strong>Services:</strong>
+    {% for s in org.services %}<span class="sv-chip">{{ s.label }}</span>{% if not loop.last %}<span class="sv-port-sep" aria-hidden="true"> </span>{% endif %}{% endfor %}
+  </p>
+  {% endif %}
+  {% if org.vessel_types %}
+  <p class="sv-org-vessel-types"><strong>Vessel types we serve:</strong>
+    {% for v in org.vessel_types %}<span class="sv-chip">{{ v.label }}</span>{% if not loop.last %}<span class="sv-port-sep" aria-hidden="true"> </span>{% endif %}{% endfor %}
+  </p>
+  {% endif %}
   {% if org.ports %}
   <p class="sv-org-ports"><strong>Ports we serve:</strong>
     {% for p in org.ports %}<span class="sv-chip" title="{{ p.code }} — {{ p.country }}">{{ p.name }}</span>{% if not loop.last %}<span class="sv-port-sep" aria-hidden="true"> </span>{% endif %}{% endfor %}

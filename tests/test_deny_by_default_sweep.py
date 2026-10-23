@@ -72,6 +72,10 @@ IDENTITY_PROTECTED = {
     "/api/auth/session/refresh",
     # 31j: trusted-device account surface (list + revoke-all)
     "/api/auth/trusted-devices",
+    # 31q: system-catalog combobox backends (services / vessel types) —
+    # reference data, the wall only
+    "/api/catalog/services/search",
+    "/api/catalog/vessel-types/search",
     "/api/internal/whoami",
     "/api/internal/auth-context",
 }
@@ -112,6 +116,9 @@ WEB_PROTECTED = {
     "/dashboard",
     # 31f: port-picker combobox backend (proxies the registry)
     "/org/ports/search",
+    # 31q: services + vessel-type combobox backends (proxy identity)
+    "/org/services/search",
+    "/org/vessel-types/search",
     # 31j: 'Sign out all trusted devices' (account surface action)
     "/account/trusted-devices/revoke-all",
 }

@@ -38,14 +38,19 @@
 {% else %}
 {#- EDIT MODE (org.profile.edit) — the 31d view-edit-save pattern on the
     §9 settings layout: section cards (Public profile / Services / Contact
-    details), WYSIWYG preview side-by-side at ≥1280px, sticky Save bar at
-    the bottom once the form is dirty. -#}
+    details). 31q: the form takes the FULL width — the WYSIWYG preview
+    aside is retired from edit mode (preview is for review after editing;
+    view mode still renders it). Three chip pickers (services, vessel
+    types, ports) ride one Save with dirty-tracking. -#}
 {% if org %}
-<div class="sv-editor-layout">
-  <div class="sv-editor-main">
     <form method="post" action="/org/profile" class="sv-form"
           @input="valid = $el.checkValidity()"
-          x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false, dirty: false, valid: true,
+          x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false,
+                  svcSelected: {{ org.services | tojson }},
+                  svcQ: "", svcResults: [], svcOpen: false,
+                  vtSelected: {{ org.vessel_types | tojson }},
+                  vtQ: "", vtResults: [], vtOpen: false,
+                  dirty: false, valid: true,
                   async search() {
                     const frag = this.q.trim();
                     if (!frag) { this.results = []; this.open = false; return; }
@@ -59,7 +64,35 @@
                     if (!this.selected.some(p => p.code === port.code)) { this.selected.push(port); this.dirty = true; }
                     this.q = ""; this.results = []; this.open = false;
                   },
-                  remove(code) { this.selected = this.selected.filter(p => p.code !== code); this.dirty = true; } }'>
+                  remove(code) { this.selected = this.selected.filter(p => p.code !== code); this.dirty = true; },
+                  async searchServices() {
+                    const frag = this.svcQ.trim();
+                    if (!frag) { this.svcResults = []; this.svcOpen = false; return; }
+                    const resp = await fetch("/org/services/search?q=" + encodeURIComponent(frag));
+                    if (resp.ok) {
+                      this.svcResults = (await resp.json()).services;
+                      this.svcOpen = this.svcResults.length > 0;
+                    }
+                  },
+                  addService(svc) {
+                    if (!this.svcSelected.some(s => s.code === svc.code)) { this.svcSelected.push(svc); this.dirty = true; }
+                    this.svcQ = ""; this.svcResults = []; this.svcOpen = false;
+                  },
+                  removeService(code) { this.svcSelected = this.svcSelected.filter(s => s.code !== code); this.dirty = true; },
+                  async searchVesselTypes() {
+                    const frag = this.vtQ.trim();
+                    if (!frag) { this.vtResults = []; this.vtOpen = false; return; }
+                    const resp = await fetch("/org/vessel-types/search?q=" + encodeURIComponent(frag));
+                    if (resp.ok) {
+                      this.vtResults = (await resp.json()).vessel_types;
+                      this.vtOpen = this.vtResults.length > 0;
+                    }
+                  },
+                  addVesselType(vt) {
+                    if (!this.vtSelected.some(v => v.code === vt.code)) { this.vtSelected.push(vt); this.dirty = true; }
+                    this.vtQ = ""; this.vtResults = []; this.vtOpen = false;
+                  },
+                  removeVesselType(code) { this.vtSelected = this.vtSelected.filter(v => v.code !== code); this.dirty = true; } }'>
 
       <section class="sv-section-card">
         <div class="sv-section-head">
@@ -110,21 +143,94 @@
       <section class="sv-section-card">
         <div class="sv-section-head">
           <h2>Services</h2>
-          <p>What you do and the ports you serve.</p>
+          <p>What you do, the vessels you serve, and the ports you cover.</p>
         </div>
         <div class="sv-section-body">
           <label for="about">Describe your services — this appears on your public page</label>
           <textarea id="about" name="about" rows="6"
                     @input="dirty = true">{{ org.about or "" }}</textarea>
 
-          <div class="sv-port-picker">
+          {#- 31q: services picker — chips combobox over the identity
+              service catalog (/org/services/search proxy). Chips with ×,
+              unlimited, one hidden "services" field per chip; add/remove
+              mark the form dirty, typing in the search box alone does NOT. -#}
+          <div class="sv-chip-picker">
+            <label for="service-search">Services — pick every survey
+                   service you offer</label>
+            <input id="service-search" x-model="svcQ"
+                   @input.debounce.300ms="searchServices()"
+                   @focus="searchServices()" @keydown.escape="svcOpen = false"
+                   autocomplete="off"
+                   placeholder="e.g. draft survey, condition, bunker"
+                   role="combobox" aria-expanded="svcOpen"
+                   aria-controls="service-results">
+            <ul id="service-results" class="sv-picker-results" x-show="svcOpen"
+                @click.outside="svcOpen = false" role="listbox">
+              <template x-for="svc in svcResults" :key="svc.code">
+                <li><button type="button" role="option" @click="addService(svc)"
+                      x-text="svc.label"></button></li>
+              </template>
+            </ul>
+            <div class="sv-chips">
+              <template x-for="svc in svcSelected" :key="svc.code">
+                <span class="sv-chip"><span x-text="svc.label"></span>
+                  <button type="button" class="sv-chip-x" @click="removeService(svc.code)"
+                          :aria-label="&quot;Remove &quot; + svc.label">×</button>
+                </span>
+              </template>
+              <template x-for="svc in svcSelected" :key="'hidden-' + svc.code">
+                <input type="hidden" name="services" :value="svc.code">
+              </template>
+            </div>
+            {% if field_errors.get("services") %}<p class="sv-field-error" role="alert">{{ field_errors.get("services") }}</p>{% endif %}
+            <small>They appear as "Services" chips on your public page, right
+                   after your description.</small>
+          </div>
+
+          {#- 31q: vessel types picker — the stage-3 ship taxonomy (the
+              same nine codes the registry uses), via
+              /org/vessel-types/search. Same chips contract as services. -#}
+          <div class="sv-chip-picker">
+            <label for="vessel-type-search">Vessel types we serve — the
+                   kinds of vessels you survey</label>
+            <input id="vessel-type-search" x-model="vtQ"
+                   @input.debounce.300ms="searchVesselTypes()"
+                   @focus="searchVesselTypes()" @keydown.escape="vtOpen = false"
+                   autocomplete="off"
+                   placeholder="e.g. tanker, bulk, container"
+                   role="combobox" aria-expanded="vtOpen"
+                   aria-controls="vessel-type-results">
+            <ul id="vessel-type-results" class="sv-picker-results" x-show="vtOpen"
+                @click.outside="vtOpen = false" role="listbox">
+              <template x-for="vt in vtResults" :key="vt.code">
+                <li><button type="button" role="option" @click="addVesselType(vt)"
+                      x-text="vt.label"></button></li>
+              </template>
+            </ul>
+            <div class="sv-chips">
+              <template x-for="vt in vtSelected" :key="vt.code">
+                <span class="sv-chip"><span x-text="vt.label"></span>
+                  <button type="button" class="sv-chip-x" @click="removeVesselType(vt.code)"
+                          :aria-label="&quot;Remove &quot; + vt.label">×</button>
+                </span>
+              </template>
+              <template x-for="vt in vtSelected" :key="'hidden-' + vt.code">
+                <input type="hidden" name="vessel_types" :value="vt.code">
+              </template>
+            </div>
+            {% if field_errors.get("vessel_types") %}<p class="sv-field-error" role="alert">{{ field_errors.get("vessel_types") }}</p>{% endif %}
+            <small>They appear as "Vessel types we serve" chips on your
+                   public page.</small>
+          </div>
+
+          <div class="sv-chip-picker">
             <label for="port-search">Ports of operation — search by port name,
                    UN/LOCODE or country</label>
             <input id="port-search" x-model="q" @input.debounce.300ms="search()"
                    @focus="search()" @keydown.escape="open = false" autocomplete="off"
                    placeholder="e.g. Al Fujayrah, AEFJR or AE"
                    role="combobox" aria-expanded="open" aria-controls="port-results">
-            <ul id="port-results" class="sv-port-results" x-show="open"
+            <ul id="port-results" class="sv-picker-results" x-show="open"
                 @click.outside="open = false" role="listbox">
               <template x-for="port in results" :key="port.code">
                 <li><button type="button" role="option" @click="add(port)"
@@ -211,16 +317,6 @@
       </div>
     </section>
     {% endif %}
-  </div>
-
-  <aside class="sv-editor-preview">
-    <section class="card sv-preview">
-      <p class="sv-preview-hint">Preview — exactly what visitors see at
-         seavix.ai/org/{{ org.slug }}.</p>
-      {% include "_public_org_content.html" %}
-    </section>
-  </aside>
-</div>
 {% endif %}
 {% endif %}
 

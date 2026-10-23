@@ -33,7 +33,8 @@ async def identity_request(
     method: str, path: str, *, json: dict | None = None,
     headers: dict | None = None,
     files: dict | None = None,
+    params: dict | None = None,
 ) -> httpx.Response:
     async with identity_client() as c:
         return await c.request(method, path, json=json, headers=headers,
-                               files=files)
+                               files=files, params=params)

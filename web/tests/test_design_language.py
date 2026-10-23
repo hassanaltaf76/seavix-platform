@@ -655,8 +655,33 @@ def test_view_mode_is_public_preview_31f():
     assert "sv-org-header" not in blade
     assert "Ports we serve" in partial
     assert "org.ports" in partial
+    # 31q: the two new chip sections ride the same partial
+    assert "org.services" in partial
+    assert "org.vessel_types" in partial
+    assert "Vessel types we serve" in partial
     assert 'class="card sv-preview"' in blade
     assert '{% if mode == "view" %}' in blade
+    # 31q: edit mode renders the partial ZERO times — the preview aside
+    # is retired; view mode owns the only include
+    assert blade.count('{% include "_public_org_content.html" %}') == 1
+
+
+def test_edit_mode_full_width_no_preview_aside_31q():
+    """31q §6 amendment: edit mode = full-width form, no preview aside;
+    preview is for review after editing (view mode, unchanged)."""
+    blade = (TEMPLATES / "org_profile.html").read_text()
+    style = STYLE
+    assert "sv-editor-preview" not in blade
+    assert "sv-editor-layout" not in blade
+    assert ".sv-editor-layout" not in style
+    assert ".sv-editor-preview" not in style
+    # the three chip pickers share the generalized picker component
+    assert blade.count('class="sv-chip-picker"') == 3
+    assert 'id="service-search"' in blade
+    assert 'id="vessel-type-search"' in blade
+    assert 'id="port-search"' in blade
+    assert ".sv-chip-picker" in style
+    assert ".sv-picker-results" in style
 
 
 def test_description_renders_as_blocks_31h():

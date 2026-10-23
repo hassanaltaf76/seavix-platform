@@ -329,13 +329,6 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
   font-weight: 600;
 }
 
-/* profile editor (§9): WYSIWYG preview as a side-by-side column at
-   ≥1280px, its own stacked section below that */
-@media (min-width: 1280px) {
-  .sv-editor-layout { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 1rem; align-items: start; }
-  .sv-editor-preview { position: sticky; top: 0; }
-}
-
 /* --------------------------------------------------------- components */
 /* table (§4): header 12/500 uppercase · row hover · tabular-nums */
 .sv-table {
@@ -505,8 +498,9 @@ button:disabled, button:disabled:hover {
 .sv-preview { border: 1px dashed var(--border-strong); border-radius: var(--r-card); }
 .sv-preview-hint { color: var(--text-2); font-size: 13px; margin: 0 0 1rem; }
 
-/* 31f: ports of operation chips (§4 chip: 999 radius, accent 8% tint) */
-.sv-org-ports { margin: 0.6rem 0; }
+/* 31f/31q: chip sections on the public card + the editor's chip pickers
+   (§4 chip: 999 radius, accent 8% tint) */
+.sv-org-ports, .sv-org-services, .sv-org-vessel-types { margin: 0.6rem 0; }
 .sv-port { white-space: nowrap; }
 .sv-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
 .sv-chip {
@@ -523,21 +517,21 @@ button:disabled, button:disabled:hover {
   padding: 0.1rem 0.3rem; border-radius: 50%;
 }
 .sv-chip-x:hover { opacity: 1; color: var(--danger); }
-.sv-port-picker { margin: 1rem 0; max-width: 560px; }
-.sv-port-picker input#port-search { width: 100%; }
-.sv-port-results {
+.sv-chip-picker { margin: 1rem 0; max-width: 560px; }
+.sv-chip-picker input { width: 100%; }
+.sv-picker-results {
   list-style: none; margin: 0.25rem 0 0; padding: 0.25rem;
   border: 1px solid var(--border); border-radius: var(--r-input);
   background: var(--surface); box-shadow: var(--e2);
   max-height: 240px; overflow-y: auto;
 }
-.sv-port-results button {
+.sv-picker-results button {
   display: block; width: 100%; text-align: left;
   background: none; border: 0; padding: 0.4rem 0.6rem;
   border-radius: var(--r-input); cursor: pointer;
   color: var(--text); font-family: inherit; font-size: 13px; min-height: auto;
 }
-.sv-port-results button:hover { background: var(--bg); color: var(--ink); }
+.sv-picker-results button:hover { background: var(--bg); color: var(--ink); }
 
 /* ============================================== PUBLIC LAYOUT (§6) */
 .sv-public {

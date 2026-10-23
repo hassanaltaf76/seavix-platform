@@ -24,7 +24,7 @@ async def get_public_org(slug: str) -> PublicOrgResponse:
         row = (
             await session.execute(
                 text(
-                    "SELECT name, type, about, website, phone, address, "
+                    "SELECT id, name, type, about, website, phone, address, "
                     "contact_email, whatsapp, logo_blob_key, profile_status "
                     "FROM organization WHERE slug = :slug"
                 ),
@@ -36,13 +36,38 @@ async def get_public_org(slug: str) -> PublicOrgResponse:
         ports = (
             await session.execute(
                 text(
-                    "SELECT port_code FROM org_port WHERE org_id = "
-                    "(SELECT id FROM organization WHERE slug = :slug) "
+                    "SELECT port_code FROM org_port WHERE org_id = :id "
                     "ORDER BY port_code"
                 ),
-                {"slug": slug},
+                {"id": row["id"]},
             )
         ).scalars().all()
+        # 31q: services + vessel types resolved to [{code, label}] rows in
+        # catalog sort order — identity owns these catalogs, so the join
+        # happens right here (contrast 31f ports: registry-owned, the web
+        # app resolves names there)
+        services = (
+            await session.execute(
+                text(
+                    "SELECT s.service_code AS code, s.label FROM "
+                    "org_service os JOIN service s "
+                    "ON s.service_code = os.service_code "
+                    "WHERE os.org_id = :id ORDER BY s.sort_order"
+                ),
+                {"id": row["id"]},
+            )
+        ).mappings().all()
+        vessel_types = (
+            await session.execute(
+                text(
+                    "SELECT v.ship_type AS code, v.label FROM "
+                    "org_vessel_type ov JOIN vessel_type v "
+                    "ON v.ship_type = ov.ship_type "
+                    "WHERE ov.org_id = :id ORDER BY v.sort_order"
+                ),
+                {"id": row["id"]},
+            )
+        ).mappings().all()
     return PublicOrgResponse(
         slug=slug,
         name=row["name"],
@@ -56,4 +81,6 @@ async def get_public_org(slug: str) -> PublicOrgResponse:
         logo_url=f"/media/{row['logo_blob_key']}" if row["logo_blob_key"] else None,
         profile_status=row["profile_status"],
         ports=list(ports),
+        services=[dict(r) for r in services],
+        vessel_types=[dict(r) for r in vessel_types],
     )

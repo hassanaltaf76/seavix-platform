@@ -210,6 +210,35 @@ async def org_ports_search(request: Request, q: str = "",
     return resp.json()
 
 
+# 31q: the services + vessel-type pickers proxy IDENTITY's own catalogs
+# (migration 0011) — same reference-data rule as the port picker. Identity
+# requires a session, so the caller's session header rides along.
+@router.get("/org/services/search")
+async def org_services_search(request: Request, q: str = "",
+                              ctx: AuthContext = Depends(require_auth)):
+    sid = session_id_from(request)
+    resp = await identity_request(
+        "GET", "/api/catalog/services/search", params={"q": q},
+        headers={SESSION_HEADER: sid} if sid else {},
+    )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="identity unavailable")
+    return resp.json()
+
+
+@router.get("/org/vessel-types/search")
+async def org_vessel_types_search(request: Request, q: str = "",
+                                  ctx: AuthContext = Depends(require_auth)):
+    sid = session_id_from(request)
+    resp = await identity_request(
+        "GET", "/api/catalog/vessel-types/search", params={"q": q},
+        headers={SESSION_HEADER: sid} if sid else {},
+    )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="identity unavailable")
+    return resp.json()
+
+
 @router.post("/org/profile")
 async def org_profile_update(
     request: Request,
@@ -220,13 +249,17 @@ async def org_profile_update(
     contact_email: str = Form(""),
     whatsapp: str = Form(""),
     ports: list[str] = Form([]),
+    services: list[str] = Form([]),
+    vessel_types: list[str] = Form([]),
     ctx: AuthContext = Depends(require_auth),
 ):
     """Edit-mode Save: services description + page slug + ports of
-    operation + the public contact block in one PUT. Proxies the identity
-    profile update; unknown port codes are rejected against the registry
-    before any write; field errors re-render edit mode inline. 31e: edits
-    require org.profile.edit — otherwise the same 404 as the page."""
+    operation + services + vessel types + the public contact block in one
+    PUT. Ports are validated against the registry before any write;
+    services/vessel types are validated by identity against its own
+    catalog (422 detail names the field); field errors re-render edit mode
+    inline. 31e: edits require org.profile.edit — otherwise the same 404
+    as the page."""
     membership = _first_membership(ctx)
     if membership is None or membership.org_type != "survey_company":
         raise HTTPException(status_code=403, detail="not available")
@@ -234,6 +267,8 @@ async def org_profile_update(
         return _page_not_found(request, ctx)
 
     codes = [p.strip().upper() for p in ports if p.strip()]
+    svc_codes = [s.strip() for s in services if s.strip()]
+    vt_codes = [v.strip() for v in vessel_types if v.strip()]
     org = await _org_with_ports(await _org_summary(membership.slug))
     resolved = await resolve_ports(codes)
     known = {p["code"] for p in resolved}
@@ -260,7 +295,8 @@ async def org_profile_update(
     sid = session_id_from(request)
     resp = await identity_request(
         "PUT", "/api/orgs/me/profile",
-        json={"slug": slug.strip(), **submitted, "ports": codes},
+        json={"slug": slug.strip(), **submitted, "ports": codes,
+              "services": svc_codes, "vessel_types": vt_codes},
         headers={SESSION_HEADER: sid} if sid else {},
     )
     if resp.status_code == 200:

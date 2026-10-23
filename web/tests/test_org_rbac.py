@@ -148,7 +148,7 @@ def test_profile_blade_rbac_matrix(arun, id_asgi):
                         assert 'name="about"' in editor.text, name
                         assert 'name="slug"' in editor.text, name
                         assert 'action="/org/profile/logo"' in editor.text, name
-                        assert 'sv-port-picker' in editor.text, name
+                        assert 'sv-chip-picker' in editor.text, name
                         # Save persists via PRG back to view mode
                         saved = await w.post(
                             "/org/profile",

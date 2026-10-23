@@ -33,6 +33,13 @@ class RegisterResponse(BaseModel):
         # later in profile settings
 
 
+class CatalogEntry(BaseModel):
+    """31q: one row of a system catalog (service / vessel type) — the code
+    is the stored vocabulary, the label is the humanized render text."""
+    code: str
+    label: str
+
+
 class PublicOrgResponse(BaseModel):
     slug: str
     name: str
@@ -50,5 +57,10 @@ class PublicOrgResponse(BaseModel):
     # ports of operation as UN/LOCODE codes (31f); the web app resolves
     # names against the registry for rendering
     ports: list[str] = []
+    # 31q: published services + vessel types, RESOLVED to [{code, label}]
+    # rows by the identity read model (identity owns these catalogs; the
+    # vessel-type codes are the same vocabulary registry uses)
+    services: list[CatalogEntry] = []
+    vessel_types: list[CatalogEntry] = []
 
     model_config = {"extra": "forbid"}
