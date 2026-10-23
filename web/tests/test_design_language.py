@@ -297,6 +297,48 @@ def test_public_profile_card_layout():
     assert "sv-org-wrap" in profile
 
 
+def test_inline_svg_icons_constrained_31o():
+    """31o (owner screenshot 23 Oct): viewBox-only inline SVGs rendered at
+    their default viewport size — huge icons on the profile preview and
+    public contact rows. Fix contract: every decorative inline SVG carries
+    explicit width/height attributes (§4 sizes: 16 contact rows, 20
+    callout, 40 empty states, 26 feature cards) AND the stylesheet pins
+    the same sizes per context with flex:none, so a missing attribute can
+    never inflate an icon again."""
+    for selector, size in (
+        (r"\.sv-contact-icon svg", "16px"),   # public contact rows (§4)
+        (r"\.sv-info-callout svg", "20px"),   # profile editor callout
+        (r"\.sv-empty svg", "40px"),          # empty states (§4)
+        (r"\.sv-skel-card svg", "40px"),      # dashboard awaiting-data cards
+        (r"\.sv-feature svg", "26px"),        # hero feature cards
+        (r"\.sv-rail-item \.sv-glyph svg", "16px"),  # blade rail
+    ):
+        rule = re.search(selector + r"\s*\{(.*?)\}", STYLE, re.S)
+        assert rule, f"missing CSS rule {selector}"
+        body = rule.group(1)
+        assert f"width: {size}" in body and f"height: {size}" in body, selector
+        assert "flex: none" in body or "flex: 0 0" in body, selector
+    # the defensive utility itself (31o): .sv-ic base + size variants, each
+    # width/height-pinned with flex:none so a missing attribute on the tag
+    # can never inflate the icon
+    for cls, size in (("sv-ic", "16px"), ("sv-ic-20", "20px"),
+                      ("sv-ic-26", "26px"), ("sv-ic-40", "40px")):
+        rule = re.search(rf"\.{cls}\s*\{{(.*?)\}}", STYLE, re.S)
+        assert rule, f"missing .{cls} utility rule"
+        assert f"width: {size}" in rule.group(1), cls
+        assert f"height: {size}" in rule.group(1), cls
+        assert "flex: none" in rule.group(1), cls
+    # audit ALL templates: every inline svg carries the utility class AND
+    # explicit dimensions
+    for tpl in sorted(TEMPLATES.glob("*.html")):
+        tags = re.findall(r"<svg\b[^>]*>", tpl.read_text())
+        for tag in tags:
+            assert 'class="sv-ic' in tag, \
+                f"{tpl.name}: svg missing sv-ic utility class: {tag[:90]}"
+            assert 'width="' in tag and 'height="' in tag, \
+                f"{tpl.name}: unconstrained inline svg: {tag[:90]}"
+
+
 def test_profile_editor_save_bar_and_callout():
     """v4 §6: soft info callout for the address state; the sticky save
     bar appears when dirty (Cancel left, Save right)."""

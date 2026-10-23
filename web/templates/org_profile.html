@@ -46,7 +46,7 @@
       "choose your address" prompt; a chosen slug gets the plain URL. -#}
   {% if slug_is_placeholder %}
   <p class="sv-info-callout sv-slug-callout" role="status">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+    <svg class="sv-ic sv-ic-20" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
     <span><strong>Choose your public address: seavix.ai/org/{{ org.slug }}</strong><br>
           <span class="sv-muted">This address was generated when you registered —
           pick one that matches your company. It is where your SeaVix page
@@ -54,7 +54,7 @@
   </p>
   {% else %}
   <p class="sv-info-callout sv-slug-callout" role="status">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+    <svg class="sv-ic sv-ic-20" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
     <span><strong>Your public page: seavix.ai/org/{{ org.slug }}</strong>
           {% if org.profile_status == 'live' %}
           — <a href="/org/{{ org.slug }}">View it live</a>

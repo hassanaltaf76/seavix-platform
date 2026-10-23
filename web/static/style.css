@@ -111,6 +111,15 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
 .sv-skip:focus { left: 0; }
 .sv-inline-form { display: inline; }
 
+/* 31o: defensive icon utility — every inline SVG carries .sv-ic PLUS an
+   explicit width/height attribute, so a missing attribute can never
+   inflate an icon again (owner screenshot 23 Oct). Base = the §4 row/rail
+   size; suffixes pin the 20 callout, 26 feature-card, 40 empty-state sizes. */
+.sv-ic { width: 16px; height: 16px; flex: none; }
+.sv-ic-20 { width: 20px; height: 20px; flex: none; }
+.sv-ic-26 { width: 26px; height: 26px; flex: none; }
+.sv-ic-40 { width: 40px; height: 40px; flex: none; }
+
 /* --------------------------------------------------------- top bar */
 .sv-topbar {
   display: flex; align-items: center; gap: 0.75rem;
@@ -242,6 +251,7 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
   box-shadow: inset 3px 0 0 var(--accent);
 }
 .sv-rail-item .sv-glyph { flex: 0 0 1.15rem; text-align: center; color: inherit; }
+.sv-rail-item .sv-glyph svg { width: 16px; height: 16px; flex: none; vertical-align: middle; }
 .sv-rail-badge {
   margin-left: auto;
   font-size: 12px; line-height: 16px; font-weight: 500;
@@ -396,7 +406,7 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
   background: var(--surface);
   display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
 }
-.sv-empty svg { width: 40px; height: 40px; stroke-width: 1.5; color: var(--text-2); margin-bottom: 0.3rem; }
+.sv-empty svg { width: 40px; height: 40px; flex: none; stroke-width: 1.5; color: var(--text-2); margin-bottom: 0.3rem; }
 .sv-empty h2 { margin: 0; }
 .sv-empty p { margin: 0 0 0.75rem; max-width: 420px; }
 
@@ -663,7 +673,7 @@ button:disabled, button:disabled:hover {
   transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 .sv-feature:hover { transform: translateY(-1px); box-shadow: var(--e2); }
-.sv-feature svg { width: 28px; height: 28px; stroke-width: 1.5; color: var(--accent); margin-bottom: 0.75rem; }
+.sv-feature svg { width: 26px; height: 26px; flex: none; stroke-width: 1.5; color: var(--accent); margin-bottom: 0.75rem; }
 .sv-feature h2 { margin: 0 0 0.4rem; }
 .sv-feature p { margin: 0 0 0.75rem; color: var(--text-2); font-size: 13px; line-height: 20px; }
 .sv-feature a { font-weight: 500; }
@@ -707,7 +717,7 @@ button:disabled, button:disabled:hover {
   background: var(--bg); border-radius: var(--r-input);
   color: var(--text-2);
 }
-.sv-contact-icon svg { width: 16px; height: 16px; stroke-width: 1.5; }
+.sv-contact-icon svg { width: 16px; height: 16px; flex: none; stroke-width: 1.5; }
 .sv-contact-body { min-width: 0; flex: 1; }
 .sv-contact-label { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-2); }
 .sv-contact-value { color: var(--ink); }
@@ -825,7 +835,7 @@ button:disabled, button:disabled:hover {
 /* dashboard skeleton cards (§6): look like a dashboard awaiting data */
 .sv-dash-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1.25rem; }
 @media (max-width: 900px) { .sv-dash-grid { grid-template-columns: 1fr; } }
-.sv-skel-card svg { width: 40px; height: 40px; stroke-width: 1.5; color: var(--text-2); margin-bottom: 0.75rem; }
+.sv-skel-card svg { width: 40px; height: 40px; flex: none; stroke-width: 1.5; color: var(--text-2); margin-bottom: 0.75rem; }
 .sv-skel-card h2 { margin: 0 0 0.3rem; }
 .sv-skel-card p { margin: 0; color: var(--text-2); font-size: 13px; }
 
@@ -839,7 +849,7 @@ button:disabled, button:disabled:hover {
   max-width: none;
   font-size: 13px; line-height: 20px;
 }
-.sv-info-callout svg { flex: 0 0 18px; width: 18px; height: 18px; stroke-width: 1.5; margin-top: 1px; }
+.sv-info-callout svg { flex: 0 0 20px; width: 20px; height: 20px; stroke-width: 1.5; margin-top: 1px; }
 .sv-info-callout strong { font-weight: 600; }
 .sv-info-callout .sv-muted { color: var(--text-2); }
 
