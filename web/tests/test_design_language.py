@@ -405,12 +405,17 @@ def test_logo_pinned_to_top_left_corner_31s():
 
 def test_structured_address_and_dial_codes_31t():
     """31t (owner 23 Oct): address = normal fields + country; phone and
-    WhatsApp carry a prepopulated country code. Contract: the editor
-    renders the structured address fields, the full-ISO Country select
-    and the two dial-code selects; the legacy free-text address survives
-    as a hidden preserve field; the shared partial renders structured
-    lines (address_lines helper) with cc-aware tel:/wa.me hrefs, and
-    structured wins over legacy via an explicit elif."""
+    WhatsApp carry a prepopulated country code. 31u (owner 23 Oct): the
+    three country fields are searchable single-select comboboxes with
+    flags over the vendored list (client-side filter, no endpoint); a
+    leading 0 in the national number survives in the display and is
+    dropped from the cc-set tel:/wa.me hrefs (E.164 trunk prefix).
+    Contract: the editor renders the structured address fields and the
+    three .sv-search-select comboboxes (hidden inputs keep the 31t field
+    names); the legacy free-text address survives as a hidden preserve
+    field; the shared partial renders structured lines (address_lines
+    helper) with cc-aware tel:/wa.me hrefs, and structured wins over
+    legacy via an explicit elif."""
     from webapp.countries import COUNTRIES, country_name, split_dial
 
     editor = (TEMPLATES / "org_profile.html").read_text()
@@ -420,9 +425,29 @@ def test_structured_address_and_dial_codes_31t():
     assert 'type="hidden" name="address"' in editor  # legacy preserve
     assert editor.count('name="phone"') == 1
     assert editor.count('name="whatsapp"') == 1
-    # the Country select iterates the vendored list server-side
-    assert "{% for name, alpha2, dial in countries %}" in editor
-    assert 'value="{{ dial }}"' in editor  # dial selects reuse the list
+    # 31u: the three selects are .sv-search-select comboboxes over the
+    # vendored list injected once (window.svCountries, flags included);
+    # the value rides a hidden input per 31t field name; typing in the
+    # search box is NOT dirty-bound — pick/clear are (the 31q contract)
+    assert "window.svCountries" in editor
+    assert editor.count("svSearchSelect({") == 3
+    assert 'valueKey: "iso2"' in editor                 # country picker
+    assert editor.count('valueKey: "dial"') == 2        # dial-code pickers
+    assert "@input.debounce.150ms=" in editor
+    assert '@click="pick(c)"' in editor
+    assert '@click="clear()"' in editor
+    assert '@sv-dirty="dirty = true"' in editor  # form listener
+    assert editor.count("this.$dispatch('sv-dirty')") == 2  # pick + clear
+    # flags: regional-indicator emoji from the alpha-2 letters, rendered
+    # server-side into the injected items (no assets, no CDN)
+    filters_src = (Path(__file__).resolve().parents[1]
+                   / "webapp" / "filters.py").read_text()
+    assert 'env.globals["flag"] = flag' in filters_src
+    assert "0x1F1E6" in filters_src
+    assert 'env.filters["tojson_u"] = tojson_u' in filters_src  # literal
+    # UTF-8 for the flag/label injections (tojson keeps ensure_ascii)
+    assert 'c.flag + " " + c.dial + " — " + c.name' in editor
+    assert 'c.flag + " " + c.name' in editor
 
     # the vendored data: ISO alpha-2 + ITU dial codes, alpha-sorted
     assert len(COUNTRIES) > 230
@@ -438,10 +463,15 @@ def test_structured_address_and_dial_codes_31t():
     assert "{% elif org.address %}" in partial        # legacy fallback
     assert '{% if org.phone_cc %}' in partial         # cc-aware tel:
     assert '{% if org.whatsapp_cc %}' in partial      # cc-aware wa.me
+    # 31u: the cc branches drop ONE leading trunk 0 from the national
+    # digits; the cc-less branches are byte-identical to 31t
+    assert "org.phone | strip_trunk" in partial
+    assert "org.whatsapp | strip_trunk" in partial
+    assert 'href="tel:{{ org.phone }}"' in partial
+    assert 'https://wa.me/{{ org.whatsapp | digits }}' in partial
     # the country NAME resolution lives in the address_lines helper
-    filters_src = (Path(__file__).resolve().parents[1]
-                   / "webapp" / "filters.py").read_text()
     assert "country_name" in filters_src
+    assert "def strip_trunk" in filters_src           # E.164 trunk drop
 
     # the address_lines helper: empties skipped, "city, state postal"
     from webapp.filters import address_lines
@@ -452,9 +482,12 @@ def test_structured_address_and_dial_codes_31t():
     ]
     assert address_lines({}) == []
     assert address_lines({"postal_code": "123"}) == ["123"]
-    # cc-row + address grid styling present
+    # cc-row + address grid + combobox styling present
     assert ".sv-cc-row" in STYLE
     assert ".sv-addr-grid" in STYLE
+    assert ".sv-search-select" in STYLE
+    assert ".sv-search-select-x" in STYLE
+    assert ".sv-search-select-option.is-active" in STYLE
 
 
 def test_inline_svg_icons_constrained_31o():
@@ -556,13 +589,16 @@ def test_page_shell_is_post_auth_only():
     assert "/static/vendor/alpine.min.js" in BASE
     assert "sv-skip" in BASE
     assert "railCollapsed" in BASE
-    # no global search anywhere (returns with the ops console)
+    # no global search anywhere (returns with the ops console); 31u
+    # exempts its .sv-search-select country comboboxes — that class is
+    # the chip pickers' single-select cousin, not a global search bar
     assert 'action="/search"' not in BASE
     assert "sv-search" not in BASE
     for tpl in TEMPLATES.glob("*.html"):
         text = tpl.read_text()
         assert 'action="/search"' not in text, f"{tpl.name}: search markup"
-        assert "sv-search" not in text, f"{tpl.name}: search markup"
+        assert "sv-search" not in text.replace("sv-search-select", ""), \
+            f"{tpl.name}: search markup"
         assert "All services" not in text, f"{tpl.name}: services section"
 
 

@@ -40,6 +40,34 @@ def digits(text: Any) -> str:
     return re.sub(r"\D", "", str(text or ""))
 
 
+def strip_trunk(text: Any) -> str:
+    """31u: national digits with ONE leading trunk 0 dropped (E.164 trunk
+    prefix). Only the cc-set branch of the tel:/wa.me hrefs applies this —
+    cc-less numbers keep their leading zero untouched."""
+    d = digits(text)
+    return d[1:] if d.startswith("0") else d
+
+
+def flag(iso2: Any) -> str:
+    """31u: ISO alpha-2 -> regional-indicator emoji (AE -> 🇦🇪) — pure chr
+    math off the two letters, no image assets, no flag CDN. Empty or
+    non-alpha-2 input -> ""."""
+    code = str(iso2 or "").upper()
+    if len(code) != 2 or not code.isascii() or not code.isalpha():
+        return ""
+    return "".join(chr(0x1F1E6 + ord(ch) - ord("A")) for ch in code)
+
+
+def tojson_u(value: Any) -> Markup:
+    """31u: Jinja's tojson with literal UTF-8 output (flags and em dashes
+    stay readable in the served HTML). htmlsafe_json_dumps still escapes
+    <>&' to \\uXXXX, so the result is safe inside single-quoted x-data
+    attributes; tojson keeps its default ensure_ascii=True behavior."""
+    from jinja2.utils import htmlsafe_json_dumps
+
+    return htmlsafe_json_dumps(value, ensure_ascii=False)
+
+
 def address_lines(org: Any) -> list[str]:
     """31t: the structured public address as display lines (empties
     skipped): line1 / line2 / "city, state postal" / COUNTRY NAME. An
@@ -76,9 +104,20 @@ def address_lines(org: Any) -> list[str]:
 def install(env: Any) -> None:
     env.filters["paragraphs"] = paragraphs
     env.filters["digits"] = digits
+    env.filters["strip_trunk"] = strip_trunk
+    # 31u: like tojson but literal UTF-8 — flags/em dashes stay readable
+    # in the served HTML. The <>&' html-safe escaping is retained, so
+    # single-quoted x-data attributes stay safe. tojson itself keeps
+    # its default ensure_ascii=True contract (31r pins the escaped
+    # form inside x-data).
+    env.filters["tojson_u"] = tojson_u
     # 31t: the shared public partial resolves the ISO alpha-2 country
     # code to its display name at render time (vendored countries.py),
     # and builds the structured address lines (empties skipped)
     from .countries import country_name
     env.globals["country_name"] = country_name
     env.globals["address_lines"] = address_lines
+    # 31u: regional-indicator flag emoji for an ISO alpha-2 code — the
+    # country/dial-code comboboxes render it server-side into the
+    # options and the pre-selected label.
+    env.globals["flag"] = flag

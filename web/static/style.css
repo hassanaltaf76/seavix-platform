@@ -457,15 +457,15 @@ button:disabled, button:disabled:hover {
 .form input::placeholder, .sv-form input::placeholder,
 .form textarea::placeholder, .sv-form textarea::placeholder { color: var(--text-2); }
 .form small, .sv-form small { color: var(--text-2); font-size: 12px; }
-/* 31t: country-code select + national-number input pair; structured
+/* 31t: country-code picker + national-number input pair; structured
    address grid (city/state/postal/country on two columns) */
-.sv-cc-row { display: flex; gap: 0.5rem; }
-.sv-cc-row select { flex: 0 0 15rem; width: auto; }
-.sv-cc-row input { flex: 1; }
+.sv-cc-row { display: flex; gap: 0.5rem; align-items: flex-start; }
+.sv-cc-row .sv-cc-picker { flex: 0 0 15rem; }
+.sv-cc-row > input { flex: 1; }
 .sv-addr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
 @media (max-width: 640px) {
   .sv-addr-grid { grid-template-columns: 1fr; }
-  .sv-cc-row select { flex-basis: 11rem; }
+  .sv-cc-row .sv-cc-picker { flex-basis: 11rem; }
 }
 .radio-row { display: flex; gap: 1rem; flex-wrap: wrap; }
 .radio-row label { display: flex; gap: 0.35rem; align-items: center; font-weight: 500; margin: 0.4rem 0; }
@@ -542,6 +542,26 @@ button:disabled, button:disabled:hover {
   color: var(--text); font-family: inherit; font-size: 13px; min-height: auto;
 }
 .sv-picker-results button:hover { background: var(--bg); color: var(--ink); }
+
+/* 31u: the single-select searchable country/dial-code combobox (chip
+   picker's cousin) — the results list overlays like a <select> dropdown;
+   the × clear sits inside the input box */
+.sv-search-select { position: relative; }
+.sv-search-select-box { position: relative; display: flex; align-items: center; }
+.sv-search-select-box input { width: 100%; padding-right: 1.9rem; }
+.sv-search-select-x {
+  position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%);
+  background: none; border: 0; cursor: pointer;
+  color: var(--text-2); opacity: 0.75;
+  font-size: 1rem; line-height: 1; padding: 0.15rem 0.35rem; border-radius: 50%;
+}
+.sv-search-select-x:hover { opacity: 1; color: var(--danger); }
+.sv-search-select .sv-picker-results {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 30;
+  margin-top: 0.15rem;
+}
+.sv-search-select-option.is-active,
+.sv-search-select-option:hover { background: var(--bg); color: var(--ink); }
 
 /* ============================================== PUBLIC LAYOUT (§6) */
 .sv-public {

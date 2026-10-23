@@ -1,5 +1,5 @@
-"""31m+31t: public contact details on the org profile — end to end through
-the web app and the identity service (shared loop, real dev DB).
+"""31m+31t+31u: public contact details on the org profile — end to end
+through the web app and the identity service (shared loop, real dev DB).
 
 31m: the public Contact section (present only when a field is set;
 tel:/mailto:/wa.me links); preview == public byte-equality through the
@@ -11,7 +11,14 @@ codes. Structured wins at render when ANY structured field is set; a
 LEGACY-only profile (free-text address / cc-embedded numbers written
 straight to the DB, as 31m-era data looks) still renders exactly as 31m
 did — back-compat is pinned here.
+
+31u: the three country fields are searchable flag comboboxes
+(.sv-search-select over the vendored list — client-side filter, no
+endpoint); the saved value pre-fills the hidden field + label; a leading
+0 in the national number is kept as typed and dropped from the tel:/wa.me
+hrefs when (and only when) a country code is set.
 """
+import json
 import re
 import uuid
 
@@ -65,21 +72,23 @@ def _input_value(html: str, name: str) -> str:
     return m.group(1)
 
 
-def _select_value(html: str, name: str) -> str:
+def _combobox_value(html: str, name: str) -> str:
+    """31u: the combobox's value rides a hidden input carrying the 31t
+    field name — rendered with a static value (no-JS + tests) that Alpine
+    keeps in sync."""
     m = re.search(
-        rf'<select[^>]*name="{name}"[^>]*>(.*?)</select>', html, re.S
+        rf'<input type="hidden" name="{name}"[^>]*?value="([^"]*)"', html
     )
-    assert m, f"no select {name}"
-    sel = re.search(r'<option value="([^"]*)" selected', m.group(1))
-    return sel.group(1) if sel else ""
+    assert m, f"no hidden input {name}"
+    return m.group(1)
 
 
-def _select_options(html: str, name: str) -> list[str]:
-    m = re.search(
-        rf'<select[^>]*name="{name}"[^>]*>(.*?)</select>', html, re.S
-    )
-    assert m, f"no select {name}"
-    return re.findall(r'<option value="([^"]*)"', m.group(1))
+def _sv_countries(html: str) -> list[dict]:
+    """31u: the vendored countries list injected once for client-side
+    filtering (flags included)."""
+    m = re.search(r"window\.svCountries = (\[.*?\]);</script>", html, re.S)
+    assert m, "no window.svCountries injection"
+    return json.loads(m.group(1))
 
 
 def test_structured_contact_block_round_trip_links_and_byte_equality(arun, id_asgi):
@@ -146,11 +155,13 @@ def test_structured_contact_block_round_trip_links_and_byte_equality(arun, id_as
     arun(scenario())
 
 
-def test_editor_selects_render_all_countries_with_saved_value_selected(arun, id_asgi):
-    """31t: the Country select lists the full ISO set alpha-sorted; the
-    dial-code selects list "+971 — United Arab Emirates" style options;
-    after a save, every select re-renders with the saved value selected;
-    legacy numbers pre-fill the split (cc select + national input)."""
+def test_editor_comboboxes_render_all_countries_with_saved_value_selected(
+    arun, id_asgi
+):
+    """31u: the Country / phone-cc / WhatsApp-cc <select>s are searchable
+    single-select comboboxes over the vendored list (injected once, flags
+    included); the saved value pre-fills the hidden field AND the label;
+    legacy numbers pre-fill the split (cc picker + national input)."""
     from webapp.countries import COUNTRIES
 
     async def scenario():
@@ -171,18 +182,29 @@ def test_editor_selects_render_all_countries_with_saved_value_selected(arun, id_
 
                 editor = await w.get("/org/profile?view=edit")
                 assert editor.status_code == 200
-                countries = _select_options(editor.text, "country_code")
-                assert len(countries) == len(COUNTRIES) + 1  # + empty opt
-                # alpha-sorted by country name (the module sorts COUNTRIES)
-                assert countries[1:] == [a2 for _, a2, _ in COUNTRIES]
-                assert _select_value(editor.text, "country_code") == COUNTRY
-                for select in ("phone_cc", "whatsapp_cc"):
-                    options = _select_options(editor.text, select)
-                    assert len(options) == len(COUNTRIES) + 1
-                    assert PHONE_CC in options
-                    assert f"{PHONE_CC} — United Arab Emirates" \
-                        in editor.text
-                    assert _select_value(editor.text, select) == PHONE_CC
+                # the injected list IS the vendored list: same length,
+                # alpha-sorted, dial codes + regional-indicator flags
+                items = _sv_countries(editor.text)
+                assert len(items) == len(COUNTRIES)
+                names = [c["name"] for c in items]
+                assert names == [n for n, _, _ in COUNTRIES]
+                ae = next(c for c in items if c["iso2"] == "AE")
+                assert ae == {"name": "United Arab Emirates", "iso2": "AE",
+                              "dial": "+971", "flag": "🇦🇪"}
+                # every entry carries a two-codepoint regional-indicator flag
+                for c in items:
+                    assert len(c["flag"]) == 2
+                # three comboboxes, all .sv-search-select over that list
+                assert editor.text.count("svSearchSelect({") == 3
+                for results_id in ("country-code-results", "phone-cc-results",
+                                   "whatsapp-cc-results"):
+                    assert f'id="{results_id}"' in editor.text
+                # saved value pre-selected: hidden field + flag label
+                assert _combobox_value(editor.text, "country_code") == COUNTRY
+                assert _combobox_value(editor.text, "phone_cc") == PHONE_CC
+                assert _combobox_value(editor.text, "whatsapp_cc") == WA_CC
+                assert "🇦🇪 United Arab Emirates" in editor.text
+                assert "🇦🇪 +971 — United Arab Emirates" in editor.text
                 # the structured text fields reseed too
                 assert _input_value(editor.text, "address_line1") == LINE1
                 assert _input_value(editor.text, "city") == CITY
@@ -190,7 +212,8 @@ def test_editor_selects_render_all_countries_with_saved_value_selected(arun, id_
                 assert _input_value(editor.text, "whatsapp") == WHATSAPP
 
                 # legacy prefill split: a 31m-era value with the dial
-                # code embedded seeds cc + national separately
+                # code embedded seeds cc + national separately; +44 maps
+                # to the first alpha-sorted entry carrying it (Guernsey)
                 from sqlalchemy import text as sql
 
                 from app.db import SessionLocal
@@ -203,8 +226,9 @@ def test_editor_selects_render_all_countries_with_saved_value_selected(arun, id_
                     )
                     await s.commit()
                 editor2 = await w.get("/org/profile?view=edit")
-                assert _select_value(editor2.text, "whatsapp_cc") == "+44"
+                assert _combobox_value(editor2.text, "whatsapp_cc") == "+44"
                 assert _input_value(editor2.text, "whatsapp") == "7700 900123"
+                assert "🇬🇬 +44 — Guernsey" in editor2.text
 
     arun(scenario())
 
@@ -381,9 +405,9 @@ def test_contact_email_never_prefilled_from_account_email(arun, id_asgi):
                               "state", "postal_code", "phone", "whatsapp",
                               "contact_email"):
                     assert _input_value(editor.text, field) == "", field
-                assert _select_value(editor.text, "country_code") == ""
-                assert _select_value(editor.text, "phone_cc") == ""
-                assert _select_value(editor.text, "whatsapp_cc") == ""
+                assert _combobox_value(editor.text, "country_code") == ""
+                assert _combobox_value(editor.text, "phone_cc") == ""
+                assert _combobox_value(editor.text, "whatsapp_cc") == ""
                 # and nowhere on the whole editor blade either
                 assert email not in editor.text
 

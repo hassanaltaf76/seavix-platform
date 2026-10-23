@@ -43,8 +43,79 @@
     view mode still renders it). Three chip pickers (services, vessel
     types, ports) ride one Save with dirty-tracking. -#}
 {% if org %}
+    {#- 31u: the vendored countries list as combobox items (flags computed
+        server-side) + the shared .sv-search-select factory. Both must
+        exist before Alpine initializes; they are plain scripts. -#}
+    <script>window.svCountries = {{ sv_countries | tojson_u }};</script>
+    <script>
+    // 31u: .sv-search-select — the chip pickers' SINGLE-select cousin: a
+    // searchable combobox over the vendored countries list (client-side
+    // filter, debounced — no endpoint; the list is a constant). The
+    // visible input shows the query while typing and the selected label
+    // otherwise; the picked VALUE rides a hidden input, so the plain
+    // form POST keeps its 31t field names (country_code / phone_cc /
+    // whatsapp_cc). Pick/clear mark the form dirty; typing alone does
+    // NOT (the 31q dirty contract).
+    function svSearchSelect(opts) {
+      return {
+        items: opts.items,
+        valueKey: opts.valueKey,
+        format: opts.format,
+        value: opts.value || "",
+        label: opts.label || "",
+        q: "",
+        needle: "",
+        open: false,
+        active: -1,
+        filtered() {
+          const q = this.needle.toLowerCase();
+          if (!q) return this.items;
+          return this.items.filter((c) =>
+            c.name.toLowerCase().includes(q) ||
+            c.dial.toLowerCase().includes(q) ||
+            c.iso2.toLowerCase().includes(q));
+        },
+        show() { this.open = true; this.active = -1; },
+        hide() { this.open = false; this.q = ""; this.needle = ""; this.active = -1; },
+        pick(c) {
+          this.value = c[this.valueKey];
+          this.label = this.format(c);
+          this.hide();
+          this.$dispatch('sv-dirty');   // 31q contract: a pick IS dirty
+        },
+        clear() {
+          this.value = ""; this.label = ""; this.q = "";
+          this.needle = ""; this.open = false; this.active = -1;
+          this.$dispatch('sv-dirty');   // clearing IS dirty too
+        },
+        move(step) {
+          const r = this.filtered();
+          if (!r.length) return;
+          this.active = this.active < 0
+            ? (step > 0 ? 0 : r.length - 1)
+            : (this.active + step + r.length) % r.length;
+          this.$nextTick(() => {
+            const list = this.$refs.list;
+            const el = list && list.querySelector(
+              ".sv-search-select-option.is-active");
+            if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+          });
+        },
+        onKey(e) {
+          if (e.key === "ArrowDown") { e.preventDefault(); this.open = true; this.move(1); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); this.open = true; this.move(-1); }
+          else if (e.key === "Enter" && this.open && (this.active >= 0 || this.needle)) {
+            const r = this.filtered();
+            const c = r[this.active >= 0 ? this.active : 0];
+            if (c) { e.preventDefault(); this.pick(c); }
+          }
+        },
+      };
+    }
+    </script>
     <form method="post" action="/org/profile" class="sv-form"
           @input="valid = $el.checkValidity()"
+          @sv-dirty="dirty = true"
           x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false,
                   svcSelected: {{ org.services | tojson }},
                   svcQ: "", svcResults: [], svcOpen: false,
@@ -293,30 +364,89 @@
             </div>
             <div>
               <label for="country_code">Country</label>
-              <select id="country_code" name="country_code" @change="dirty = true">
-                <option value="">—</option>
-                {% for name, alpha2, dial in countries %}
-                <option value="{{ alpha2 }}"{% if org.country_code == alpha2 %} selected{% endif %}>{{ name }}</option>
-                {% endfor %}
-              </select>
+              {#- 31u: searchable single-select over the vendored list —
+                  options and the selected value carry a flag (regional-
+                  indicator emoji, server-side). × clears; typing alone is
+                  not dirty (31q contract). -#}
+              <div class="sv-search-select"
+                   x-data='svSearchSelect({ items: svCountries, valueKey: "iso2",
+                     format: (c) => c.flag + " " + c.name,
+                     value: {{ (org.country_code or "") | tojson_u }},
+                     label: {{ country_label | tojson_u }} })'
+                   @click.outside="hide()">
+                <input type="hidden" name="country_code"
+                       value="{{ org.country_code or "" }}" :value="value">
+                <div class="sv-search-select-box">
+                  <input id="country_code" type="text" autocomplete="off"
+                         role="combobox" :aria-expanded="open"
+                         aria-controls="country-code-results"
+                         placeholder="—" :value="q || label"
+                         @input="q = $event.target.value"
+                         @input.debounce.150ms="needle = q.trim(); open = true; active = -1"
+                         @focus="show()" @keydown="onKey($event)"
+                         @keydown.escape="hide()">
+                  <button type="button" class="sv-search-select-x" x-show="value"
+                          x-cloak @click="clear()"
+                          aria-label="Clear country">×</button>
+                </div>
+                <ul id="country-code-results" x-ref="list"
+                    class="sv-picker-results" x-show="open" role="listbox">
+                  <template x-for="(c, idx) in filtered()" :key="c.iso2">
+                    <li><button type="button" role="option"
+                          class="sv-search-select-option"
+                          :class="idx === active ? 'is-active' : ''"
+                          :aria-selected="value === c.iso2"
+                          @click="pick(c)"
+                          x-text="format(c)"></button></li>
+                  </template>
+                </ul>
+              </div>
             </div>
           </div>
 
           <label for="phone_cc">Phone</label>
           <div class="sv-cc-row">
-            <select id="phone_cc" name="phone_cc" @change="dirty = true"
-                    aria-label="Phone country code">
-              <option value="">code</option>
-              {% for name, alpha2, dial in countries %}
-              <option value="{{ dial }}"{% if phone_prefill.cc == dial %} selected{% endif %}>{{ dial }} — {{ name }}</option>
-              {% endfor %}
-            </select>
+            <div class="sv-search-select sv-cc-picker"
+                 x-data='svSearchSelect({ items: svCountries, valueKey: "dial",
+                   format: (c) => c.flag + " " + c.dial + " — " + c.name,
+                   value: {{ phone_prefill.cc | tojson_u }},
+                   label: {{ phone_prefill.label | tojson_u }} })'
+                 @click.outside="hide()">
+              <input type="hidden" name="phone_cc"
+                     value="{{ phone_prefill.cc }}" :value="value">
+              <div class="sv-search-select-box">
+                <input id="phone_cc" type="text" autocomplete="off"
+                       role="combobox" :aria-expanded="open"
+                       aria-controls="phone-cc-results"
+                       placeholder="code" :value="q || label"
+                       @input="q = $event.target.value"
+                       @input.debounce.150ms="needle = q.trim(); open = true; active = -1"
+                       @focus="show()" @keydown="onKey($event)"
+                       @keydown.escape="hide()">
+                <button type="button" class="sv-search-select-x" x-show="value"
+                        x-cloak @click="clear()"
+                        aria-label="Clear phone country code">×</button>
+              </div>
+              <ul id="phone-cc-results" x-ref="list"
+                  class="sv-picker-results" x-show="open" role="listbox">
+                <template x-for="(c, idx) in filtered()" :key="c.iso2">
+                  <li><button type="button" role="option"
+                        class="sv-search-select-option"
+                        :class="idx === active ? 'is-active' : ''"
+                        :aria-selected="value === c.dial"
+                        @click="pick(c)"
+                        x-text="format(c)"></button></li>
+                </template>
+              </ul>
+            </div>
             <input id="phone" name="phone" type="tel"
-                   placeholder="national number, e.g. 50 123 4567"
+                   placeholder="national number, e.g. 50 123 4567 (a leading 0 is fine)"
                    value="{{ phone_prefill.national }}" @input="dirty = true">
           </div>
           <small>Shown on your public page as a call link with the country
-                 code — e.g. +971 50 123 4567.</small>
+                 code — e.g. +971 50 123 4567. A leading 0 in the national
+                 number is kept as you type it and dropped from the
+                 link.</small>
           {% if field_errors.get("phone") %}<p class="sv-field-error" role="alert">{{ field_errors.get("phone") }}</p>{% endif %}
           {% if field_errors.get("phone_cc") %}<p class="sv-field-error" role="alert">{{ field_errors.get("phone_cc") }}</p>{% endif %}
 
@@ -329,19 +459,46 @@
 
           <label for="whatsapp_cc">WhatsApp number</label>
           <div class="sv-cc-row">
-            <select id="whatsapp_cc" name="whatsapp_cc" @change="dirty = true"
-                    aria-label="WhatsApp country code">
-              <option value="">code</option>
-              {% for name, alpha2, dial in countries %}
-              <option value="{{ dial }}"{% if whatsapp_prefill.cc == dial %} selected{% endif %}>{{ dial }} — {{ name }}</option>
-              {% endfor %}
-            </select>
+            <div class="sv-search-select sv-cc-picker"
+                 x-data='svSearchSelect({ items: svCountries, valueKey: "dial",
+                   format: (c) => c.flag + " " + c.dial + " — " + c.name,
+                   value: {{ whatsapp_prefill.cc | tojson_u }},
+                   label: {{ whatsapp_prefill.label | tojson_u }} })'
+                 @click.outside="hide()">
+              <input type="hidden" name="whatsapp_cc"
+                     value="{{ whatsapp_prefill.cc }}" :value="value">
+              <div class="sv-search-select-box">
+                <input id="whatsapp_cc" type="text" autocomplete="off"
+                       role="combobox" :aria-expanded="open"
+                       aria-controls="whatsapp-cc-results"
+                       placeholder="code" :value="q || label"
+                       @input="q = $event.target.value"
+                       @input.debounce.150ms="needle = q.trim(); open = true; active = -1"
+                       @focus="show()" @keydown="onKey($event)"
+                       @keydown.escape="hide()">
+                <button type="button" class="sv-search-select-x" x-show="value"
+                        x-cloak @click="clear()"
+                        aria-label="Clear WhatsApp country code">×</button>
+              </div>
+              <ul id="whatsapp-cc-results" x-ref="list"
+                  class="sv-picker-results" x-show="open" role="listbox">
+                <template x-for="(c, idx) in filtered()" :key="c.iso2">
+                  <li><button type="button" role="option"
+                        class="sv-search-select-option"
+                        :class="idx === active ? 'is-active' : ''"
+                        :aria-selected="value === c.dial"
+                        @click="pick(c)"
+                        x-text="format(c)"></button></li>
+                </template>
+              </ul>
+            </div>
             <input id="whatsapp" name="whatsapp" type="text"
-                   placeholder="national number, e.g. 50 123 4567"
+                   placeholder="national number, e.g. 50 123 4567 (a leading 0 is fine)"
                    value="{{ whatsapp_prefill.national }}" @input="dirty = true">
           </div>
           <small>International format — shown on your public page as a
-                 Chat on WhatsApp link.</small>
+                 Chat on WhatsApp link. A leading 0 in the national number
+                 is kept as you type it and dropped from the link.</small>
           {% if field_errors.get("whatsapp") %}<p class="sv-field-error" role="alert">{{ field_errors.get("whatsapp") }}</p>{% endif %}
           {% if field_errors.get("whatsapp_cc") %}<p class="sv-field-error" role="alert">{{ field_errors.get("whatsapp_cc") }}</p>{% endif %}
         </div>

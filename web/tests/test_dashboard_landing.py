@@ -226,12 +226,16 @@ def test_save_is_disabled_until_dirty(arun, id_asgi):
                 assert "x-data='{ selected:" in editor.text
                 assert "dirty: false" in editor.text
                 assert ':disabled="!(dirty && valid)"' in editor.text  # v4 §4: disabled until dirty AND valid
-                # 31t: about + slug + structured contact text inputs
-                # (address_line1/2, city, state, postal_code, phone,
-                # contact_email, whatsapp); the three selects dirty via
-                # @change, and the pickers via this.dirty in add/remove
+                # 31u: the three country pickers are comboboxes — the
+                # search input is NOT dirty-bound (the 31q contract:
+                # typing alone is not dirty); pick/clear dispatch
+                # sv-dirty, which the form turns into dirty
                 assert editor.text.count('@input="dirty = true"') == 10
-                assert editor.text.count('@change="dirty = true"') == 3
+                assert editor.text.count('@change="dirty = true"') == 0
+                assert editor.text.count('@click="pick(c)"') == 3
+                assert editor.text.count('@click="clear()"') == 3
+                assert editor.text.count('@sv-dirty') == 1  # form listener
+                assert editor.text.count("sv-dirty") == 3  # pick/clear dispatch
                 # the disabled styling ships in the stylesheet
                 import pathlib
 

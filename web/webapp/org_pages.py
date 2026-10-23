@@ -43,7 +43,8 @@ from .auth import (
     home_for,
     session_id_from,
 )
-from .countries import COUNTRIES, split_dial
+from .countries import COUNTRIES, country_name, split_dial
+from .filters import flag
 from .filters import install as install_template_filters
 from .identity_client import identity_request
 from .registry_client import registry_request, resolve_ports
@@ -110,6 +111,34 @@ def _is_generated_slug(name: str, slug: str) -> bool:
     return re.fullmatch(re.escape(base) + r"-[0-9a-f]{6}", slug or "") is not None
 
 
+def _dial_item(cc: str | None, country_code: str | None) -> dict | None:
+    """31u: the dial-code combobox's pre-selected entry. One dial code
+    maps to several ISO entries (GG/JE/IM/GB are all +44) — the org's
+    own country wins when its dial matches, else the first alpha-sorted
+    entry carrying that dial code."""
+    if not cc:
+        return None
+    fallback = None
+    for name, alpha2, dial in COUNTRIES:
+        if dial == cc:
+            if country_code and alpha2 == country_code:
+                return {"name": name, "iso2": alpha2, "dial": dial,
+                        "flag": flag(alpha2)}
+            if fallback is None:
+                fallback = {"name": name, "iso2": alpha2, "dial": dial,
+                            "flag": flag(alpha2)}
+    return fallback
+
+
+def _dial_label(cc: str | None, item: dict | None) -> str:
+    """31u: the pre-selected dial-code label ("🇦🇪 +971 — United Arab
+    Emirates") — must stay in sync with the format function the
+    combobox passes for client-side picks."""
+    if not cc or not item:
+        return ""
+    return f'{item["flag"]} {cc} — {item["name"]}'
+
+
 async def _trusted_device_count(request: Request) -> int:
     """31j account surface: active trusted devices for the signed-in user."""
     sid = session_id_from(request)
@@ -148,14 +177,22 @@ def _view_context(ctx, membership, org, saved: bool) -> dict:
 
 def _edit_context(ctx, membership, org, *, slug_error=None, port_error=None,
                   logo_saved=False, logo_error=None, field_errors=None) -> dict:
-    # 31t: country selects + legacy dial splitting. A 31m-era phone like
-    # "+971 50 123 4567" pre-fills cc=+971 + national="50 123 4567"
-    # (longest dial-prefix match); a stored cc always wins.
+    # 31t: legacy dial splitting. A 31m-era phone like "+971 50 123 4567"
+    # pre-fills cc=+971 + national="50 123 4567" (longest dial-prefix
+    # match); a stored cc always wins. 31u: the cc pickers also resolve
+    # the pre-selected entry (flag + label) the combobox starts with.
     def _prefill(cc: str | None, national: str | None) -> dict:
         if cc:
-            return {"cc": cc, "national": national or ""}
-        split_cc, rest = split_dial(national)
-        return {"cc": split_cc, "national": rest}
+            split_cc, rest = cc, national or ""
+        else:
+            split_cc, rest = split_dial(national)
+        item = _dial_item(split_cc, (org or {}).get("country_code"))
+        return {"cc": split_cc, "national": rest, "item": item,
+                "label": _dial_label(split_cc, item)}
+    country_code = (org or {}).get("country_code") or ""
+    resolved_country = country_name(country_code)
+    country_label = (f"{flag(country_code)} {resolved_country}"
+                     if resolved_country else "")
     return {
         "request": None, "ctx": ctx, "membership": membership, "org": org,
         "rail_org": _rail_org(org, membership),
@@ -166,8 +203,13 @@ def _edit_context(ctx, membership, org, *, slug_error=None, port_error=None,
         # 31m: per-field inline errors for the public contact block
         # (address/phone/contact_email/whatsapp), keyed by field name.
         "field_errors": field_errors or {},
-        # 31t: the ISO country list for the Country + dial-code selects
-        "countries": COUNTRIES,
+        # 31u: the vendored ISO list as combobox items (client-side
+        # filtering — no endpoint; the list is a constant). Flags are
+        # regional-indicator emoji computed server-side.
+        "sv_countries": [{"name": name, "iso2": a2, "dial": dial,
+                          "flag": flag(a2)}
+                         for name, a2, dial in COUNTRIES],
+        "country_label": country_label,
         "phone_prefill": _prefill(
             (org or {}).get("phone_cc"), (org or {}).get("phone")),
         "whatsapp_prefill": _prefill(

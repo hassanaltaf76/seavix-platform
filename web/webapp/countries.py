@@ -5,11 +5,13 @@ with ITU-T international dialing codes (the same reference data behind
 every "<select country>" / country-code picker). Source: ISO-3166 +
 ITU-T E.164 country codes as consolidated by the public
 `country-list`/`libphonenumber` datasets; vendored 2026-10-23. No DB
-table, no CDN — the web app renders it server-side into <select>s.
+table, no CDN — the web app renders it server-side into the profile
+editor's country pickers (31t <select>s; 31u .sv-search-select
+comboboxes filtering a client-side injection of this list).
 
 Exposed as COUNTRIES — a tuple of (name, alpha-2, dial) sorted by name —
 plus three helpers used by the profile editor and the public partial:
-country_name(), dial_prefixes() and split_dial().
+country_name(), split_dial() and flag() (filters.py).
 """
 from __future__ import annotations
 

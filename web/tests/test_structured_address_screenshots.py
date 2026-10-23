@@ -6,6 +6,7 @@ in-script, and screenshots the editor's Contact details section and the
 live /org/<slug> contact card. Proof lands in var/screenshots/31t-*.png.
 Skips cleanly without Chrome.
 """
+import re
 import uuid
 from pathlib import Path
 
@@ -47,13 +48,18 @@ def test_structured_address_screenshot_set_31t(arun, id_asgi, tmp_path):
                 assert saved.status_code == 303
                 await _verify_email_and_go_live(idc, email, sid)
 
-                # 1. editor: structured address fields + dial-code selects
+                # 1. editor: structured address fields + dial-code comboboxes
                 editor = await w.get("/org/profile?view=edit")
                 assert editor.status_code == 200
                 assert 'name="address_line1"' in editor.text
                 assert 'name="country_code"' in editor.text
                 assert 'name="phone_cc"' in editor.text
-                assert 'value="+971" selected' in editor.text
+                # 31u: the saved dial code pre-fills the hidden field and
+                # the flag label ("🇦🇪 +971 — United Arab Emirates")
+                assert re.search(r'name="phone_cc"[^>]*?value="\+971"',
+                                 editor.text)
+                assert "🇦🇪 +971 — United Arab Emirates" in editor.text
+                assert "sv-search-select" in editor.text
                 _shot(editor.text, tmp_path, "editor", 1440, 1650,
                       prefix="31t")
 

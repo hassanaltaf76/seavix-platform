@@ -89,7 +89,7 @@
       </span>
       <div class="sv-contact-body">
         <div class="sv-contact-label">Phone</div>
-        <div class="sv-contact-value">{% if org.phone_cc %}<a href="tel:+{{ org.phone_cc | digits }}{{ org.phone | digits }}">{{ org.phone_cc }} {{ org.phone }}</a>{% else %}<a href="tel:{{ org.phone }}">{{ org.phone }}</a>{% endif %}</div>
+        <div class="sv-contact-value">{% if org.phone_cc %}<a href="tel:+{{ org.phone_cc | digits }}{{ org.phone | strip_trunk }}">{{ org.phone_cc }} {{ org.phone }}</a>{% else %}<a href="tel:{{ org.phone }}">{{ org.phone }}</a>{% endif %}</div>
       </div>
     </div>
     {% endif %}
@@ -111,7 +111,7 @@
       </span>
       <div class="sv-contact-body">
         <div class="sv-contact-label">WhatsApp</div>
-        <div class="sv-contact-value">{% if org.whatsapp_cc %}{{ org.whatsapp_cc }} {{ org.whatsapp }} — <a href="https://wa.me/{{ org.whatsapp_cc | digits }}{{ org.whatsapp | digits }}" rel="nofollow noopener" target="_blank">Chat on WhatsApp</a>{% else %}{{ org.whatsapp }} — <a href="https://wa.me/{{ org.whatsapp | digits }}" rel="nofollow noopener" target="_blank">Chat on WhatsApp</a>{% endif %}</div>
+        <div class="sv-contact-value">{% if org.whatsapp_cc %}{{ org.whatsapp_cc }} {{ org.whatsapp }} — <a href="https://wa.me/{{ org.whatsapp_cc | digits }}{{ org.whatsapp | strip_trunk }}" rel="nofollow noopener" target="_blank">Chat on WhatsApp</a>{% else %}{{ org.whatsapp }} — <a href="https://wa.me/{{ org.whatsapp | digits }}" rel="nofollow noopener" target="_blank">Chat on WhatsApp</a>{% endif %}</div>
       </div>
     </div>
     {% endif %}
