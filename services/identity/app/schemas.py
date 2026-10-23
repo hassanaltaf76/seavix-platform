@@ -62,5 +62,17 @@ class PublicOrgResponse(BaseModel):
     # vessel-type codes are the same vocabulary registry uses)
     services: list[CatalogEntry] = []
     vessel_types: list[CatalogEntry] = []
+    # 31t: structured public address + country dial codes. The legacy
+    # free-text `address` stays (deprecated): when ANY structured field
+    # is set, structured wins at render and the legacy text is hidden;
+    # legacy-only profiles render as before.
+    address_line1: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country_code: str | None = None
+    phone_cc: str | None = None
+    whatsapp_cc: str | None = None
 
     model_config = {"extra": "forbid"}

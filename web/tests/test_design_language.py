@@ -403,6 +403,60 @@ def test_logo_pinned_to_top_left_corner_31s():
     assert logo and "64px" in logo.group(1)
 
 
+def test_structured_address_and_dial_codes_31t():
+    """31t (owner 23 Oct): address = normal fields + country; phone and
+    WhatsApp carry a prepopulated country code. Contract: the editor
+    renders the structured address fields, the full-ISO Country select
+    and the two dial-code selects; the legacy free-text address survives
+    as a hidden preserve field; the shared partial renders structured
+    lines (address_lines helper) with cc-aware tel:/wa.me hrefs, and
+    structured wins over legacy via an explicit elif."""
+    from webapp.countries import COUNTRIES, country_name, split_dial
+
+    editor = (TEMPLATES / "org_profile.html").read_text()
+    for field in ("address_line1", "address_line2", "city", "state",
+                  "postal_code", "country_code", "phone_cc", "whatsapp_cc"):
+        assert f'name="{field}"' in editor, field
+    assert 'type="hidden" name="address"' in editor  # legacy preserve
+    assert editor.count('name="phone"') == 1
+    assert editor.count('name="whatsapp"') == 1
+    # the Country select iterates the vendored list server-side
+    assert "{% for name, alpha2, dial in countries %}" in editor
+    assert 'value="{{ dial }}"' in editor  # dial selects reuse the list
+
+    # the vendored data: ISO alpha-2 + ITU dial codes, alpha-sorted
+    assert len(COUNTRIES) > 230
+    names = [c[0] for c in COUNTRIES]
+    assert names == sorted(names, key=str.casefold)
+    assert country_name("AE") == "United Arab Emirates"
+    assert country_name("XX") == ""
+    assert split_dial("+971 50 123 4567") == ("+971", "50 123 4567")
+    assert split_dial("501234567") == ("", "501234567")
+
+    partial = (TEMPLATES / "_public_org_content.html").read_text()
+    assert "address_lines(org)" in partial            # structured lines
+    assert "{% elif org.address %}" in partial        # legacy fallback
+    assert '{% if org.phone_cc %}' in partial         # cc-aware tel:
+    assert '{% if org.whatsapp_cc %}' in partial      # cc-aware wa.me
+    # the country NAME resolution lives in the address_lines helper
+    filters_src = (Path(__file__).resolve().parents[1]
+                   / "webapp" / "filters.py").read_text()
+    assert "country_name" in filters_src
+
+    # the address_lines helper: empties skipped, "city, state postal"
+    from webapp.filters import address_lines
+    org = {"address_line1": "Suite 1", "city": "Dubai", "state": "DXB",
+           "postal_code": "123", "country_code": "AE"}
+    assert address_lines(org) == [
+        "Suite 1", "Dubai, DXB 123", "UNITED ARAB EMIRATES",
+    ]
+    assert address_lines({}) == []
+    assert address_lines({"postal_code": "123"}) == ["123"]
+    # cc-row + address grid styling present
+    assert ".sv-cc-row" in STYLE
+    assert ".sv-addr-grid" in STYLE
+
+
 def test_inline_svg_icons_constrained_31o():
     """31o (owner screenshot 23 Oct): viewBox-only inline SVGs rendered at
     their default viewport size — huge icons on the profile preview and

@@ -108,7 +108,7 @@ def test_profile_update_logo_and_draft_to_live(arun):
                 "/api/orgs/me/profile",
                 headers=auth,
                 json={"about": "Surveyors.", "website": "https://x.example",
-                      "phone": "+1 555 0100"},
+                      "phone_cc": "+1", "phone": "555 0100"},
             )
             assert p.status_code == 200
 

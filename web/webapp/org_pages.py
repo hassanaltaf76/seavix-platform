@@ -43,6 +43,7 @@ from .auth import (
     home_for,
     session_id_from,
 )
+from .countries import COUNTRIES, split_dial
 from .filters import install as install_template_filters
 from .identity_client import identity_request
 from .registry_client import registry_request, resolve_ports
@@ -147,6 +148,14 @@ def _view_context(ctx, membership, org, saved: bool) -> dict:
 
 def _edit_context(ctx, membership, org, *, slug_error=None, port_error=None,
                   logo_saved=False, logo_error=None, field_errors=None) -> dict:
+    # 31t: country selects + legacy dial splitting. A 31m-era phone like
+    # "+971 50 123 4567" pre-fills cc=+971 + national="50 123 4567"
+    # (longest dial-prefix match); a stored cc always wins.
+    def _prefill(cc: str | None, national: str | None) -> dict:
+        if cc:
+            return {"cc": cc, "national": national or ""}
+        split_cc, rest = split_dial(national)
+        return {"cc": split_cc, "national": rest}
     return {
         "request": None, "ctx": ctx, "membership": membership, "org": org,
         "rail_org": _rail_org(org, membership),
@@ -157,6 +166,12 @@ def _edit_context(ctx, membership, org, *, slug_error=None, port_error=None,
         # 31m: per-field inline errors for the public contact block
         # (address/phone/contact_email/whatsapp), keyed by field name.
         "field_errors": field_errors or {},
+        # 31t: the ISO country list for the Country + dial-code selects
+        "countries": COUNTRIES,
+        "phone_prefill": _prefill(
+            (org or {}).get("phone_cc"), (org or {}).get("phone")),
+        "whatsapp_prefill": _prefill(
+            (org or {}).get("whatsapp_cc"), (org or {}).get("whatsapp")),
         # 31j: the editor states the public address plainly — placeholder
         # slug vs chosen slug, and draft vs live reachability.
         "slug_is_placeholder": _is_generated_slug(
@@ -251,15 +266,28 @@ async def org_profile_update(
     ports: list[str] = Form([]),
     services: list[str] = Form([]),
     vessel_types: list[str] = Form([]),
+    address_line1: str = Form(""),
+    address_line2: str = Form(""),
+    city: str = Form(""),
+    state: str = Form(""),
+    postal_code: str = Form(""),
+    country_code: str = Form(""),
+    phone_cc: str = Form(""),
+    whatsapp_cc: str = Form(""),
     ctx: AuthContext = Depends(require_auth),
 ):
     """Edit-mode Save: services description + page slug + ports of
-    operation + services + vessel types + the public contact block in one
-    PUT. Ports are validated against the registry before any write;
-    services/vessel types are validated by identity against its own
-    catalog (422 detail names the field); field errors re-render edit mode
-    inline. 31e: edits require org.profile.edit — otherwise the same 404
-    as the page."""
+    operation + services + vessel types + the structured public contact
+    block in one PUT. Ports are validated against the registry before
+    any write; services/vessel types are validated by identity against
+    its own catalog (422 detail names the field); field errors re-render
+    edit mode inline. 31e: edits require org.profile.edit — otherwise
+    the same 404 as the page.
+
+    31t: `address` arrives as a HIDDEN field preserving any legacy
+    free-text address verbatim (the editor no longer shows it); the
+    structured fields ride the same Save. Legacy validation lives in
+    identity (national numbers: digits/spaces/dashes, 5-14 digits)."""
     membership = _first_membership(ctx)
     if membership is None or membership.org_type != "survey_company":
         raise HTTPException(status_code=403, detail="not available")
@@ -282,15 +310,23 @@ async def org_profile_update(
             status_code=422,
         )
 
-    # 31m: the contact block rides the same Save; empty fields clear the
-    # column. contact_email is the PUBLIC business contact — nothing here
-    # ever reads the account email.
+    # 31t: the structured public contact block rides the same Save;
+    # empty fields clear the column. contact_email is the PUBLIC
+    # business contact — nothing here ever reads the account email.
     submitted = {
         "about": about.strip() or None,
         "address": address.strip() or None,
         "phone": phone.strip() or None,
         "contact_email": contact_email.strip() or None,
         "whatsapp": whatsapp.strip() or None,
+        "address_line1": address_line1.strip() or None,
+        "address_line2": address_line2.strip() or None,
+        "city": city.strip() or None,
+        "state": state.strip() or None,
+        "postal_code": postal_code.strip() or None,
+        "country_code": country_code.strip().upper() or None,
+        "phone_cc": phone_cc.strip() or None,
+        "whatsapp_cc": whatsapp_cc.strip() or None,
     }
     sid = session_id_from(request)
     resp = await identity_request(

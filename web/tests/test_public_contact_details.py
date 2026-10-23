@@ -1,13 +1,16 @@
-"""31m: public contact details on the org profile — end to end through
+"""31m+31t: public contact details on the org profile — end to end through
 the web app and the identity service (shared loop, real dev DB).
 
-Covers: editor Save round-trip of address/phone/contact_email/whatsapp;
-the public Contact section (present only when a field is set; address as
-paragraph blocks; tel:/mailto:/wa.me links with digits stripped for the
-href); preview == public byte-equality through the shared partial; ZERO
-account-email leakage on both surfaces (contact_email is the public
-business contact — never prefilled from, or linked to, the account
-email); per-field 422 inline errors; clearing fields back to empty.
+31m: the public Contact section (present only when a field is set;
+tel:/mailto:/wa.me links); preview == public byte-equality through the
+shared partial; ZERO account-email leakage; per-field 422 inline errors;
+clearing fields.
+
+31t: structured address (line1/line2/city/state/postal/country) + dial
+codes. Structured wins at render when ANY structured field is set; a
+LEGACY-only profile (free-text address / cc-embedded numbers written
+straight to the DB, as 31m-era data looks) still renders exactly as 31m
+did — back-compat is pinned here.
 """
 import re
 import uuid
@@ -21,10 +24,39 @@ from test_profile_preview_ports import (
     _web,
 )
 
-ADDRESS = "Suite 1404, Marina Plaza\nDubai Marina, Dubai, UAE"
-PHONE = "+971 4 555 0100"
-WHATSAPP = "+971 (50) 123-4567"
-WA_DIGITS = "971501234567"  # non-digits stripped for the wa.me href
+# 31m-era LEGACY values (written straight to the DB in the back-compat
+# test — they can no longer be SAVED through the new validation).
+LEGACY_ADDRESS = "Suite 1404, Marina Plaza\nDubai Marina, Dubai, UAE"
+LEGACY_PHONE = "+971 4 555 0100"
+LEGACY_WHATSAPP = "+971 (50) 123-4567"
+
+# 31t structured contact block
+LINE1 = "Suite 1404, Marina Plaza"
+LINE2 = "Marina Tower"
+CITY = "Dubai"
+POSTAL = "00000"
+COUNTRY = "AE"
+COUNTRY_NAME_UPPER = "UNITED ARAB EMIRATES"
+PHONE_CC = "+971"
+PHONE = "4 555 0100"
+PHONE_DISPLAY = "+971 4 555 0100"
+PHONE_TEL_HREF = "tel:+97145550100"
+WA_CC = "+971"
+WHATSAPP = "50 123 4567"
+WA_DISPLAY = "+971 50 123 4567"
+WA_DIGITS = "971501234567"  # cc + national, non-digits stripped
+
+STRUCTURED = {
+    "address_line1": LINE1,
+    "address_line2": LINE2,
+    "city": CITY,
+    "postal_code": POSTAL,
+    "country_code": COUNTRY,
+    "phone_cc": PHONE_CC,
+    "phone": PHONE,
+    "whatsapp_cc": WA_CC,
+    "whatsapp": WHATSAPP,
+}
 
 
 def _input_value(html: str, name: str) -> str:
@@ -33,15 +65,24 @@ def _input_value(html: str, name: str) -> str:
     return m.group(1)
 
 
-def _textarea_value(html: str, name: str) -> str:
+def _select_value(html: str, name: str) -> str:
     m = re.search(
-        rf'<textarea[^>]*name="{name}"[^>]*>(.*?)</textarea>', html, re.S
+        rf'<select[^>]*name="{name}"[^>]*>(.*?)</select>', html, re.S
     )
-    assert m, f"no textarea {name}"
-    return m.group(1)
+    assert m, f"no select {name}"
+    sel = re.search(r'<option value="([^"]*)" selected', m.group(1))
+    return sel.group(1) if sel else ""
 
 
-def test_contact_block_round_trip_links_and_byte_equality(arun, id_asgi):
+def _select_options(html: str, name: str) -> list[str]:
+    m = re.search(
+        rf'<select[^>]*name="{name}"[^>]*>(.*?)</select>', html, re.S
+    )
+    assert m, f"no select {name}"
+    return re.findall(r'<option value="([^"]*)"', m.group(1))
+
+
+def test_structured_contact_block_round_trip_links_and_byte_equality(arun, id_asgi):
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
@@ -58,43 +99,211 @@ def test_contact_block_round_trip_links_and_byte_equality(arun, id_asgi):
                     data={
                         "slug": slug,
                         "about": "Independent marine surveyors.",
-                        "address": ADDRESS,
-                        "phone": PHONE,
                         "contact_email": public_email,
-                        "whatsapp": WHATSAPP,
+                        **STRUCTURED,
                     },
                     follow_redirects=False,
                 )
                 assert saved.status_code == 303
 
-                # DRAFT preview already renders the whole contact block
+                # DRAFT preview renders the structured contact block:
+                # line1 / line2 / city, state postal / COUNTRY NAME
                 view = await w.get(saved.headers["location"])
                 assert view.status_code == 200
                 assert '<h2>Contact</h2>' in view.text
-                assert "Suite 1404, Marina Plaza" in view.text
-                assert "Dubai Marina, Dubai, UAE" in view.text
-                assert f'href="tel:{PHONE}"' in view.text
+                assert LINE1 in view.text
+                assert LINE2 in view.text
+                assert f"{CITY} {POSTAL}" in view.text  # city + postal
+                assert COUNTRY_NAME_UPPER in view.text
+                assert f'href="{PHONE_TEL_HREF}"' in view.text
+                assert PHONE_DISPLAY in view.text
                 assert f'href="mailto:{public_email}"' in view.text
                 assert f'href="https://wa.me/{WA_DIGITS}"' in view.text
                 assert "wa.me/+" not in view.text  # href is digits-only
-                assert WHATSAPP in view.text        # original shown as text
+                assert WA_DISPLAY in view.text      # original shown as text
                 assert "Chat on WhatsApp" in view.text
                 # ZERO account-email leakage on the public-content surface
                 assert email not in view.text
 
                 # go live: the public page renders the SAME article,
-                # byte for byte (31f contract holds with 31m content)
+                # byte for byte (31f contract holds with 31t content)
                 await _verify_email_and_go_live(idc, email, sid)
                 pub = await w.get(f"/org/{slug}")
                 assert pub.status_code == 200
                 assert '<h2>Contact</h2>' in pub.text
-                assert f'href="tel:{PHONE}"' in pub.text
-                assert f'href="mailto:{public_email}"' in pub.text
+                assert f'href="{PHONE_TEL_HREF}"' in pub.text
                 assert f'href="https://wa.me/{WA_DIGITS}"' in pub.text
-                assert "Chat on WhatsApp" in pub.text
                 assert email not in pub.text       # no account-email markup
                 blade = await w.get("/org/profile")
                 assert _article(blade.text) == _article(pub.text)
+
+                # the public read model carries the structured fields
+                model = (await idc.get(f"/api/orgs/{slug}")).json()
+                for field, value in STRUCTURED.items():
+                    assert model[field] == value, field
+                assert model["address"] is None  # nothing legacy was sent
+
+    arun(scenario())
+
+
+def test_editor_selects_render_all_countries_with_saved_value_selected(arun, id_asgi):
+    """31t: the Country select lists the full ISO set alpha-sorted; the
+    dial-code selects list "+971 — United Arab Emirates" style options;
+    after a save, every select re-renders with the saved value selected;
+    legacy numbers pre-fill the split (cc select + national input)."""
+    from webapp.countries import COUNTRIES
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
+        ) as idc:
+            u = uuid.uuid4().hex[:8]
+            email = f"sel-{u}@example.com"
+            slug = f"selects-{u}"
+            async with _web() as w:
+                await _register_and_login(idc, w, email, slug)
+                saved = await w.post(
+                    "/org/profile",
+                    data={"slug": slug, "about": "", **STRUCTURED},
+                    follow_redirects=False,
+                )
+                assert saved.status_code == 303
+
+                editor = await w.get("/org/profile?view=edit")
+                assert editor.status_code == 200
+                countries = _select_options(editor.text, "country_code")
+                assert len(countries) == len(COUNTRIES) + 1  # + empty opt
+                # alpha-sorted by country name (the module sorts COUNTRIES)
+                assert countries[1:] == [a2 for _, a2, _ in COUNTRIES]
+                assert _select_value(editor.text, "country_code") == COUNTRY
+                for select in ("phone_cc", "whatsapp_cc"):
+                    options = _select_options(editor.text, select)
+                    assert len(options) == len(COUNTRIES) + 1
+                    assert PHONE_CC in options
+                    assert f"{PHONE_CC} — United Arab Emirates" \
+                        in editor.text
+                    assert _select_value(editor.text, select) == PHONE_CC
+                # the structured text fields reseed too
+                assert _input_value(editor.text, "address_line1") == LINE1
+                assert _input_value(editor.text, "city") == CITY
+                assert _input_value(editor.text, "phone") == PHONE
+                assert _input_value(editor.text, "whatsapp") == WHATSAPP
+
+                # legacy prefill split: a 31m-era value with the dial
+                # code embedded seeds cc + national separately
+                from sqlalchemy import text as sql
+
+                from app.db import SessionLocal
+
+                async with SessionLocal() as s:
+                    await s.execute(
+                        sql("UPDATE organization SET whatsapp = :wa, "
+                            "whatsapp_cc = NULL WHERE slug = :slug"),
+                        {"wa": "+44 7700 900123", "slug": slug},
+                    )
+                    await s.commit()
+                editor2 = await w.get("/org/profile?view=edit")
+                assert _select_value(editor2.text, "whatsapp_cc") == "+44"
+                assert _input_value(editor2.text, "whatsapp") == "7700 900123"
+
+    arun(scenario())
+
+
+def test_legacy_only_profile_renders_as_before_31m_back_compat(arun, id_asgi):
+    """31m-era rows (free-text address, cc-embedded phone/whatsapp, no
+    structured fields) render EXACTLY as they did before 31t — written
+    straight to the identity DB, rendered on both surfaces."""
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
+        ) as idc:
+            u = uuid.uuid4().hex[:8]
+            email = f"bc-{u}@example.com"
+            slug = f"legacy-{u}"
+            async with _web() as w:
+                sid = await _register_and_login(idc, w, email, slug)
+                saved = await w.post(
+                    "/org/profile",
+                    data={"slug": slug, "about": ""},
+                    follow_redirects=False,
+                )
+                assert saved.status_code == 303
+
+                # plant 31m-era data directly (it can no longer be saved)
+                from sqlalchemy import text as sql
+
+                from app.db import SessionLocal
+
+                async with SessionLocal() as s:
+                    await s.execute(
+                        sql(
+                            "UPDATE organization SET address = :a, "
+                            "phone = :p, whatsapp = :w WHERE slug = :slug"
+                        ),
+                        {"a": LEGACY_ADDRESS, "p": LEGACY_PHONE,
+                         "w": LEGACY_WHATSAPP, "slug": slug},
+                    )
+                    await s.commit()
+
+                await _verify_email_and_go_live(idc, email, sid)
+                pub = await w.get(f"/org/{slug}")
+                assert pub.status_code == 200
+                assert "Suite 1404, Marina Plaza" in pub.text
+                assert "Dubai Marina, Dubai, UAE" in pub.text
+                assert f'href="tel:{LEGACY_PHONE}"' in pub.text
+                assert f'href="https://wa.me/971501234567"' in pub.text
+                assert LEGACY_WHATSAPP in pub.text
+                # no structured rendering on a legacy-only profile
+                assert "UNITED ARAB EMIRATES" not in pub.text
+                blade = await w.get("/org/profile")
+                assert _article(blade.text) == _article(pub.text)
+
+                # and an UNRELATED save must preserve the legacy text:
+                # the hidden address field posts it back verbatim
+                kept = await w.post(
+                    "/org/profile",
+                    data={"slug": slug, "about": "Still sailing.",
+                          "address": LEGACY_ADDRESS},
+                    follow_redirects=False,
+                )
+                assert kept.status_code == 303
+                model = (await idc.get(f"/api/orgs/{slug}")).json()
+                assert model["address"] == LEGACY_ADDRESS
+                pub2 = await w.get(f"/org/{slug}")
+                assert "Dubai Marina, Dubai, UAE" in pub2.text
+
+    arun(scenario())
+
+
+def test_structured_wins_over_legacy_when_both_set(arun, id_asgi):
+    """31t render rule: ANY structured field set -> structured lines
+    render and the legacy free-text address is NOT rendered."""
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
+        ) as idc:
+            u = uuid.uuid4().hex[:8]
+            email = f"sw-{u}@example.com"
+            slug = f"win-{u}"
+            async with _web() as w:
+                sid = await _register_and_login(idc, w, email, slug)
+                saved = await w.post(
+                    "/org/profile",
+                    data={"slug": slug, "about": "",
+                          "address": LEGACY_ADDRESS,
+                          "address_line1": LINE1, "city": CITY,
+                          "country_code": COUNTRY},
+                    follow_redirects=False,
+                )
+                assert saved.status_code == 303
+                # the legacy text is preserved in the DB (hidden field)…
+                model = (await idc.get(f"/api/orgs/{slug}")).json()
+                assert model["address"] == LEGACY_ADDRESS
+                # …but structured wins at render
+                view = await w.get(saved.headers["location"])
+                assert LINE1 in view.text
+                assert COUNTRY_NAME_UPPER in view.text
+                assert "Dubai Marina, Dubai, UAE" not in view.text
 
     arun(scenario())
 
@@ -127,16 +336,17 @@ def test_contact_section_absent_until_a_field_is_set(arun, id_asgi):
                 blade = await w.get("/org/profile")
                 assert "sv-org-contact" not in blade.text
 
-                # one field set -> the section appears with only that field
+                # one structured field (country only) -> the section
+                # appears with just that line
                 saved = await w.post(
                     "/org/profile",
-                    data={"slug": slug, "about": "", "address": ADDRESS},
+                    data={"slug": slug, "about": "", "country_code": "AE"},
                     follow_redirects=False,
                 )
                 assert saved.status_code == 303
                 pub = await w.get(f"/org/{slug}")
                 assert '<h2>Contact</h2>' in pub.text
-                assert "Suite 1404, Marina Plaza" in pub.text
+                assert COUNTRY_NAME_UPPER in pub.text
                 article = _article(pub.text)
                 assert "tel:" not in article
                 assert "mailto:" not in article
@@ -146,9 +356,9 @@ def test_contact_section_absent_until_a_field_is_set(arun, id_asgi):
 
 
 def test_contact_email_never_prefilled_from_account_email(arun, id_asgi):
-    """Surface separation: the editor's contact_email input starts EMPTY
-    — the account/login email is private state and never seeds public
-    fields."""
+    """Surface separation: the editor's public contact fields start
+    EMPTY — the account/login email is private state and never seeds
+    public fields."""
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
@@ -166,9 +376,14 @@ def test_contact_email_never_prefilled_from_account_email(arun, id_asgi):
                 assert saved.status_code == 303
                 editor = await w.get("/org/profile?view=edit")
                 assert editor.status_code == 200
-                assert _textarea_value(editor.text, "address") == ""
-                for field in ("phone", "contact_email", "whatsapp"):
+                assert _input_value(editor.text, "address") == ""
+                for field in ("address_line1", "address_line2", "city",
+                              "state", "postal_code", "phone", "whatsapp",
+                              "contact_email"):
                     assert _input_value(editor.text, field) == "", field
+                assert _select_value(editor.text, "country_code") == ""
+                assert _select_value(editor.text, "phone_cc") == ""
+                assert _select_value(editor.text, "whatsapp_cc") == ""
                 # and nowhere on the whole editor blade either
                 assert email not in editor.text
 
@@ -188,10 +403,8 @@ def test_contact_validation_rejects_bad_values_inline(arun, id_asgi):
                 good = {
                     "slug": slug,
                     "about": "",
-                    "address": ADDRESS,
-                    "phone": PHONE,
                     "contact_email": f"ops-{u}@harbor.example",
-                    "whatsapp": WHATSAPP,
+                    **STRUCTURED,
                 }
 
                 ok = await w.post("/org/profile", data=good,
@@ -209,16 +422,26 @@ def test_contact_validation_rejects_bad_values_inline(arun, id_asgi):
                 assert _input_value(bad_email.text, "contact_email") == "nope"
                 assert _input_value(bad_email.text, "whatsapp") == WHATSAPP
 
-                # whatsapp with letters -> 422; atomic, stored value intact
+                # national number with letters -> 422; atomic, stored
+                # value intact
                 bad_wa = await w.post(
                     "/org/profile",
                     data={**good, "whatsapp": "call-me-now"},
                 )
                 assert bad_wa.status_code == 422
                 assert "whatsapp" in bad_wa.text
+                assert "country code has its own field" in bad_wa.text
                 assert _input_value(bad_wa.text, "whatsapp") == "call-me-now"
                 pub = await idc.get(f"/api/orgs/{slug}")
                 assert pub.json()["whatsapp"] == WHATSAPP
+
+                # a cc-embedded national number is rejected with guidance
+                bad_phone = await w.post(
+                    "/org/profile",
+                    data={**good, "phone": "+971 4 555 0100"},
+                )
+                assert bad_phone.status_code == 422
+                assert "country code has its own field" in bad_phone.text
 
                 # both bad at once -> both errors rendered
                 both = await w.post(
@@ -233,7 +456,7 @@ def test_contact_validation_rejects_bad_values_inline(arun, id_asgi):
                 # public page is untouched by any of the rejected saves
                 await _verify_email_and_go_live(idc, email, sid)
                 pub_page = await w.get(f"/org/{slug}")
-                assert WHATSAPP in pub_page.text
+                assert WA_DISPLAY in pub_page.text
 
     arun(scenario())
 
@@ -252,9 +475,8 @@ def test_contact_fields_clear_when_emptied(arun, id_asgi):
                     "/org/profile",
                     data={
                         "slug": slug, "about": "",
-                        "address": ADDRESS, "phone": PHONE,
                         "contact_email": f"ops-{u}@harbor.example",
-                        "whatsapp": WHATSAPP,
+                        **STRUCTURED,
                     },
                     follow_redirects=False,
                 )
@@ -262,14 +484,21 @@ def test_contact_fields_clear_when_emptied(arun, id_asgi):
 
                 cleared = await w.post(
                     "/org/profile",
-                    data={"slug": slug, "about": "", "address": "",
-                          "phone": "", "contact_email": "", "whatsapp": ""},
+                    data={"slug": slug, "about": "",
+                          "address_line1": "", "address_line2": "",
+                          "city": "", "state": "", "postal_code": "",
+                          "country_code": "", "phone_cc": "",
+                          "whatsapp_cc": "", "phone": "",
+                          "contact_email": "", "whatsapp": ""},
                     follow_redirects=False,
                 )
                 assert cleared.status_code == 303
                 pub = await idc.get(f"/api/orgs/{slug}")
-                for field in ("address", "phone", "contact_email", "whatsapp"):
-                    assert pub.json()[field] is None
+                for field in ("address", "address_line1", "address_line2",
+                              "city", "state", "postal_code",
+                              "country_code", "phone_cc", "whatsapp_cc",
+                              "phone", "contact_email", "whatsapp"):
+                    assert pub.json()[field] is None, field
 
                 await _verify_email_and_go_live(idc, email, sid)
                 pub_page = await w.get(f"/org/{slug}")

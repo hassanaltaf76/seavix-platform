@@ -56,10 +56,22 @@
     {% for p in org.ports %}<span class="sv-chip" title="{{ p.code }} — {{ p.country }}">{{ p.name }}</span>{% if not loop.last %}<span class="sv-port-sep" aria-hidden="true"> </span>{% endif %}{% endfor %}
   </p>
   {% endif %}
-  {% if org.address or org.phone or org.contact_email or org.whatsapp or org.website %}
+  {% if address_lines(org) or org.address or org.phone or org.contact_email or org.whatsapp or org.website %}
   <section class="sv-org-contact">
     <h2>Contact</h2>
-    {% if org.address %}
+    {#- 31t: structured address wins when ANY structured field is set;
+        a legacy-only profile keeps rendering the 31m free-text block. -#}
+    {% if address_lines(org) %}
+    <div class="sv-contact-row">
+      <span class="sv-contact-icon" aria-hidden="true">
+        <svg class="sv-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1116 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      </span>
+      <div class="sv-contact-body">
+        <div class="sv-contact-label">Address</div>
+        <div class="sv-contact-value sv-prose">{% for line in address_lines(org) %}{% if not loop.first %}<br>{% endif %}{{ line }}{% endfor %}</div>
+      </div>
+    </div>
+    {% elif org.address %}
     <div class="sv-contact-row">
       <span class="sv-contact-icon" aria-hidden="true">
         <svg class="sv-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1116 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -77,7 +89,7 @@
       </span>
       <div class="sv-contact-body">
         <div class="sv-contact-label">Phone</div>
-        <div class="sv-contact-value"><a href="tel:{{ org.phone }}">{{ org.phone }}</a></div>
+        <div class="sv-contact-value">{% if org.phone_cc %}<a href="tel:+{{ org.phone_cc | digits }}{{ org.phone | digits }}">{{ org.phone_cc }} {{ org.phone }}</a>{% else %}<a href="tel:{{ org.phone }}">{{ org.phone }}</a>{% endif %}</div>
       </div>
     </div>
     {% endif %}
@@ -99,7 +111,7 @@
       </span>
       <div class="sv-contact-body">
         <div class="sv-contact-label">WhatsApp</div>
-        <div class="sv-contact-value">{{ org.whatsapp }} — <a href="https://wa.me/{{ org.whatsapp | digits }}" rel="nofollow noopener" target="_blank">Chat on WhatsApp</a></div>
+        <div class="sv-contact-value">{% if org.whatsapp_cc %}{{ org.whatsapp_cc }} {{ org.whatsapp }} — <a href="https://wa.me/{{ org.whatsapp_cc | digits }}{{ org.whatsapp | digits }}" rel="nofollow noopener" target="_blank">Chat on WhatsApp</a>{% else %}{{ org.whatsapp }} — <a href="https://wa.me/{{ org.whatsapp | digits }}" rel="nofollow noopener" target="_blank">Chat on WhatsApp</a>{% endif %}</div>
       </div>
     </div>
     {% endif %}

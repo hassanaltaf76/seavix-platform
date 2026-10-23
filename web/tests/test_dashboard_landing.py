@@ -226,7 +226,12 @@ def test_save_is_disabled_until_dirty(arun, id_asgi):
                 assert "x-data='{ selected:" in editor.text
                 assert "dirty: false" in editor.text
                 assert ':disabled="!(dirty && valid)"' in editor.text  # v4 §4: disabled until dirty AND valid
-                assert editor.text.count('@input="dirty = true"') == 6  # about + slug + 31m contact block (address, phone, contact_email, whatsapp)
+                # 31t: about + slug + structured contact text inputs
+                # (address_line1/2, city, state, postal_code, phone,
+                # contact_email, whatsapp); the three selects dirty via
+                # @change, and the pickers via this.dirty in add/remove
+                assert editor.text.count('@input="dirty = true"') == 10
+                assert editor.text.count('@change="dirty = true"') == 3
                 # the disabled styling ships in the stylesheet
                 import pathlib
 

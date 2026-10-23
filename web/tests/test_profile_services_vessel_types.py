@@ -72,7 +72,8 @@ def test_services_vessel_types_round_trip_and_preview(arun, id_asgi):
                     data={
                         "slug": slug,
                         "about": "Independent marine surveyors.",
-                        "phone": "+971 50 123 4567",
+                        "phone_cc": "+971",
+                        "phone": "50 123 4567",
                         "services": SERVICES,
                         "vessel_types": VESSEL_TYPES,
                         "ports": ["AEFJR"],
@@ -140,7 +141,8 @@ def test_services_vessel_types_round_trip_and_preview(arun, id_asgi):
                     data={
                         "slug": slug,
                         "about": "Independent marine surveyors.",
-                        "phone": "+971 50 123 4567",
+                        "phone_cc": "+971",
+                        "phone": "50 123 4567",
                         "services": SERVICES,
                         "vessel_types": ["oil_tanker"],
                         "ports": ["AEFJR"],
@@ -160,7 +162,8 @@ def test_services_vessel_types_round_trip_and_preview(arun, id_asgi):
                     data={
                         "slug": slug,
                         "about": "Independent marine surveyors.",
-                        "phone": "+971 50 123 4567",
+                        "phone_cc": "+971",
+                        "phone": "50 123 4567",
                         "services": [],
                         "vessel_types": [],
                         "ports": ["AEFJR"],
@@ -180,7 +183,8 @@ def test_services_vessel_types_round_trip_and_preview(arun, id_asgi):
                     data={
                         "slug": slug,
                         "about": "Independent marine surveyors.",
-                        "phone": "+971 50 123 4567",
+                        "phone_cc": "+971",
+                        "phone": "50 123 4567",
                         "services": SERVICES,
                         "vessel_types": VESSEL_TYPES,
                         "ports": ["AEFJR"],

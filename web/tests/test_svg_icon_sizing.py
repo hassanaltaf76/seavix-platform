@@ -35,7 +35,7 @@ from test_profile_preview_ports import (
     _verify_email_and_go_live,
     _web,
 )
-from test_public_contact_details import ADDRESS, PHONE, WHATSAPP
+from test_public_contact_details import STRUCTURED
 
 CHROME = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 WEB_ROOT = Path(__file__).resolve().parents[1]
@@ -106,16 +106,14 @@ def test_inline_svg_sizes_on_real_pages(arun, id_asgi, tmp_path):
                     data={
                         "slug": slug,
                         "about": "Independent marine surveyors.",
-                        "address": ADDRESS,
-                        "phone": PHONE,
                         "contact_email": f"ops-{u}@harbor.example",
-                        "whatsapp": WHATSAPP,
+                        **STRUCTURED,
                     },
                     follow_redirects=False,
                 )
                 assert saved.status_code == 303
 
-                # profile preview (view mode): rail + 31m contact rows
+                # profile preview (view mode): rail + 31t contact rows
                 preview = await w.get(saved.headers["location"])
                 assert preview.status_code == 200
                 assert _render(preview.text, tmp_path, "profile-preview",

@@ -23,7 +23,7 @@ from test_profile_preview_ports import (
     _verify_email_and_go_live,
     _web,
 )
-from test_public_contact_details import ADDRESS, PHONE, WHATSAPP
+from test_public_contact_details import STRUCTURED
 
 CHROME = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 WEB_ROOT = Path(__file__).resolve().parents[1]
@@ -77,10 +77,8 @@ def test_page_shell_screenshot_set_31p(arun, id_asgi, tmp_path):
                     data={
                         "slug": slug,
                         "about": "Independent marine surveyors.",
-                        "address": ADDRESS,
-                        "phone": PHONE,
                         "contact_email": f"ops-{u}@harbor.example",
-                        "whatsapp": WHATSAPP,
+                        **STRUCTURED,
                     },
                     follow_redirects=False,
                 )

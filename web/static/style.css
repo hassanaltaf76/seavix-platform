@@ -457,6 +457,16 @@ button:disabled, button:disabled:hover {
 .form input::placeholder, .sv-form input::placeholder,
 .form textarea::placeholder, .sv-form textarea::placeholder { color: var(--text-2); }
 .form small, .sv-form small { color: var(--text-2); font-size: 12px; }
+/* 31t: country-code select + national-number input pair; structured
+   address grid (city/state/postal/country on two columns) */
+.sv-cc-row { display: flex; gap: 0.5rem; }
+.sv-cc-row select { flex: 0 0 15rem; width: auto; }
+.sv-cc-row input { flex: 1; }
+.sv-addr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
+@media (max-width: 640px) {
+  .sv-addr-grid { grid-template-columns: 1fr; }
+  .sv-cc-row select { flex-basis: 11rem; }
+}
 .radio-row { display: flex; gap: 1rem; flex-wrap: wrap; }
 .radio-row label { display: flex; gap: 0.35rem; align-items: center; font-weight: 500; margin: 0.4rem 0; }
 

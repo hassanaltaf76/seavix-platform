@@ -75,16 +75,30 @@ def test_contact_block_round_trip_on_public_read_model(arun):
             auth = {"X-Seavix-Session": sid}
             slug = reg["slug"]
 
+            CONTACT_FIELDS = (
+                "address", "address_line1", "address_line2", "city", "state",
+                "postal_code", "country_code", "phone_cc", "phone",
+                "contact_email", "whatsapp_cc", "whatsapp",
+            )
             pub = await c.get(f"/api/orgs/{slug}")
-            for field in ("address", "phone", "contact_email", "whatsapp"):
+            for field in CONTACT_FIELDS:
                 assert pub.json()[field] is None
 
             payload = {
                 "about": "Independent marine surveyors.",
+                # legacy free text still accepts/stores (deprecated)
                 "address": "Suite 1404, Marina Plaza\nDubai Marina, Dubai, UAE",
-                "phone": "+971 4 555 0100",
+                "address_line1": "Suite 1404, Marina Plaza",
+                "address_line2": "Marina Tower",
+                "city": "Dubai",
+                "state": "Dubai",
+                "postal_code": "00000",
+                "country_code": "AE",
+                "phone_cc": "+971",
+                "phone": "4 555 0100",
                 "contact_email": f"ops-{u}@harbor.example",
-                "whatsapp": "+971 (50) 123-4567",
+                "whatsapp_cc": "+44",
+                "whatsapp": "7700 900123",
             }
             r = await c.put("/api/orgs/me/profile", headers=auth, json=payload)
             assert r.status_code == 200, r.text
@@ -101,13 +115,12 @@ def test_contact_block_round_trip_on_public_read_model(arun):
             r = await c.put(
                 "/api/orgs/me/profile",
                 headers=auth,
-                json={**{k: "" for k in
-                         ("address", "phone", "contact_email", "whatsapp")},
+                json={**{k: "" for k in CONTACT_FIELDS},
                       "about": payload["about"]},
             )
             assert r.status_code == 200, r.text
             pub = await c.get(f"/api/orgs/{slug}")
-            for field in ("address", "phone", "contact_email", "whatsapp"):
+            for field in CONTACT_FIELDS:
                 assert pub.json()[field] is None
 
     arun(scenario())
@@ -125,20 +138,32 @@ def test_contact_validation_rejects_bad_values_atomically(arun):
 
             good = {
                 "address": "Pier 7, JBR Walk",
-                "phone": "+971 4 555 0100",
+                "country_code": "AE",
+                "phone_cc": "+971",
+                "phone": "4 555 0100",
                 "contact_email": f"ops-{u}@harbor.example",
-                "whatsapp": "+971 50 123 4567",
+                "whatsapp_cc": "+971",
+                "whatsapp": "50 123 4567",
             }
             r = await c.put("/api/orgs/me/profile", headers=auth, json=good)
             assert r.status_code == 200, r.text
 
-            # bad email, whatsapp with letters, whatsapp with too few
-            # digits — each rejected before any write
+            # 31t national-number rule (phone AND whatsapp): digits,
+            # spaces, dashes only; 5-14 digits; the country code has its
+            # own column — each rejected before any write
             for bad_field, bad_value in (
                 ("contact_email", "not-an-email"),
                 ("whatsapp", "call-me-now"),
-                ("whatsapp", "+1 22"),
-                ("whatsapp", "+971 50 123 4567 ext 9"),
+                ("phone", "call-me-now"),
+                ("whatsapp", "1 2"),            # too few digits
+                ("phone", "1" * 15),            # too many digits
+                ("whatsapp", "+971 50 123 4567"),  # cc embedded
+                ("phone", "+44 (0)20 7946"),       # parens superseded
+                ("phone_cc", "971"),               # missing +
+                ("phone_cc", "+12345"),            # too long
+                ("whatsapp_cc", "abc"),
+                ("country_code", "ae"),            # not alpha-2
+                ("country_code", "UAE"),
             ):
                 r = await c.put(
                     "/api/orgs/me/profile",
@@ -152,14 +177,16 @@ def test_contact_validation_rejects_bad_values_atomically(arun):
                 for field, value in good.items():
                     assert pub.json()[field] == value, (bad_field, field)
 
-            # punctuation-heavy but legal whatsapp formats ARE accepted
-            r = await c.put(
-                "/api/orgs/me/profile",
-                headers=auth,
-                json={**good, "whatsapp": "+44 (0)20 7946-0958"},
-            )
-            assert r.status_code == 200, r.text
-            pub = await c.get(f"/api/orgs/{slug}")
-            assert pub.json()["whatsapp"] == "+44 (0)20 7946-0958"
+            # legal national formats ARE accepted (spaces/dashes, 5-14)
+            for national in ("501234567", "50 123 4567", "50-123-4567",
+                             "5 0123-4567"):
+                r = await c.put(
+                    "/api/orgs/me/profile",
+                    headers=auth,
+                    json={**good, "whatsapp": national},
+                )
+                assert r.status_code == 200, (national, r.text)
+                pub = await c.get(f"/api/orgs/{slug}")
+                assert pub.json()["whatsapp"] == national
 
     arun(scenario())

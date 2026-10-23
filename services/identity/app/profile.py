@@ -73,7 +73,23 @@ class ProfileUpdate(BaseModel):
     # validation (+, digits, spaces, dashes, parens; >= 7 digits).
     address: str | None = None
     contact_email: EmailStr | None = None
+    # 31t: whatsapp keeps holding the NATIONAL number — the country
+    # code moved to whatsapp_cc. Validation: digits/spaces/dashes,
+    # 5-14 digits (parens/+ are no longer legal — the code has its own
+    # field; the 31m punct-heavy formats are superseded, documented in
+    # the 31t report).
     whatsapp: str | None = None
+    # 31t: structured public address (migration 0013). All optional;
+    # empty clears. When ANY structured field is set, the web render
+    # shows structured and hides the legacy free-text `address` above.
+    address_line1: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None  # free text, no format rule
+    country_code: str | None = None  # ISO alpha-2
+    phone_cc: str | None = None  # "+971"
+    whatsapp_cc: str | None = None
     slug: str | None = None  # optional: set/change the public page slug
     # Ports of operation (task 31f): UN/LOCODE codes, cross-service
     # reference to registry.port — existence is validated by the web app
@@ -88,7 +104,11 @@ class ProfileUpdate(BaseModel):
     services: list[str] | None = None
     vessel_types: list[str] | None = None
 
-    @field_validator("about", "website", "phone", "address", "contact_email", mode="before")
+    @field_validator(
+        "about", "website", "phone", "address", "contact_email",
+        "address_line1", "address_line2", "city", "state", "postal_code",
+        "country_code", "phone_cc", "whatsapp_cc", mode="before",
+    )
     @classmethod
     def blank_to_none(cls, v: str | None) -> str | None:
         # 31m: empty form fields clear the column instead of storing ""
@@ -97,20 +117,46 @@ class ProfileUpdate(BaseModel):
             return None
         return v
 
-    @field_validator("whatsapp")
+    @field_validator("phone", "whatsapp")
     @classmethod
-    def whatsapp_format(cls, v: str | None) -> str | None:
+    def national_number(cls, v: str | None) -> str | None:
+        """31t: the national number (country code has its own column):
+        digits, spaces and dashes only, 5-14 digits."""
         if v is None:
             return None
         v = v.strip()
         if not v:
             return None
-        if not re.fullmatch(r"[0-9+()\-\s]+", v):
+        if not re.fullmatch(r"[0-9\-\s]+", v):
             raise ValueError(
-                "whatsapp: use only +, digits, spaces, dashes and parentheses"
+                "use only digits, spaces and dashes — the country code "
+                "has its own field"
             )
-        if len(re.sub(r"\D", "", v)) < 7:
-            raise ValueError("whatsapp: at least 7 digits")
+        digits = len(re.sub(r"\D", "", v))
+        if not 5 <= digits <= 14:
+            raise ValueError(
+                f"use 5-14 digits for the national number ({digits} given)"
+            )
+        return v
+
+    @field_validator("country_code")
+    @classmethod
+    def iso_alpha2(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not re.fullmatch(r"[A-Z]{2}", v):
+            raise ValueError("country must be an ISO alpha-2 code (e.g. AE)")
+        return v
+
+    @field_validator("phone_cc", "whatsapp_cc")
+    @classmethod
+    def dial_code(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not re.fullmatch(r"\+\d{1,4}", v):
+            raise ValueError(
+                "country code must look like +971 (plus, 1-4 digits)"
+            )
         return v
 
     @field_validator("slug")
@@ -197,6 +243,10 @@ async def update_profile(
                 "UPDATE organization SET about = :about, website = :website, "
                 "phone = :phone, address = :address, "
                 "contact_email = :contact_email, whatsapp = :whatsapp, "
+                "address_line1 = :address_line1, address_line2 = :address_line2, "
+                "city = :city, state = :state, postal_code = :postal_code, "
+                "country_code = :country_code, phone_cc = :phone_cc, "
+                "whatsapp_cc = :whatsapp_cc, "
                 "slug = COALESCE(:slug, slug) WHERE id = :id"
             ),
             {
@@ -206,6 +256,14 @@ async def update_profile(
                 "address": payload.address,
                 "contact_email": payload.contact_email,
                 "whatsapp": payload.whatsapp,
+                "address_line1": payload.address_line1,
+                "address_line2": payload.address_line2,
+                "city": payload.city,
+                "state": payload.state,
+                "postal_code": payload.postal_code,
+                "country_code": payload.country_code,
+                "phone_cc": payload.phone_cc,
+                "whatsapp_cc": payload.whatsapp_cc,
                 "slug": payload.slug,
                 "id": org_id,
             },

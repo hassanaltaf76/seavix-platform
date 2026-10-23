@@ -261,19 +261,64 @@
           <p>Shown to visitors on your public page.</p>
         </div>
         <div class="sv-section-body">
-          {#- 31m: public contact block — address, phone, public email, whatsapp.
-              Saved with the rest of the page in one PUT; empty fields clear the
-              column. contact_email is the PUBLIC business contact — never
-              prefilled from, or linked to, the account/login email. -#}
-          <label for="address">Company address — shown on your public page</label>
-          <textarea id="address" name="address" rows="3"
-                    @input="dirty = true">{{ org.address or "" }}</textarea>
-          {% if field_errors.get("address") %}<p class="sv-field-error" role="alert">{{ field_errors.get("address") }}</p>{% endif %}
+          {#- 31t: structured public address (the 31m free-text column is
+              DEPRECATED: a hidden field preserves any legacy text verbatim
+              while structured wins at render; legacy-only profiles render
+              as before). Postal code is free text — no format rule. -#}
+          <input type="hidden" name="address" value="{{ org.address or "" }}">
 
-          <label for="phone">Phone</label>
-          <input id="phone" name="phone" type="tel"
-                 value="{{ org.phone or "" }}" @input="dirty = true">
-          <small>Shown on your public page as a call link.</small>
+          <label for="address_line1">Address line 1</label>
+          <input id="address_line1" name="address_line1" type="text"
+                 value="{{ org.address_line1 or "" }}" @input="dirty = true">
+
+          <label for="address_line2">Address line 2 — optional</label>
+          <input id="address_line2" name="address_line2" type="text"
+                 value="{{ org.address_line2 or "" }}" @input="dirty = true">
+
+          <div class="sv-addr-grid">
+            <div>
+              <label for="city">City</label>
+              <input id="city" name="city" type="text"
+                     value="{{ org.city or "" }}" @input="dirty = true">
+            </div>
+            <div>
+              <label for="state">State/Province — optional</label>
+              <input id="state" name="state" type="text"
+                     value="{{ org.state or "" }}" @input="dirty = true">
+            </div>
+            <div>
+              <label for="postal_code">Postal code — optional</label>
+              <input id="postal_code" name="postal_code" type="text"
+                     value="{{ org.postal_code or "" }}" @input="dirty = true">
+            </div>
+            <div>
+              <label for="country_code">Country</label>
+              <select id="country_code" name="country_code" @change="dirty = true">
+                <option value="">—</option>
+                {% for name, alpha2, dial in countries %}
+                <option value="{{ alpha2 }}"{% if org.country_code == alpha2 %} selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <label for="phone_cc">Phone</label>
+          <div class="sv-cc-row">
+            <select id="phone_cc" name="phone_cc" @change="dirty = true"
+                    aria-label="Phone country code">
+              <option value="">code</option>
+              {% for name, alpha2, dial in countries %}
+              <option value="{{ dial }}"{% if phone_prefill.cc == dial %} selected{% endif %}>{{ dial }} — {{ name }}</option>
+              {% endfor %}
+            </select>
+            <input id="phone" name="phone" type="tel"
+                   placeholder="national number, e.g. 50 123 4567"
+                   value="{{ phone_prefill.national }}" @input="dirty = true">
+          </div>
+          <small>Shown on your public page as a call link with the country
+                 code — e.g. +971 50 123 4567.</small>
+          {% if field_errors.get("phone") %}<p class="sv-field-error" role="alert">{{ field_errors.get("phone") }}</p>{% endif %}
+          {% if field_errors.get("phone_cc") %}<p class="sv-field-error" role="alert">{{ field_errors.get("phone_cc") }}</p>{% endif %}
 
           <label for="contact_email">Public email address</label>
           <input id="contact_email" name="contact_email" type="email"
@@ -282,13 +327,23 @@
                  Separate from your login email, which stays private.</small>
           {% if field_errors.get("contact_email") %}<p class="sv-field-error" role="alert">{{ field_errors.get("contact_email") }}</p>{% endif %}
 
-          <label for="whatsapp">WhatsApp number</label>
-          <input id="whatsapp" name="whatsapp" type="text"
-                 placeholder="+971 50 123 4567"
-                 value="{{ org.whatsapp or "" }}" @input="dirty = true">
+          <label for="whatsapp_cc">WhatsApp number</label>
+          <div class="sv-cc-row">
+            <select id="whatsapp_cc" name="whatsapp_cc" @change="dirty = true"
+                    aria-label="WhatsApp country code">
+              <option value="">code</option>
+              {% for name, alpha2, dial in countries %}
+              <option value="{{ dial }}"{% if whatsapp_prefill.cc == dial %} selected{% endif %}>{{ dial }} — {{ name }}</option>
+              {% endfor %}
+            </select>
+            <input id="whatsapp" name="whatsapp" type="text"
+                   placeholder="national number, e.g. 50 123 4567"
+                   value="{{ whatsapp_prefill.national }}" @input="dirty = true">
+          </div>
           <small>International format — shown on your public page as a
                  Chat on WhatsApp link.</small>
           {% if field_errors.get("whatsapp") %}<p class="sv-field-error" role="alert">{{ field_errors.get("whatsapp") }}</p>{% endif %}
+          {% if field_errors.get("whatsapp_cc") %}<p class="sv-field-error" role="alert">{{ field_errors.get("whatsapp_cc") }}</p>{% endif %}
         </div>
       </section>
 
