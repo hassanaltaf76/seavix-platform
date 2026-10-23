@@ -112,6 +112,8 @@ def test_catalog_seeds_present_and_idempotent(arun):
         async with SessionLocal() as s:
             for table, key, expected in (
                 ("service", "service_code", SERVICES),
+                # 31r grew the vessel catalog to 15 rows (yachts/boats
+                # appended); 31q's nine seeds stay the taxonomy PREFIX
                 ("vessel_type", "ship_type", VESSEL_TYPES),
             ):
                 rows = (
@@ -122,9 +124,12 @@ def test_catalog_seeds_present_and_idempotent(arun):
                         )
                     )
                 ).all()
-                assert [(r[0], r[1], r[2]) for r in rows] == expected, table
+                assert [(r[0], r[1], r[2]) for r in rows[:len(expected)]] == \
+                    expected, table
 
                 # the migration's exact upsert shape, re-run: idempotent
+                # (count unchanged, seeded labels canonical)
+                before = len(rows)
                 await s.execute(
                     sql(
                         f"INSERT INTO {table} ({key}, label, sort_order) "
@@ -139,7 +144,7 @@ def test_catalog_seeds_present_and_idempotent(arun):
                         sql(f"SELECT COUNT(*) FROM {table}")
                     )
                 ).scalar_one()
-                assert again == len(expected), table
+                assert again == before, table
                 await s.rollback()  # leave the dev DB exactly as seeded
 
     arun(scenario())
