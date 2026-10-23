@@ -1,11 +1,11 @@
 {% extends "base.html" %}{% block title %}Not found — SeaVix{% endblock %}
-{% block breadcrumbs %}<li><a href="/dashboard">Home</a></li><li aria-current="page">Not found</li>{% endblock %}
-{% block blade_title %}<h1>Page not found</h1>{% endblock %}
-{% block blade_close %}<a class="sv-blade-close" href="/dashboard" aria-label="Close blade and go back">×</a>{% endblock %}
+{% block page_title %}<h1>Page not found</h1>{% endblock %}
+{% block page_desc %}<p class="sv-page-desc">Sorry — this page isn't available.
+   It may have been moved, or your account may not have access to it.</p>{% endblock %}
 {% block content %}
+{#- §9: a 404 is a dead end — the one documented back-link (a flow that
+    genuinely needs an exit) goes to the dashboard. -#}
 <section class="card">
-  <p>Sorry — this page isn't available. It may have been moved, or your
-     account may not have access to it.</p>
   <p><a class="button" href="/dashboard">Back to your dashboard</a></p>
 </section>
 {{ keepalive | safe }}{% endblock %}

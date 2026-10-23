@@ -37,7 +37,7 @@
 
   /* §2 color */
   --bg: #F7F8FA;            /* app canvas — very light cool gray */
-  --surface: #FFFFFF;       /* cards, blades, inputs */
+  --surface: #FFFFFF;       /* cards, section cards, inputs */
   --border: #E4E7EC;        /* hairlines */
   --border-strong: #D0D5DD; /* inputs at rest */
   --ink: #101828;           /* headings, primary text */
@@ -59,7 +59,7 @@
   --e1: 0 1px 2px rgba(16, 24, 40, .06);
   --e2: 0 4px 8px rgba(16, 24, 40, .08);
   --e3: 0 12px 24px rgba(16, 24, 40, .14);
-  --r-input: 6px; --r-btn: 8px; --r-card: 8px; --r-blade: 12px;
+  --r-input: 6px; --r-btn: 8px; --r-card: 8px; --r-panel: 12px;
   --dur: 150ms;
   --ease: cubic-bezier(.2, 0, .2, 1);
   --ring: 0 0 0 1px var(--accent), 0 0 0 3px rgba(21, 112, 239, .30);
@@ -67,8 +67,8 @@
   /* layout */
   --rail-w: 224px;
   --rail-collapsed: 56px;
-  --blade-min: 400px;
-  --blade-max: 720px;
+  --page-max: 1120px;
+  --section-label-w: 200px;
   --gutter: 24px;
 }
 
@@ -196,7 +196,7 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
 .sv-rail-collapsed .sv-rail-label,
 .sv-rail-collapsed .sv-rail-section h2 { display: none; }
 
-/* company block — org logo 36 + name 14/600, lands on the profile blade */
+/* company block — org logo 36 + name 14/600, lands on the profile page */
 .sv-rail-tenant {
   margin: 0.35rem 0.6rem 0.5rem;
   border-radius: var(--r-btn);
@@ -259,71 +259,62 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
   background: var(--bg); border-radius: 999px; padding: 0 0.45rem;
 }
 
-/* ------------------------------------------------------- blade stack */
-.sv-blades {
-  flex: 1; display: flex; align-items: stretch;
-  min-width: 0; overflow-x: auto;
-  background: var(--bg); /* gray canvas behind white blades */
-  padding: 0.75rem 0.75rem 0.75rem 0;
+/* ------------------------------------------------------ page (§9 shell) */
+/* Blade stack RETIRED (owner 23 Oct): fixed sidebar + full-page content.
+   Page caps at 1120px on the gray canvas; header = H1 + one-line 13px
+   text-2 description + primary action top-right. */
+.sv-page {
+  flex: 1; min-width: 0;
+  overflow-y: auto;
+  background: var(--bg);
+  padding: 1.5rem var(--gutter) 2.5rem;
 }
-.sv-blade {
-  flex: 0 1 var(--blade-max);
-  min-width: min(var(--blade-min), 92vw);
-  max-width: var(--blade-max);
-  margin-left: 0.75rem;
+.sv-page-inner { max-width: var(--page-max); margin: 0 auto; }
+
+.sv-page-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1.25rem;
+}
+.sv-page-header h1 { overflow: hidden; text-overflow: ellipsis; }
+.sv-page-desc { margin: 0.25rem 0 0; font-size: 13px; line-height: 20px; color: var(--text-2); }
+.sv-page-actions { flex: none; display: flex; align-items: center; gap: 0.5rem; }
+
+/* section cards (settings pattern): 200px left label column + fields right
+   at ≥1024px, stacked below; one card per section, vertical rhythm 16px */
+.sv-section-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--r-blade);
+  border-radius: var(--r-card);
   box-shadow: var(--e1);
-  display: flex; flex-direction: column;
-  min-height: 0;
-  animation: sv-blade-in 220ms var(--ease);
+  display: grid;
+  grid-template-columns: var(--section-label-w) minmax(0, 1fr);
+  margin-bottom: 1rem;
 }
-@keyframes sv-blade-in {
-  from { transform: translateX(24px); opacity: 0; }
-  to   { transform: translateX(0); opacity: 1; }
+.sv-section-card > .sv-section-head { padding: 1.25rem 1rem 1.25rem 1.25rem; }
+.sv-section-card > .sv-section-head h2 {
+  font-size: 14px; line-height: 20px; font-weight: 600; margin: 0 0 0.25rem;
 }
-.sv-blade + .sv-blade { margin-left: 0.75rem; }
+.sv-section-card > .sv-section-head p {
+  margin: 0; font-size: 13px; line-height: 20px; color: var(--text-2);
+}
+.sv-section-card > .sv-section-body { padding: 1.25rem; min-width: 0; }
+@media (min-width: 1024px) {
+  .sv-section-card > .sv-section-body { border-left: 1px solid var(--border); }
+}
+@media (max-width: 1023px) {
+  .sv-section-card { grid-template-columns: 1fr; }
+  .sv-section-card > .sv-section-head { padding-bottom: 0; }
+}
 
-/* blade header (§4): crumbs 12px text-2 · title H1 left · actions right */
-.sv-blade-header {
-  border-bottom: 1px solid var(--border);
-  padding: 0.7rem 1.25rem 0.6rem;
-}
-.sv-blade-crumbs ol {
-  list-style: none; margin: 0; padding: 0;
-  display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center;
-  font-size: 12px; line-height: 16px; color: var(--text-2);
-}
-.sv-blade-crumbs li + li::before {
-  content: "›"; margin-right: 0.3rem; color: var(--text-2);
-}
-.sv-blade-crumbs a { color: var(--text-2); text-decoration: none; }
-.sv-blade-crumbs a:hover { color: var(--accent-dark); text-decoration: underline; }
-.sv-blade-crumbs [aria-current] { color: var(--ink); font-weight: 500; }
-
-.sv-blade-titlebar { display: flex; align-items: center; gap: 0.75rem; }
-.sv-blade-actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
-.sv-blade-titlebar h1 {
-  font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -0.01em;
-  margin: 0.2rem 0 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.sv-blade-close {
-  background: none; border: 0; color: var(--text-2);
-  font-size: 1.2rem; cursor: pointer;
-  padding: 0.15rem 0.55rem; border-radius: var(--r-btn); text-decoration: none;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-.sv-blade-close:hover { background: var(--bg); color: var(--ink); }
-
-/* tabs: underline segmented, 14/500 */
-.sv-blade-tabs {
+/* page tabs (§9): underline segmented for entity detail — Overview /
+   Quotes / Assignment / Survey / Report — one aria-current per view */
+.sv-page-tabs {
   display: flex; gap: 0.15rem;
-  padding: 0 1.25rem;
   border-bottom: 1px solid var(--border);
+  margin: 0 0 1.25rem;
 }
-.sv-blade-tabs a {
+.sv-page-tabs a {
   padding: 0.5rem 0.85rem;
   font-size: 14px; font-weight: 500; line-height: 20px;
   text-decoration: none; color: var(--text-2);
@@ -331,18 +322,18 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
   margin-bottom: -1px;
   transition: color var(--dur) var(--ease);
 }
-.sv-blade-tabs a:hover { color: var(--ink); }
-.sv-blade-tabs a[aria-current] {
+.sv-page-tabs a:hover { color: var(--ink); }
+.sv-page-tabs a[aria-current] {
   color: var(--accent-dark);
   border-bottom-color: var(--accent);
   font-weight: 600;
 }
 
-.sv-blade-body {
-  padding: 1.25rem 1.5rem 1.5rem;
-  overflow-y: auto;
-  min-height: 0;
-  flex: 1;
+/* profile editor (§9): WYSIWYG preview as a side-by-side column at
+   ≥1280px, its own stacked section below that */
+@media (min-width: 1280px) {
+  .sv-editor-layout { display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 1rem; align-items: start; }
+  .sv-editor-preview { position: sticky; top: 0; }
 }
 
 /* --------------------------------------------------------- components */
@@ -443,15 +434,9 @@ button:disabled, button:disabled:hover {
   box-shadow: none;
 }
 
-/* forms (§4): inputs 40px, border-strong, radius 6, label above 13/500 */
-.form, .sv-form {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-blade);
-  box-shadow: var(--e1);
-  padding: 1.25rem;
-  max-width: 560px;
-}
+/* forms (§4): inputs 40px, border-strong, radius 6, label above 13/500.
+   .sv-form is a bare form region — fields styled, no card chrome (§9:
+   forms live inside section cards). */
 .form label, .sv-form label {
   display: block; margin: 0.9rem 0 0.3rem;
   font-size: 13px; line-height: 18px; font-weight: 500; color: var(--ink);
@@ -747,7 +732,7 @@ button:disabled, button:disabled:hover {
   margin-top: 1.75rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--r-blade);
+  border-radius: var(--r-panel);
   box-shadow: var(--e2);
   padding: 1.5rem;
 }
@@ -857,16 +842,18 @@ button:disabled, button:disabled:hover {
 .sv-slug-callout { font-size: 14px; }
 .sv-slug-callout span { color: var(--text-2); font-size: 13px; }
 
-/* sticky save bar (§4/§6): appears when dirty, Cancel left / Save right */
+/* sticky save bar (§4/§9): a deliberate footer strip that sticks to the
+   bottom of the page scroll while the form is dirty — Cancel left,
+   Save right */
 .sv-save-bar {
   position: sticky; bottom: 0;
   display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
-  margin: 1.5rem -1.5rem -1.5rem;
-  padding: 0.85rem 1.5rem;
+  margin-top: 1rem;
+  padding: 0.85rem 1.25rem;
   background: var(--surface);
-  border-top: 1px solid var(--border);
-  border-radius: 0 0 var(--r-blade) var(--r-blade);
-  box-shadow: 0 -4px 8px rgba(16, 24, 40, .06);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--e1);
 }
 
 /* trusted-device checkbox (31j) */
@@ -887,8 +874,7 @@ button:disabled, button:disabled:hover {
     box-shadow: var(--e3);
   }
   .sv-rail-collapsed .sv-rail { transform: translateX(-100%); width: var(--rail-w); }
-  .sv-blades { padding-left: 0.75rem; }
-  .sv-blade { min-width: 92vw; }
+  .sv-page { padding: 1rem 1rem 2rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

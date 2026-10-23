@@ -12,8 +12,8 @@
   <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body x-data="{ railCollapsed: false }">
-  <a class="sv-skip" href="#blade-body">Skip to content</a>
+<body x-data="{ railCollapsed: window.matchMedia('(max-width: 900px)').matches }">
+  <a class="sv-skip" href="#main-content">Skip to content</a>
 
   <header class="sv-topbar">
     <button class="sv-burger" type="button"
@@ -46,8 +46,10 @@
 
   <div class="sv-shell" x-bind:class="railCollapsed ? 'sv-rail-collapsed' : ''">
     {#- v4 §5: the rail is PRIMARY navigation — logo, company block (lands
-        on the profile blade), then WORKSPACE and COMPANY sections with one
-        active state per view. Visibility stays permission-driven. -#}
+        on the profile page), then WORKSPACE and COMPANY sections with one
+        active state per view. Visibility stays permission-driven.
+        §9 (31p): the retired blade stack is replaced by a full page — the
+        rail is unchanged. -#}
     <nav class="sv-rail" aria-label="Primary">
       <div class="sv-rail-logo">
         <a href="/dashboard" aria-label="SeaVix"><img src="/static/brand/seavix-logo.png" alt="SeaVix"></a>
@@ -99,29 +101,27 @@
       {% endif %}
     </nav>
 
-    <main class="sv-blades" aria-label="Blades">
-      {% block blades %}
-        <section class="sv-blade" aria-label="Content">
-          <header class="sv-blade-header">
-            <nav class="sv-blade-crumbs" aria-label="Breadcrumb">
-              <ol>
-                {% block breadcrumbs %}<li aria-current="page">Home</li>{% endblock %}
-              </ol>
-            </nav>
-            <div class="sv-blade-titlebar">
-              {% block blade_title %}<h1>SeaVix</h1>{% endblock %}
-              <span class="sv-blade-actions">{% block blade_actions %}{% endblock %}</span>
-              {% block blade_close %}{% endblock %}
-            </div>
-          </header>
-          {% block blade_tabs %}{% endblock %}
-          <div class="sv-blade-body" id="blade-body">
-            {% block content %}{% endblock %}
-            <footer class="site-footer">
-              <p>SeaVix — marine survey coordination.</p>
-            </footer>
+    <main class="sv-page" aria-label="Content">
+      {% block page %}
+      <div class="sv-page-inner">
+        {#- §9 page header: H1 + one-line 13px text-2 description +
+            primary action top-right. No crumbs, no × — a page is not a
+            dialog. -#}
+        <header class="sv-page-header">
+          <div>
+            {% block page_title %}<h1>SeaVix</h1>{% endblock %}
+            {% block page_desc %}{% endblock %}
           </div>
-        </section>
+          <div class="sv-page-actions">{% block page_actions %}{% endblock %}</div>
+        </header>
+        {% block page_tabs %}{% endblock %}
+        <div class="sv-page-body" id="main-content">
+          {% block content %}{% endblock %}
+          <footer class="site-footer">
+            <p>SeaVix — marine survey coordination.</p>
+          </footer>
+        </div>
+      </div>
       {% endblock %}
     </main>
   </div>

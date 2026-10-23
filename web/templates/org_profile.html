@@ -1,20 +1,27 @@
 {% extends "base.html" %}{% block title %}Your public page — SeaVix{% endblock %}
 {% set active = "profile" %}
-{% block breadcrumbs %}<li><a href="/dashboard">Home</a></li><li aria-current="page">Profile</li>{% endblock %}
-{% block blade_title %}<h1>Your public page</h1>{% endblock %}
-{% block blade_close %}<a class="sv-blade-close" href="/dashboard" aria-label="Close blade and go back">×</a>{% endblock %}
-{% block blade_actions %}
+{% block page_title %}<h1>Your public page</h1>{% endblock %}
+{% block page_desc %}<p class="sv-page-desc">Exactly what visitors see at
+   seavix.ai/org/{{ org.slug }}{% if org and org.profile_status != 'live' %}
+   — your page is <strong>{{ org.profile_status }}</strong>, so it is not
+   public yet{% endif %}.</p>{% endblock %}
+{% block page_actions %}
   {% if mode == "view" and can_edit %}
   <a class="button" href="/org/profile?view=edit">Edit</a>
   {% endif %}
+  {% if mode == "edit" %}
+  {#- §9 documented back-link #1: the view↔edit flow — the editor returns
+      to its WYSIWYG preview. -#}
+  <a class="button secondary" href="/org/profile">← Back to preview</a>
+  {% endif %}
 {% endblock %}
-{% block blade_tabs %}<nav class="sv-blade-tabs" aria-label="Profile sections">
+{% block page_tabs %}<nav class="sv-page-tabs" aria-label="Profile sections">
   <a href="/org/profile"{% if mode == "view" %} aria-current="page"{% endif %}>Public page</a>
   {% if org and org.profile_status == 'live' %}<a href="/org/{{ org.slug }}">Live page</a>{% endif %}
 </nav>{% endblock %}
 
 {% block content %}
-{#- 31e/31i: the profile blade is a PUBLIC-CONTENT surface — no account
+{#- 31e/31i: the profile page is a PUBLIC-CONTENT surface — no account
     email line, no tag, no go-live notice: account state misreads as
     company state here. 31i: post-auth surfaces carry zero verification
     state. -#}
@@ -25,46 +32,20 @@
 {#- 31f: WYSIWYG preview — the SAME content partial the public page at
     /org/<slug> renders, fed the same resolved org shape. -#}
 <section class="card sv-preview">
-  <p class="sv-preview-hint">This is exactly what visitors see at
-     seavix.ai/org/{{ org.slug }}{% if org and org.profile_status != 'live' %} —
-     your page is <strong>{{ org.profile_status }}</strong>, so it is not
-     public yet{% endif %}.</p>
   {% if org %}{% include "_public_org_content.html" %}{% endif %}
 </section>
 
 {% else %}
-{#- EDIT MODE (org.profile.edit) — the 31d view-edit-save pattern: Save's
-    sticky bar appears once the form is dirty (v4 §6: Cancel left, Save
-    right, Save disabled until dirty). -#}
+{#- EDIT MODE (org.profile.edit) — the 31d view-edit-save pattern on the
+    §9 settings layout: section cards (Public profile / Services / Contact
+    details), WYSIWYG preview side-by-side at ≥1280px, sticky Save bar at
+    the bottom once the form is dirty. -#}
 {% if org %}
-<p><a href="/org/profile">← Back to preview</a></p>
-
-<section class="card">
-  <h2>What visitors see</h2>
-  {#- 31j: the CURRENT public address state, stated plainly in a soft info
-      callout (v4 §6). An auto-generated placeholder slug gets a loud
-      "choose your address" prompt; a chosen slug gets the plain URL. -#}
-  {% if slug_is_placeholder %}
-  <p class="sv-info-callout sv-slug-callout" role="status">
-    <svg class="sv-ic sv-ic-20" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
-    <span><strong>Choose your public address: seavix.ai/org/{{ org.slug }}</strong><br>
-          <span class="sv-muted">This address was generated when you registered —
-          pick one that matches your company. It is where your SeaVix page
-          lives.</span></span>
-  </p>
-  {% else %}
-  <p class="sv-info-callout sv-slug-callout" role="status">
-    <svg class="sv-ic sv-ic-20" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
-    <span><strong>Your public page: seavix.ai/org/{{ org.slug }}</strong>
-          {% if org.profile_status == 'live' %}
-          — <a href="/org/{{ org.slug }}">View it live</a>
-          {% endif %}</span>
-  </p>
-  {% endif %}
-
-  <form method="post" action="/org/profile" class="sv-form"
-        @input="valid = $el.checkValidity()"
-        x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false, dirty: false, valid: true,
+<div class="sv-editor-layout">
+  <div class="sv-editor-main">
+    <form method="post" action="/org/profile" class="sv-form"
+          @input="valid = $el.checkValidity()"
+          x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false, dirty: false, valid: true,
                   async search() {
                     const frag = this.q.trim();
                     if (!frag) { this.results = []; this.open = false; return; }
@@ -79,107 +60,167 @@
                     this.q = ""; this.results = []; this.open = false;
                   },
                   remove(code) { this.selected = this.selected.filter(p => p.code !== code); this.dirty = true; } }'>
-    <label for="about">Describe your services — this appears on your public page</label>
-    <textarea id="about" name="about" rows="6"
-              @input="dirty = true">{{ org.about or "" }}</textarea>
 
-    <label for="slug">Public page address</label>
-    <input id="slug" name="slug" required minlength="2" maxlength="64"
-           pattern="[a-z0-9-]+" title="lowercase letters, digits and dashes"
-           value="{{ membership.slug }}" @input="dirty = true">
-    {#- 31j: exactly where the page is, and the draft→404 rule, inline. -#}
-    {% if org.profile_status == 'live' %}
-    <small>Your page is <strong>live</strong> — seavix.ai/org/{{ org.slug }}
-           is reachable for visitors right now.</small>
-    {% else %}
-    <small>Your page is at seavix.ai/org/{{ org.slug }} and becomes reachable
-           only when it is <strong>live</strong> — while it is a
-           <strong>{{ org.profile_status }}</strong>, that address shows
-           visitors a not-found page.</small>
-    {% endif %}
-    {% if slug_error %}<p class="sv-field-error" role="alert">{{ slug_error }}</p>{% endif %}
+      <section class="sv-section-card">
+        <div class="sv-section-head">
+          <h2>Public profile</h2>
+          <p>Your page address and how it reads publicly.</p>
+        </div>
+        <div class="sv-section-body">
+          {#- 31j: the CURRENT public address state, stated plainly in a soft
+              info callout (v4 §6). An auto-generated placeholder slug gets a
+              loud "choose your address" prompt; a chosen slug gets the plain
+              URL. -#}
+          {% if slug_is_placeholder %}
+          <p class="sv-info-callout sv-slug-callout" role="status">
+            <svg class="sv-ic sv-ic-20" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+            <span><strong>Choose your public address: seavix.ai/org/{{ org.slug }}</strong><br>
+                  <span class="sv-muted">This address was generated when you registered —
+                  pick one that matches your company. It is where your SeaVix page
+                  lives.</span></span>
+          </p>
+          {% else %}
+          <p class="sv-info-callout sv-slug-callout" role="status">
+            <svg class="sv-ic sv-ic-20" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+            <span><strong>Your public page: seavix.ai/org/{{ org.slug }}</strong>
+                  {% if org.profile_status == 'live' %}
+                  — <a href="/org/{{ org.slug }}">View it live</a>
+                  {% endif %}</span>
+          </p>
+          {% endif %}
 
-    {#- 31m: public contact block — address, phone, public email, whatsapp.
-        Saved with the rest of the page in one PUT; empty fields clear the
-        column. contact_email is the PUBLIC business contact — never
-        prefilled from, or linked to, the account/login email. -#}
-    <label for="address">Company address — shown on your public page</label>
-    <textarea id="address" name="address" rows="3"
-              @input="dirty = true">{{ org.address or "" }}</textarea>
-    {% if field_errors.get("address") %}<p class="sv-field-error" role="alert">{{ field_errors.get("address") }}</p>{% endif %}
+          <label for="slug">Public page address</label>
+          <input id="slug" name="slug" required minlength="2" maxlength="64"
+                 pattern="[a-z0-9-]+" title="lowercase letters, digits and dashes"
+                 value="{{ membership.slug }}" @input="dirty = true">
+          {#- 31j: exactly where the page is, and the draft→404 rule, inline. -#}
+          {% if org.profile_status == 'live' %}
+          <small>Your page is <strong>live</strong> — seavix.ai/org/{{ org.slug }}
+                 is reachable for visitors right now.</small>
+          {% else %}
+          <small>Your page is at seavix.ai/org/{{ org.slug }} and becomes reachable
+                 only when it is <strong>live</strong> — while it is a
+                 <strong>{{ org.profile_status }}</strong>, that address shows
+                 visitors a not-found page.</small>
+          {% endif %}
+          {% if slug_error %}<p class="sv-field-error" role="alert">{{ slug_error }}</p>{% endif %}
+        </div>
+      </section>
 
-    <label for="phone">Phone</label>
-    <input id="phone" name="phone" type="tel"
-           value="{{ org.phone or "" }}" @input="dirty = true">
-    <small>Shown on your public page as a call link.</small>
+      <section class="sv-section-card">
+        <div class="sv-section-head">
+          <h2>Services</h2>
+          <p>What you do and the ports you serve.</p>
+        </div>
+        <div class="sv-section-body">
+          <label for="about">Describe your services — this appears on your public page</label>
+          <textarea id="about" name="about" rows="6"
+                    @input="dirty = true">{{ org.about or "" }}</textarea>
 
-    <label for="contact_email">Public email address</label>
-    <input id="contact_email" name="contact_email" type="email"
-           value="{{ org.contact_email or "" }}" @input="dirty = true">
-    <small>Your public business contact — shown on your public page.
-           Separate from your login email, which stays private.</small>
-    {% if field_errors.get("contact_email") %}<p class="sv-field-error" role="alert">{{ field_errors.get("contact_email") }}</p>{% endif %}
+          <div class="sv-port-picker">
+            <label for="port-search">Ports of operation — search by port name,
+                   UN/LOCODE or country</label>
+            <input id="port-search" x-model="q" @input.debounce.300ms="search()"
+                   @focus="search()" @keydown.escape="open = false" autocomplete="off"
+                   placeholder="e.g. Al Fujayrah, AEFJR or AE"
+                   role="combobox" aria-expanded="open" aria-controls="port-results">
+            <ul id="port-results" class="sv-port-results" x-show="open"
+                @click.outside="open = false" role="listbox">
+              <template x-for="port in results" :key="port.code">
+                <li><button type="button" role="option" @click="add(port)"
+                      x-text="port.name + &quot; (&quot; + port.code + &quot; · &quot; + port.country + &quot;)&quot;"></button></li>
+              </template>
+            </ul>
+            <div class="sv-chips">
+              <template x-for="port in selected" :key="port.code">
+                <span class="sv-chip"><span x-text="port.name"></span>
+                  <button type="button" class="sv-chip-x" @click="remove(port.code)"
+                          :aria-label="&quot;Remove &quot; + port.name">×</button>
+                </span>
+              </template>
+              <template x-for="port in selected" :key="'hidden-' + port.code">
+                <input type="hidden" name="ports" :value="port.code">
+              </template>
+            </div>
+            {% if port_error %}<p class="sv-field-error" role="alert">{{ port_error }}</p>{% endif %}
+            <small>Add as many ports as you serve — they appear as "Ports we
+                   serve" on your public page.</small>
+          </div>
+        </div>
+      </section>
 
-    <label for="whatsapp">WhatsApp number</label>
-    <input id="whatsapp" name="whatsapp" type="text"
-           placeholder="+971 50 123 4567"
-           value="{{ org.whatsapp or "" }}" @input="dirty = true">
-    <small>International format — shown on your public page as a
-           Chat on WhatsApp link.</small>
-    {% if field_errors.get("whatsapp") %}<p class="sv-field-error" role="alert">{{ field_errors.get("whatsapp") }}</p>{% endif %}
+      <section class="sv-section-card">
+        <div class="sv-section-head">
+          <h2>Contact details</h2>
+          <p>Shown to visitors on your public page.</p>
+        </div>
+        <div class="sv-section-body">
+          {#- 31m: public contact block — address, phone, public email, whatsapp.
+              Saved with the rest of the page in one PUT; empty fields clear the
+              column. contact_email is the PUBLIC business contact — never
+              prefilled from, or linked to, the account/login email. -#}
+          <label for="address">Company address — shown on your public page</label>
+          <textarea id="address" name="address" rows="3"
+                    @input="dirty = true">{{ org.address or "" }}</textarea>
+          {% if field_errors.get("address") %}<p class="sv-field-error" role="alert">{{ field_errors.get("address") }}</p>{% endif %}
 
-    <div class="sv-port-picker">
-      <label for="port-search">Ports of operation — search by port name,
-             UN/LOCODE or country</label>
-      <input id="port-search" x-model="q" @input.debounce.300ms="search()"
-             @focus="search()" @keydown.escape="open = false" autocomplete="off"
-             placeholder="e.g. Al Fujayrah, AEFJR or AE"
-             role="combobox" aria-expanded="open" aria-controls="port-results">
-      <ul id="port-results" class="sv-port-results" x-show="open"
-          @click.outside="open = false" role="listbox">
-        <template x-for="port in results" :key="port.code">
-          <li><button type="button" role="option" @click="add(port)"
-                x-text="port.name + &quot; (&quot; + port.code + &quot; · &quot; + port.country + &quot;)&quot;"></button></li>
-        </template>
-      </ul>
-      <div class="sv-chips">
-        <template x-for="port in selected" :key="port.code">
-          <span class="sv-chip"><span x-text="port.name"></span>
-            <button type="button" class="sv-chip-x" @click="remove(port.code)"
-                    :aria-label="&quot;Remove &quot; + port.name">×</button>
-          </span>
-        </template>
-        <template x-for="port in selected" :key="'hidden-' + port.code">
-          <input type="hidden" name="ports" :value="port.code">
-        </template>
+          <label for="phone">Phone</label>
+          <input id="phone" name="phone" type="tel"
+                 value="{{ org.phone or "" }}" @input="dirty = true">
+          <small>Shown on your public page as a call link.</small>
+
+          <label for="contact_email">Public email address</label>
+          <input id="contact_email" name="contact_email" type="email"
+                 value="{{ org.contact_email or "" }}" @input="dirty = true">
+          <small>Your public business contact — shown on your public page.
+                 Separate from your login email, which stays private.</small>
+          {% if field_errors.get("contact_email") %}<p class="sv-field-error" role="alert">{{ field_errors.get("contact_email") }}</p>{% endif %}
+
+          <label for="whatsapp">WhatsApp number</label>
+          <input id="whatsapp" name="whatsapp" type="text"
+                 placeholder="+971 50 123 4567"
+                 value="{{ org.whatsapp or "" }}" @input="dirty = true">
+          <small>International format — shown on your public page as a
+                 Chat on WhatsApp link.</small>
+          {% if field_errors.get("whatsapp") %}<p class="sv-field-error" role="alert">{{ field_errors.get("whatsapp") }}</p>{% endif %}
+        </div>
+      </section>
+
+      {#- v4 §4/§9: the sticky save bar appears when the form is dirty —
+          Cancel left, Save right, Save disabled until dirty. -#}
+      <div class="sv-save-bar" x-show="dirty" x-cloak>
+        <a class="button secondary" href="/org/profile">Cancel</a>
+        <button type="submit" :disabled="!(dirty && valid)">Save public page</button>
       </div>
-      {% if port_error %}<p class="sv-field-error" role="alert">{{ port_error }}</p>{% endif %}
-      <small>Add as many ports as you serve — they appear as "Ports we
-             serve" on your public page.</small>
-    </div>
+    </form>
 
-    {#- v4 §6: the sticky save bar appears when the form is dirty —
-        Cancel left, Save right, Save disabled until dirty. -#}
-    <div class="sv-save-bar" x-show="dirty" x-cloak>
-      <a class="button secondary" href="/org/profile">Cancel</a>
-      <button type="submit" :disabled="!(dirty && valid)">Save public page</button>
-    </div>
-  </form>
-</section>
+    {% if 'org.logo.upload' in membership.permissions %}
+    <section class="sv-section-card">
+      <div class="sv-section-head">
+        <h2>Logo</h2>
+        <p>Shown at the top of your public page.</p>
+      </div>
+      <div class="sv-section-body">
+        <form method="post" action="/org/profile/logo" enctype="multipart/form-data" class="sv-form">
+          <label for="logo">Upload your logo — PNG, JPEG or WEBP, up to 2&nbsp;MB.</label>
+          <input id="logo" name="file" type="file" accept="image/png,image/jpeg,image/webp" required>
+          {% if logo_error %}<p class="sv-field-error" role="alert">{{ logo_error }}</p>{% endif %}
+          <p><button type="submit">Upload logo</button>
+             {% if logo_saved %}<strong class="sv-saved">Logo updated.</strong>{% endif %}</p>
+        </form>
+      </div>
+    </section>
+    {% endif %}
+  </div>
 
-{% if 'org.logo.upload' in membership.permissions %}
-<section class="card">
-  <h2>Logo</h2>
-  <form method="post" action="/org/profile/logo" enctype="multipart/form-data" class="sv-form">
-    <label for="logo">Upload your logo — PNG, JPEG or WEBP, up to 2&nbsp;MB.
-           Shown at the top of your public page.</label>
-    <input id="logo" name="file" type="file" accept="image/png,image/jpeg,image/webp" required>
-    {% if logo_error %}<p class="sv-field-error" role="alert">{{ logo_error }}</p>{% endif %}
-    <p><button type="submit">Upload logo</button>
-       {% if logo_saved %}<strong class="sv-saved">Logo updated.</strong>{% endif %}</p>
-  </form>
-</section>
-{% endif %}
+  <aside class="sv-editor-preview">
+    <section class="card sv-preview">
+      <p class="sv-preview-hint">Preview — exactly what visitors see at
+         seavix.ai/org/{{ org.slug }}.</p>
+      {% include "_public_org_content.html" %}
+    </section>
+  </aside>
+</div>
 {% endif %}
 {% endif %}
 

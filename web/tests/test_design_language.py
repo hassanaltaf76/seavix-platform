@@ -8,7 +8,7 @@ every interactive. This file locks: the vendored font + @font-face, the
 §2 token values, WCAG AA >= 4.5:1 on the new pairs, focus rings, the rail
 active state, the hero markup, the /org/<slug> routing, and the
 behavioral contracts carried forward (three layouts, register form, OTP
-screen, no search markup, blade navigation, permission gating, 31h/31l
+screen, no search markup, page navigation, permission gating, 31h/31l
 shared partial, zero verification state).
 """
 import re
@@ -27,7 +27,7 @@ AUTH_TEMPLATES = ("login", "register", "forgot_password", "reset_password",
                   "verify_email_done", "verify_gate")
 PUBLIC_TEMPLATES = ("landing", "profile", "profile_unavailable",
                     "rfq_form", "rfq_thanks")
-BLADE_TEMPLATES = ("org_home", "org_profile", "org_not_found", "dashboard")
+PAGE_TEMPLATES = ("org_home", "org_profile", "org_not_found", "dashboard")
 
 
 def _tokens() -> dict[str, str]:
@@ -136,7 +136,7 @@ def test_depth_radius_motion_per_spec():
         "0 1px 2px rgba(16, 24, 40, .06)",    # e1
         "0 4px 8px rgba(16, 24, 40, .08)",    # e2
         "0 12px 24px rgba(16, 24, 40, .14)",  # e3
-        "--r-input: 6px", "--r-btn: 8px", "--r-blade: 12px",
+        "--r-input: 6px", "--r-btn: 8px", "--r-panel: 12px",
         "--dur: 150ms",
         "cubic-bezier(.2, 0, .2, 1)",
         "translateY(-1px)",                   # hover lift
@@ -203,7 +203,7 @@ def test_wcag_aa_v4_pairs():
 def test_rail_structure_and_active_state():
     """v4 §5: logo → company block → WORKSPACE section → COMPANY section;
     active = accent left-bar 3px + accent-8% pill, exactly one per view
-    (the blade template marks the item via `active`)."""
+    (the page template marks the item via `active`)."""
     assert 'class="sv-rail"' in BASE
     assert ">Workspace</h2>" in BASE
     assert ">Company</h2>" in BASE
@@ -229,8 +229,8 @@ def test_rail_structure_and_active_state():
     tenant_at = BASE.index('class="sv-rail-tenant"')
     assert logo_at < tenant_at
     # exactly one active-state marker mechanism in the shell (rail-scoped:
-    # two items, conditionally set; the breadcrumb default lives outside)
-    rail = BASE[BASE.index('class="sv-rail"'):BASE.index('class="sv-blades"')]
+    # two items, conditionally set; the page chrome carries no other)
+    rail = BASE[BASE.index('class="sv-rail"'):BASE.index('class="sv-page"')]
     assert rail.count('aria-current="page"') == 2
 
 
@@ -246,6 +246,78 @@ def test_topbar_account_menu():
     assert 'action="/logout"' in BASE
     # no plain topnav links remain
     assert "sv-topnav" not in BASE
+
+
+# --------------------------------------------------------- §9 SHELL PATTERN
+def test_page_shell_replaces_blades_31p():
+    """§9 (owner 23 Oct): the Azure-style blade stack is RETIRED — zero
+    sv-blade-* selectors remain in any template or the stylesheet; the
+    shell is the fixed sidebar (§5, unchanged) + full page."""
+    assert 'class="sv-page"' in BASE
+    assert "sv-page-header" in BASE
+    for tpl in TEMPLATES.glob("*.html"):
+        text = tpl.read_text()
+        assert "sv-blade" not in text, f"{tpl.name}: blade selector remains"
+    assert "sv-blade" not in STYLE
+    for stale in ("--blade-min", "--blade-max", "--r-blade"):
+        assert stale not in STYLE, f"stale blade token: {stale}"
+
+
+def test_page_header_contract_31p():
+    """§9: page header = H1 + one-line 13px text-2 description + primary
+    action top-right; the page caps at 1120px with a 24px gutter."""
+    assert "{% block page_title %}" in BASE
+    assert "{% block page_desc %}" in BASE
+    assert 'class="sv-page-actions"' in BASE
+    page = re.search(r"\.sv-page\s*\{(.*?)\}", STYLE, re.S)
+    assert page and "var(--gutter)" in page.group(1)
+    inner = re.search(r"\.sv-page-inner\s*\{(.*?)\}", STYLE, re.S)
+    assert inner and "var(--page-max)" in inner.group(1)
+    header = re.search(r"\.sv-page-header\s*\{(.*?)\}", STYLE, re.S)
+    assert header and "space-between" in header.group(1)
+    desc = re.search(r"\.sv-page-desc\s*\{(.*?)\}", STYLE, re.S)
+    assert desc and "var(--text-2)" in desc.group(1) and "13px" in desc.group(1)
+    assert "--page-max: 1120px" in STYLE
+    assert "--gutter: 24px" in STYLE
+    # the pages carry real headers: H1 + description + action where the
+    # flow has a primary action
+    dash = (TEMPLATES / "dashboard.html").read_text()
+    assert "<h1>Dashboard</h1>" in dash
+    assert 'class="sv-page-desc"' in dash
+    profile = (TEMPLATES / "org_profile.html").read_text()
+    assert "<h1>Your public page</h1>" in profile
+    assert 'class="sv-page-desc"' in profile
+    assert "{% block page_actions %}" in profile
+
+
+def test_section_card_settings_pattern_31p():
+    """§9: content as stacked section cards — 200px left label column +
+    fields right at ≥1024px, stacked below (the Stripe settings pattern)."""
+    assert "--section-label-w: 200px" in STYLE
+    card = re.search(r"\.sv-section-card\s*\{(.*?)\}", STYLE, re.S)
+    assert card and "var(--section-label-w)" in card.group(1)
+    stacked = re.search(
+        r"@media \(max-width: 1023px\)\s*\{(.*?)\}", STYLE, re.S)
+    assert stacked and "grid-template-columns: 1fr" in stacked.group(1)
+    for name in ("org_home", "org_profile"):
+        text = (TEMPLATES / f"{name}.html").read_text()
+        assert 'class="sv-section-card"' in text, f"{name}: section cards"
+        assert "sv-section-head" in text, f"{name}: label column"
+        assert "sv-section-body" in text, f"{name}: fields column"
+
+
+def test_page_tabs_component_31p():
+    """§9: underline page-tabs (entity detail: Overview/Quotes/Assignment/
+    Survey/Report) replace stacked blades — the component ships now, ready
+    for stage 4; the profile page is its first consumer."""
+    tabs = re.search(r"\.sv-page-tabs\s*\{(.*?)\}", STYLE, re.S)
+    assert tabs and "border-bottom: 1px solid var(--border)" in tabs.group(1)
+    active = re.search(r"\.sv-page-tabs a\[aria-current\]\s*\{(.*?)\}", STYLE, re.S)
+    assert active and "var(--accent)" in active.group(1)
+    profile = (TEMPLATES / "org_profile.html").read_text()
+    assert 'class="sv-page-tabs"' in profile
+    assert ">Public page</a>" in profile
+    assert ">Live page</a>" in profile
 
 
 # --------------------------------------------------------- §6 PAGES
@@ -311,7 +383,7 @@ def test_inline_svg_icons_constrained_31o():
         (r"\.sv-empty svg", "40px"),          # empty states (§4)
         (r"\.sv-skel-card svg", "40px"),      # dashboard awaiting-data cards
         (r"\.sv-feature svg", "26px"),        # hero feature cards
-        (r"\.sv-rail-item \.sv-glyph svg", "16px"),  # blade rail
+        (r"\.sv-rail-item \.sv-glyph svg", "16px"),  # rail
     ):
         rule = re.search(selector + r"\s*\{(.*?)\}", STYLE, re.S)
         assert rule, f"missing CSS rule {selector}"
@@ -387,13 +459,11 @@ def test_org_slug_routing_contract():
 
 
 # ------------------------------------------------ carried-forward contracts
-def test_blade_shell_is_post_auth_only():
+def test_page_shell_is_post_auth_only():
     assert 'class="sv-topbar"' in BASE
-    assert 'class="sv-blades"' in BASE
-    assert "sv-blade-crumbs" in BASE
-    assert "sv-blade-titlebar" in BASE
-    assert "{% block blade_tabs %}" in BASE
-    assert "{% block blade_close %}" in BASE
+    assert 'class="sv-page"' in BASE
+    assert "sv-page-header" in BASE
+    assert "{% block page_tabs %}" in BASE
     assert "/static/vendor/htmx.min.js" in BASE
     assert "/static/vendor/alpine.min.js" in BASE
     assert "sv-skip" in BASE
@@ -408,23 +478,18 @@ def test_blade_shell_is_post_auth_only():
         assert "All services" not in text, f"{tpl.name}: services section"
 
 
-def test_blade_navigation_never_drops_to_public_landing():
+def test_page_never_drops_to_public_landing():
+    """§9: no ×, no crumb trail — and a page never links the public
+    landing; the rail logo roots at the dashboard."""
     assert 'href="/"' not in BASE
     assert 'href="/dashboard"' in BASE  # rail logo → dashboard
     dash = (TEMPLATES / "dashboard.html").read_text()
     home = (TEMPLATES / "org_home.html").read_text()
     profile = (TEMPLATES / "org_profile.html").read_text()
-    assert "<li aria-current=\"page\">Home</li>" in dash
-    assert '<li><a href="/dashboard">Home</a></li>' in home
-    assert "<li aria-current=\"page\">Your account</li>" in home
-    assert '<li><a href="/dashboard">Home</a></li>' in profile
-    assert "<li aria-current=\"page\">Profile</li>" in profile
-    assert 'class="sv-blade-close" href="/dashboard"' in dash
-    assert 'class="sv-blade-close" href="/dashboard"' in home
-    assert 'class="sv-blade-close" href="/dashboard"' in profile
-    assert 'href="/"' not in dash
-    assert 'href="/"' not in home
-    assert 'href="/"' not in profile
+    for name, text in (("dashboard", dash), ("org_home", home),
+                       ("org_profile", profile)):
+        assert 'href="/"' not in text, f"{name}: links the public landing"
+        assert "sv-blade" not in text, f"{name}: blade chrome remains"
 
 
 def test_no_text_wordmark_next_to_logo():
@@ -474,9 +539,9 @@ def test_template_lineage():
     for name in PUBLIC_TEMPLATES:
         text = (TEMPLATES / f"{name}.html").read_text()
         assert '{% extends "base_public.html" %}' in text, f"{name} must extend base_public"
-    for name in BLADE_TEMPLATES:
+    for name in PAGE_TEMPLATES:
         text = (TEMPLATES / f"{name}.html").read_text()
-        assert '{% extends "base.html" %}' in text, f"{name} must extend the blade shell"
+        assert '{% extends "base.html" %}' in text, f"{name} must extend the page shell"
     for name in AUTH_TEMPLATES + PUBLIC_TEMPLATES:
         text = (TEMPLATES / f"{name}.html").read_text()
         assert "sv-rail" not in text, f"{name}: rail markup on a public/auth page"
@@ -641,7 +706,7 @@ def test_port_picker_markup_31f():
 def test_zero_verification_state_post_auth_31i():
     banned = ("unverified", "verification/resend", "Verify your email",
               "Resend verification")
-    for name in BLADE_TEMPLATES + ("base",):
+    for name in PAGE_TEMPLATES + ("base",):
         text = (TEMPLATES / f"{name}.html").read_text()
         for word in banned:
             assert word not in text, f"{name}: verification state {word!r}"

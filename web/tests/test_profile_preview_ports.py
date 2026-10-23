@@ -158,12 +158,16 @@ def test_view_mode_is_wysiwyg_and_ports_round_trip(arun, id_asgi):
 
                 # EDIT MODE seeds the picker with the persisted selection
                 # (JSON in x-data) and carries the chip + hidden-input
-                # templates Alpine clones per selection
+                # templates Alpine clones per selection. §9: the WYSIWYG
+                # preview aside ALSO renders the saved ports as real chips,
+                # so the raw sv-chip count is template + preview.
                 editor = await w.get("/org/profile?view=edit")
                 for code in ("AEFJR", "SGSIN", "NLRTM"):
                     assert f'"code": "{code}"' in editor.text
-                assert editor.text.count('class="sv-chip"') == 1  # x-for template
+                assert editor.text.count(
+                    '<template x-for="port in selected" :key="port.code">') == 1
                 assert editor.text.count('name="ports"') == 1  # hidden-input template
+                assert editor.text.count('class="sv-chip"') == 4  # 1 template + 3 preview chips
                 for name in ("Al Fujayrah", "Singapore", "Rotterdam"):
                     assert f'"name": "{name}"' in editor.text
                 assert "remove(port.code)" in editor.text  # chip removal wiring

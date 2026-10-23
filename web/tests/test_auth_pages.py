@@ -110,7 +110,7 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 # right code -> 303 + HttpOnly SameSite=Lax cookie.
                 # 31g landing rule: everyone lands on /dashboard (the
                 # post-auth shell any active member can count on — account
-                # internals live at /org/home, the profile blade is
+                # internals live at /org/home, the profile page is
                 # permission-gated and would 404 for surveyor/viewer)
                 ok = await w.post(
                     "/login/otp", data={"email": email, "code": code2}
@@ -119,19 +119,19 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 assert ok.headers["location"] == "/dashboard"
                 sid = _extract_cookie(ok)
 
-                # the profile blade still renders for the owner (view+edit)
+                # the profile page still renders for the owner (view+edit)
                 w.cookies.set(SESSION_COOKIE, sid)
                 home = await w.get("/org/profile")
                 assert home.status_code == 200
                 assert slug in home.text
-                # 31b: profile blade is the public-page editor
+                # 31b: profile page is the public-page editor
                 assert "Your public page" in home.text
                 assert f"seavix.ai/org/{slug}" in home.text  # /org/<slug> framing
                 assert "View public page" not in home.text  # draft: not live yet
-                # 31e (amended): the blade is a public-content surface — no
-                # account email, no verification state in the blade body
+                # 31e (amended): the page is a public-content surface — no
+                # account email, no verification state in the page body
                 body = re.search(
-                    r'<div class="sv-blade-body".*', home.text, re.S
+                    r'<div class="sv-page-body".*', home.text, re.S
                 ).group(0)
                 assert email not in body
                 assert "unverified" not in body
@@ -151,22 +151,17 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 # name, and the rail logo goes to the dashboard
                 assert "sv-rail-initials" in home.text
                 assert 'href="/dashboard"' in home.text
-                # 31b-7: the rendered blade never links the public landing,
-                # and × closes to the parent crumb — following it lands on
-                # the dashboard (the landing blade)
+                # 31b-7: the rendered page never links the public landing;
+                # §9 retired the blade × — the rail roots at the dashboard
                 assert 'href="/"' not in home.text
-                close = re.search(r'class="sv-blade-close" href="([^"]+)"', home.text)
-                assert close and close.group(1) == "/dashboard"
-                landing = await w.get(close.group(1))
+                assert "sv-blade" not in home.text
+                assert 'href="/dashboard"' in home.text
+                landing = await w.get("/dashboard")
                 assert landing.status_code == 200
                 assert "Dashboard" in landing.text
-                # the dashboard is the top-level blade: crumb root "Home",
-                # and its × also closes to the dashboard (never "/")
-                assert "<li aria-current=\"page\">Home</li>" in landing.text
-                top_close = re.search(
-                    r'class="sv-blade-close" href="([^"]+)"', landing.text
-                )
-                assert top_close and top_close.group(1) == "/dashboard"
+                # the dashboard is the top-level page: no ×, no crumb trail
+                assert "sv-blade" not in landing.text
+                assert '<li aria-current="page">Home</li>' not in landing.text
 
                 # logout clears the cookie and kills the session
                 w.cookies.set(SESSION_COOKIE, sid)
@@ -482,7 +477,7 @@ def test_profile_settings_slug_update(arun, id_asgi):
                 assert "Raise an RFQ" in page_live.text
 
                 # view mode now IS the public page content (31f preview);
-                # the "Live page" tab opens the real thing in this blade
+                # the "Live page" tab opens the real thing
                 editor = await w.get("/org/profile")
                 assert editor.status_code == 200
                 assert "sv-preview" in editor.text

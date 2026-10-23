@@ -2,16 +2,19 @@
 resolved AuthContext here — require_auth reads it from the request scope
 (no second identity round-trip).
 
-31f: the profile blade is a VIEW/EDIT pair. View mode renders the org's
+31f: the profile page is a VIEW/EDIT pair. View mode renders the org's
 public page through the SAME content partial as /<slug> (WYSIWYG by
 construction); edit mode (org.profile.edit) carries the Save button that
 persists about + slug + ports of operation in one PUT.
 
-31g: /dashboard is the post-auth landing blade (home_for).
+31g: /dashboard is the post-auth landing page (home_for).
 
 31i: login gates on a verified email, so every post-auth surface carries
 ZERO verification state — no banner, no account-menu tag, no resend. The
 only verification UI is the pre-login gate screen (auth_pages).
+
+31p: §9 retired the blade stack — these routes render full pages inside
+the fixed-sidebar shell; routes and deep-linking are unchanged.
 
 31j: the account surface (/org/home) carries the trusted-device panel
 (count + revoke-all); the profile editor states the public address
@@ -86,9 +89,9 @@ def _has(membership: MembershipContext | None, permission: str) -> bool:
 
 
 def _rail_org(org: dict | None, membership: MembershipContext | None) -> dict:
-    """31g: the rail company cell renders on every blade — the org logo
+    """31g: the rail company cell renders on every page — the org logo
     when one is set, otherwise initials derived from the company name,
-    plus the name itself. Same public org summary the blade renders."""
+    plus the name itself. Same public org summary the page renders."""
     name = (org or {}).get("name") or (membership.slug if membership else "")
     words = name.split()
     initials = ("".join(w[0] for w in words[:2]) or "S").upper()
@@ -119,10 +122,10 @@ async def _trusted_device_count(request: Request) -> int:
     return int(resp.json().get("count", 0))
 
 
-def _blade_not_found(request: Request, ctx: AuthContext) -> HTMLResponse:
-    """404-over-403 (task-23 policy, extended to permission-gated blades):
+def _page_not_found(request: Request, ctx: AuthContext) -> HTMLResponse:
+    """404-over-403 (task-23 policy, extended to permission-gated pages):
     a surface the membership has no permission to know about renders the
-    friendly not-found blade with a REAL 404 — never a 403."""
+    friendly not-found page with a REAL 404 — never a 403."""
     membership = _first_membership(ctx)
     return templates.TemplateResponse(
         request,
@@ -181,10 +184,10 @@ async def org_profile(
         return _redirect("/org/home")
     if membership.org_type != "survey_company":
         return _redirect(home_for(membership.org_type))
-    # 31e: the blade requires org.profile.view. Without it this route is a
+    # 31e: the page requires org.profile.view. Without it this route is a
     # 404 (not 403), and the rail company cell that links here is hidden.
     if not _has(membership, ORG_PROFILE_VIEW):
-        return _blade_not_found(request, ctx)
+        return _page_not_found(request, ctx)
     org = await _org_with_ports(await _org_summary(membership.slug))
     # 31f view/edit split: ?view=edit opens the editor (edit permission
     # required); anything else renders the WYSIWYG public preview.
@@ -223,12 +226,12 @@ async def org_profile_update(
     operation + the public contact block in one PUT. Proxies the identity
     profile update; unknown port codes are rejected against the registry
     before any write; field errors re-render edit mode inline. 31e: edits
-    require org.profile.edit — otherwise the same 404 as the blade."""
+    require org.profile.edit — otherwise the same 404 as the page."""
     membership = _first_membership(ctx)
     if membership is None or membership.org_type != "survey_company":
         raise HTTPException(status_code=403, detail="not available")
     if not _has(membership, ORG_PROFILE_EDIT):
-        return _blade_not_found(request, ctx)
+        return _page_not_found(request, ctx)
 
     codes = [p.strip().upper() for p in ports if p.strip()]
     org = await _org_with_ports(await _org_summary(membership.slug))
@@ -302,12 +305,12 @@ async def org_profile_logo(
 ):
     """Logo upload proxies to the identity service (org.logo.upload enforced
     there); re-renders EDIT mode with the outcome. 31e: the route itself
-    pre-checks org.logo.upload — without it, the same 404 as the blade."""
+    pre-checks org.logo.upload — without it, the same 404 as the page."""
     membership = _first_membership(ctx)
     if membership is None or membership.org_type != "survey_company":
         raise HTTPException(status_code=403, detail="not available")
     if not _has(membership, ORG_LOGO_UPLOAD):
-        return _blade_not_found(request, ctx)
+        return _page_not_found(request, ctx)
     sid = session_id_from(request)
     resp = await identity_request(
         "POST", "/api/orgs/me/logo",
@@ -364,7 +367,7 @@ async def trusted_devices_revoke_all(
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request,
                     ctx: AuthContext = Depends(require_auth)):
-    """31g: the post-auth landing blade — every active member lands here
+    """31g: the post-auth landing page — every active member lands here
     after sign-in (home_for), and signed-in "/" redirects here. Until the
     operational surfaces (jobs, RFQs, activity) ship, the body is an
     honest placeholder. 31i: zero verification state — login gates on a

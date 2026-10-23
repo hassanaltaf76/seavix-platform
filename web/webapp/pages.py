@@ -161,7 +161,7 @@ async def _profile_or_unavailable(request: Request, slug: str) -> HTMLResponse:
             status_code=404,
         )
     # 31f: resolve the org's UN/LOCODEs to registry names — the SAME
-    # resolved `org` shape the blade preview renders, so preview and
+    # resolved `org` shape the page preview renders, so preview and
     # public page stay pixel-identical.
     org["ports"] = await resolve_ports(org.get("ports", []))
     return templates.TemplateResponse(request, "profile.html", {"request": request, "org": org})

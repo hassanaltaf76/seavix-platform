@@ -1,52 +1,63 @@
 {% extends "base.html" %}{% block title %}Your account — SeaVix{% endblock %}
 {% set active = "account" %}
-{% block breadcrumbs %}<li><a href="/dashboard">Home</a></li><li aria-current="page">Your account</li>{% endblock %}
-{% block blade_title %}<h1>Your account</h1>{% endblock %}
-{% block blade_close %}<a class="sv-blade-close" href="/dashboard" aria-label="Close blade and go back">×</a>{% endblock %}
+{% block page_title %}<h1>Your account</h1>{% endblock %}
+{% block page_desc %}<p class="sv-page-desc">Your organization membership and
+   sign-in security.</p>{% endblock %}
 {% block content %}
-<p class="sv-ugc">Signed in as {{ ctx.user.email }}</p>
+{#- §9 account-settings page: stacked section cards. 31i: zero verification
+    state — a signed-in user is always verified, so there is nothing to
+    surface and no resend to offer. The only verification UI is the
+    pre-login gate screen. -#}
 
-{#- 31i: zero verification state on the account surface — a signed-in user
-    is always verified, so there is nothing to surface and no resend to
-    offer. The only verification UI is the pre-login gate screen. -#}
-
-{% if membership %}
-<section class="card">
-  <h2 class="sv-ugc">{{ membership.slug }} · {{ membership.org_type }}</h2>
-  <p>Roles: {{ membership.roles|join(", ") }}</p>
-  {% if membership.org_type == 'survey_company' and 'org.profile.view' in membership.permissions %}
-  <p>{% if 'org.profile.edit' in membership.permissions %}
-     <a href="/org/profile">Edit your public page</a>
-     {% else %}
-     <a href="/org/profile">View your public page</a>
-     {% endif %}</p>
-  {% endif %}
+<section class="sv-section-card">
+  <div class="sv-section-head">
+    <h2>Organization</h2>
+    <p>The company this account belongs to.</p>
+  </div>
+  <div class="sv-section-body">
+    <p class="sv-ugc">Signed in as {{ ctx.user.email }}</p>
+    {% if membership %}
+    <p class="sv-ugc"><strong>{{ membership.slug }}</strong> · {{ membership.org_type }}</p>
+    <p>Roles: {{ membership.roles|join(", ") }}</p>
+    {% if membership.org_type == 'survey_company' and 'org.profile.view' in membership.permissions %}
+    <p>{% if 'org.profile.edit' in membership.permissions %}
+       <a href="/org/profile">Edit your public page</a>
+       {% else %}
+       <a href="/org/profile">View your public page</a>
+       {% endif %}</p>
+    {% endif %}
+    {% else %}
+    <div class="sv-empty">No organization membership is attached to this account yet.</div>
+    {% endif %}
+  </div>
 </section>
-{% else %}
-<div class="sv-empty">No organization membership is attached to this account yet.</div>
-{% endif %}
 
 {#- 31j: trusted-device panel. Logout keeps trust, so a shared machine
     stays convenient; revoke-all is the one-click undo for every browser
     remembered at sign-in. -#}
-<section class="card" id="trusted-devices">
-  <h2>Trusted devices</h2>
-  {% if devices_revoked %}
-  <p class="notice success" role="status">Signed out of all trusted devices —
-     the next sign-in on each one will ask for a sign-in code.</p>
-  {% endif %}
-  {% if trusted_device_count %}
-  <p>{{ trusted_device_count }} trusted device{{ "s" if trusted_device_count != 1 }}
-     — signing in on {{ "it" if trusted_device_count == 1 else "them" }} skips
-     the sign-in code for 30 days after the last visit.</p>
-  {% else %}
-  <p>No trusted devices. Tick "Trust this device for 30 days" at sign-in to
-     skip the sign-in code on a browser you own.</p>
-  {% endif %}
-  {% if trusted_device_count %}
-  <form method="post" action="/account/trusted-devices/revoke-all" class="sv-inline-form">
-    <button type="submit" class="button secondary">Sign out all trusted devices</button>
-  </form>
-  {% endif %}
+<section class="sv-section-card" id="trusted-devices">
+  <div class="sv-section-head">
+    <h2>Trusted devices</h2>
+    <p>Browsers that skip the sign-in code.</p>
+  </div>
+  <div class="sv-section-body">
+    {% if devices_revoked %}
+    <p class="notice success" role="status">Signed out of all trusted devices —
+       the next sign-in on each one will ask for a sign-in code.</p>
+    {% endif %}
+    {% if trusted_device_count %}
+    <p>{{ trusted_device_count }} trusted device{{ "s" if trusted_device_count != 1 }}
+       — signing in on {{ "it" if trusted_device_count == 1 else "them" }} skips
+       the sign-in code for 30 days after the last visit.</p>
+    {% else %}
+    <p>No trusted devices. Tick "Trust this device for 30 days" at sign-in to
+       skip the sign-in code on a browser you own.</p>
+    {% endif %}
+    {% if trusted_device_count %}
+    <form method="post" action="/account/trusted-devices/revoke-all" class="sv-inline-form">
+      <button type="submit" class="button secondary">Sign out all trusted devices</button>
+    </form>
+    {% endif %}
+  </div>
 </section>
 {{ keepalive | safe }}{% endblock %}

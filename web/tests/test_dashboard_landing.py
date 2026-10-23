@@ -1,17 +1,16 @@
-"""31g: /dashboard is the post-auth landing blade, and the owner-complaint
+"""31g: /dashboard is the post-auth landing page, and the owner-complaint
 sweep is locked on the running code.
 
 Landing rule (home_for):
 - signed-in "/"                    -> 303 /dashboard
 - post-login/OTP                   -> 303 /dashboard (every org type)
-- crumb root "Home"                -> /dashboard (child blades link it)
-- top-level × close                -> /dashboard
+- rail logo                        -> /dashboard (every page roots there)
 
 The dashboard renders for ANY active member (the deny-by-default wall plus
 the loader's membership.status='active' filter), carries the master-only
 verification banner (moved from org home), and keeps the rail company cell
 permission-driven: org.profile.view holders see logo-or-initials + company
-name linking to the profile blade; surveyor/viewer do not.
+name linking to the profile page; surveyor/viewer do not.
 """
 import re
 import uuid
@@ -90,9 +89,8 @@ PLACEHOLDER = "Arriving in an upcoming release."
 def test_signed_in_landing_and_post_login_land_on_dashboard(arun, id_asgi):
     """31g landing rule: the marketing landing is signed-out-only; a
     signed-in user bounces off "/" to /dashboard, and the OTP step lands
-    there too. The dashboard is the top-level blade (crumb root "Home",
-    × closes to itself) and nothing in the chrome links the public
-    landing."""
+    there too. The dashboard is the top-level page — §9 retired the blade
+    chrome — and nothing in the chrome links the public landing."""
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
@@ -139,12 +137,8 @@ def test_signed_in_landing_and_post_login_land_on_dashboard(arun, id_asgi):
                 assert "<h1>Dashboard</h1>" in dash.text
                 assert dash.text.count(PLACEHOLDER) == 3
                 assert "sv-skel-card" in dash.text
-                # top-level blade: crumb root IS the page; × closes to itself
-                assert '<li aria-current="page">Home</li>' in dash.text
-                close = re.search(
-                    r'class="sv-blade-close" href="([^"]+)"', dash.text
-                )
-                assert close and close.group(1) == "/dashboard"
+                # top-level page: §9 retired the × and the crumb trail
+                assert "sv-blade" not in dash.text
                 # chrome: rail logo roots at the dashboard, never the landing
                 assert 'href="/"' not in dash.text
                 assert 'href="/dashboard"' in dash.text
@@ -154,12 +148,8 @@ def test_signed_in_landing_and_post_login_land_on_dashboard(arun, id_asgi):
                 assert home.status_code == 200
                 assert f"Signed in as {email}" in home.text
                 assert "Your account" in home.text
-                # its crumbs and × close to the dashboard
-                assert '<li><a href="/dashboard">Home</a></li>' in home.text
-                home_close = re.search(
-                    r'class="sv-blade-close" href="([^"]+)"', home.text
-                )
-                assert home_close and home_close.group(1) == "/dashboard"
+                assert "sv-blade" not in home.text
+                assert 'href="/"' not in home.text
 
     arun(scenario())
 
@@ -230,7 +220,10 @@ def test_save_is_disabled_until_dirty(arun, id_asgi):
                 editor = await w.get("/org/profile?view=edit")
                 assert editor.status_code == 200
                 # one form-wide Alpine component; the Save binding present
-                assert 'class="sv-form"\n        @input="valid = $el.checkValidity()"\n        x-data=' in editor.text
+                assert 'action="/org/profile"' in editor.text
+                assert 'class="sv-form"' in editor.text
+                assert '@input="valid = $el.checkValidity()"' in editor.text
+                assert "x-data='{ selected:" in editor.text
                 assert "dirty: false" in editor.text
                 assert ':disabled="!(dirty && valid)"' in editor.text  # v4 §4: disabled until dirty AND valid
                 assert editor.text.count('@input="dirty = true"') == 6  # about + slug + 31m contact block (address, phone, contact_email, whatsapp)
