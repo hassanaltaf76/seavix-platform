@@ -215,7 +215,7 @@ def test_dashboard_renders_for_every_member_rail_cell_permission_driven(arun, id
 
 def test_save_is_disabled_until_dirty(arun, id_asgi):
     """31g (2c): the edit-mode Save button renders disabled — the Alpine
-    component seeds dirty=false and binds :disabled="!dirty"; typing in
+    component seeds dirty=false/valid=true and binds :disabled="!(dirty && valid)"; typing in
     about/slug or adding/removing a port flips it (exercised for real in
     the headless-Chrome sweep; here the wiring is pinned)."""
     async def scenario():
@@ -230,9 +230,9 @@ def test_save_is_disabled_until_dirty(arun, id_asgi):
                 editor = await w.get("/org/profile?view=edit")
                 assert editor.status_code == 200
                 # one form-wide Alpine component; the Save binding present
-                assert 'class="sv-form"\n        x-data=' in editor.text
+                assert 'class="sv-form"\n        @input="valid = $el.checkValidity()"\n        x-data=' in editor.text
                 assert "dirty: false" in editor.text
-                assert ':disabled="!dirty"' in editor.text
+                assert ':disabled="!(dirty && valid)"' in editor.text  # v4 §4: disabled until dirty AND valid
                 assert editor.text.count('@input="dirty = true"') == 6  # about + slug + 31m contact block (address, phone, contact_email, whatsapp)
                 # the disabled styling ships in the stylesheet
                 import pathlib

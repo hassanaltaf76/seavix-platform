@@ -311,8 +311,12 @@ def test_profile_editor_save_bar_and_callout():
     assert 'x-show="dirty"' in text
     assert ">Cancel</a>" in text
     assert ">Save public page</button>" in text
-    assert ':disabled="!dirty"' in text
+    # v4 §4: Save disabled until dirty AND valid — the form re-checks
+    # constraint validity on every input (bubbling @input on the form)
+    assert ':disabled="!(dirty && valid)"' in text
     assert "dirty: false" in text
+    assert "valid: true" in text
+    assert '@input="valid = $el.checkValidity()"' in text
 
 
 # --------------------------------------------------------- §7 URLS
@@ -519,7 +523,7 @@ def test_profile_settings_public_slug_section():
     assert "not-found page" in text
     assert '@input="dirty = true"' in text
     assert "this.dirty = true" in text  # port add()/remove()
-    assert ':disabled="!dirty"' in text
+    assert ':disabled="!(dirty && valid)"' in text
 
 
 def test_profile_blade_is_permission_gated_31e():

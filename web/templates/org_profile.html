@@ -63,7 +63,8 @@
   {% endif %}
 
   <form method="post" action="/org/profile" class="sv-form"
-        x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false, dirty: false,
+        @input="valid = $el.checkValidity()"
+        x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false, dirty: false, valid: true,
                   async search() {
                     const frag = this.q.trim();
                     if (!frag) { this.results = []; this.open = false; return; }
@@ -161,7 +162,7 @@
         Cancel left, Save right, Save disabled until dirty. -#}
     <div class="sv-save-bar" x-show="dirty" x-cloak>
       <a class="button secondary" href="/org/profile">Cancel</a>
-      <button type="submit" :disabled="!dirty">Save public page</button>
+      <button type="submit" :disabled="!(dirty && valid)">Save public page</button>
     </div>
   </form>
 </section>
