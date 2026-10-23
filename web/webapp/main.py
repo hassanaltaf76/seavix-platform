@@ -11,7 +11,11 @@ from fastapi.staticfiles import StaticFiles
 from seavix_ports import AuthMiddleware, public_route
 
 from .auth import SESSION_COOKIE, WebAuthLoader
-from .pages import router as pages_router, root_router as pages_root_router
+from .pages import (
+    profiles_router as pages_profiles_router,
+    root_router as pages_root_router,
+    router as pages_router,
+)
 from .auth_pages import router as auth_pages_router
 from .org_pages import router as org_pages_router
 
@@ -42,7 +46,10 @@ def create_app() -> FastAPI:
     app.include_router(pages_router)
     app.include_router(auth_pages_router)
     app.include_router(org_pages_router)
-    # root-level public profiles: /<slug> — LAST, after every concrete path
+    # v4 §7: public profiles canonical at /org/<slug> — AFTER /org/profile
+    # and friends (concrete paths win), BEFORE the root catch-all
+    app.include_router(pages_profiles_router)
+    # root-level redirects: /<slug> and /<slug>/rfq 301 → /org/<slug> — LAST
     app.include_router(pages_root_router)
     return app
 

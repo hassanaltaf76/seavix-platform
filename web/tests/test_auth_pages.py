@@ -126,7 +126,7 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 assert slug in home.text
                 # 31b: profile blade is the public-page editor
                 assert "Your public page" in home.text
-                assert f"seavix.ai/{slug}" in home.text  # root-level framing
+                assert f"seavix.ai/org/{slug}" in home.text  # /org/<slug> framing
                 assert "View public page" not in home.text  # draft: not live yet
                 # 31e (amended): the blade is a public-content surface — no
                 # account email, no verification state in the blade body
@@ -138,11 +138,10 @@ def test_login_flow_sets_session_cookie_and_redirects_by_kind(arun, id_asgi):
                 assert "/org/verification/resend" not in body
                 # 31i: the signed-in account menu carries NO verification
                 # tag either — a signed-in user is always verified
-                topnav = re.search(
-                    r'<nav class="sv-topnav".*?</nav>', home.text, re.S
-                ).group(0)
-                assert "unverified" not in topnav
-                assert "verification/resend" not in topnav
+                account_menu = home.text[home.text.index('class="sv-account"'):]
+                account_menu = account_menu[:account_menu.index("</header>")]
+                assert "unverified" not in account_menu
+                assert "verification/resend" not in account_menu
                 # rail: company name present, zero favorites/services/home items
                 assert "Favorites" not in home.text
                 assert "All services" not in home.text
@@ -427,7 +426,7 @@ def test_profile_settings_slug_update(arun, id_asgi):
                 assert placeholder in page.text
                 # 31j: the placeholder state is a PROMPT, plus the
                 # draft→404 reachability line
-                assert (f"Choose your public address: seavix.ai/{placeholder}"
+                assert (f"Choose your public address: seavix.ai/org/{placeholder}"
                         in page.text)
                 assert "not-found page" in page.text
                 assert 'name="about"' in page.text
@@ -444,7 +443,7 @@ def test_profile_settings_slug_update(arun, id_asgi):
                 saved_page = await w.get(saved.headers["location"])
                 assert "Saved." in saved_page.text
                 assert new_slug in saved_page.text
-                assert f"seavix.ai/{new_slug}" in saved_page.text
+                assert f"seavix.ai/org/{new_slug}" in saved_page.text
 
                 # the org is now reachable under the new root URL, with about
                 pub = await idc.get(f"/api/orgs/{new_slug}")
@@ -476,8 +475,8 @@ def test_profile_settings_slug_update(arun, id_asgi):
                 )
                 assert live.status_code == 200
 
-                # root-level public page renders for the live org
-                page_live = await w.get(f"/{new_slug}")
+                # /org/<slug> public page renders for the live org
+                page_live = await w.get(f"/org/{new_slug}")
                 assert page_live.status_code == 200
                 assert "Independent surveyors." in page_live.text
                 assert "Raise an RFQ" in page_live.text
@@ -488,13 +487,13 @@ def test_profile_settings_slug_update(arun, id_asgi):
                 assert editor.status_code == 200
                 assert "sv-preview" in editor.text
                 assert "Independent surveyors." in editor.text
-                assert f'href="/{new_slug}"' in editor.text
+                assert f'href="/org/{new_slug}"' in editor.text
                 assert "Live page" in editor.text
 
-                # legacy /p/<slug> redirects to the root URL
+                # legacy /p/<slug> redirects to the canonical /org/<slug>
                 legacy = await w.get(f"/p/{new_slug}", follow_redirects=False)
                 assert legacy.status_code == 301
-                assert legacy.headers["location"] == f"/{new_slug}"
+                assert legacy.headers["location"] == f"/org/{new_slug}"
 
                 # reserved words can never be a public address
                 reserved = await w.post("/org/profile", data={"slug": "login"})

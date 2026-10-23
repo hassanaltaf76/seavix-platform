@@ -77,7 +77,7 @@ def test_placeholder_slug_gets_prominent_choose_address_prompt(arun, id_asgi):
 
                 editor = await w.get("/org/profile?view=edit")
                 assert editor.status_code == 200
-                prompt = f"Choose your public address: seavix.ai/{generated_slug}"
+                prompt = f"Choose your public address: seavix.ai/org/{generated_slug}"
                 assert prompt in editor.text
                 # draft -> 404 rule stated inline, one line
                 assert "not-found page" in editor.text
@@ -86,7 +86,7 @@ def test_placeholder_slug_gets_prominent_choose_address_prompt(arun, id_asgi):
                 assert "Your public page:" not in editor.text
 
                 # the public address 404s while draft, with the same story
-                public = await w.get(f"/{generated_slug}")
+                public = await w.get(f"/org/{generated_slug}")
                 assert public.status_code == 404
                 assert "isn&#39;t public" in public.text or "isn't public" in public.text
 
@@ -112,11 +112,11 @@ def test_setting_slug_updates_framing_and_live_adds_view_link(arun, id_asgi):
 
                 # framing flips: chosen slug, still draft (no View link yet)
                 editor = await w.get("/org/profile?view=edit")
-                assert f"Your public page: seavix.ai/{slug}" in editor.text
+                assert f"Your public page: seavix.ai/org/{slug}" in editor.text
                 assert "Choose your public address" not in editor.text
                 assert "View it live" not in editor.text
                 assert "not-found page" in editor.text
-                public = await w.get(f"/{slug}")
+                public = await w.get(f"/org/{slug}")
                 assert public.status_code == 404
 
                 # go live: the View link appears and the address serves
@@ -127,10 +127,10 @@ def test_setting_slug_updates_framing_and_live_adds_view_link(arun, id_asgi):
                 )
                 assert live.status_code == 200, live.text
                 editor = await w.get("/org/profile?view=edit")
-                assert f"Your public page: seavix.ai/{slug}" in editor.text
-                assert f'href="/{slug}"' in editor.text  # View it live
+                assert f"Your public page: seavix.ai/org/{slug}" in editor.text
+                assert f'href="/org/{slug}"' in editor.text  # View it live
                 assert "not-found page" not in editor.text
-                public = await w.get(f"/{slug}")
+                public = await w.get(f"/org/{slug}")
                 assert public.status_code == 200
                 assert "Surveys" in public.text
 

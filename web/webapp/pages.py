@@ -130,13 +130,14 @@ async def register_submit(
 @router.get("/p/{slug}", response_class=HTMLResponse)
 @public_route
 async def legacy_profile_redirect(slug: str) -> RedirectResponse:
-    return RedirectResponse(f"/{slug}", status_code=301)
+    """Legacy /p/<slug> 301s to the canonical /org/<slug> (chain preserved)."""
+    return RedirectResponse(f"/org/{slug}", status_code=301)
 
 
 @router.get("/p/{slug}/rfq", response_class=HTMLResponse)
 @public_route
 async def legacy_rfq_redirect(slug: str) -> RedirectResponse:
-    return RedirectResponse(f"/{slug}/rfq", status_code=301)
+    return RedirectResponse(f"/org/{slug}/rfq", status_code=301)
 
 
 async def _public_org_or_none(slug: str) -> tuple[dict | None, str | None]:
@@ -166,18 +167,24 @@ async def _profile_or_unavailable(request: Request, slug: str) -> HTMLResponse:
     return templates.TemplateResponse(request, "profile.html", {"request": request, "org": org})
 
 
-root_router = APIRouter()
+# ---------------------------------------------------------------- profiles
+# Public profiles live at /org/<slug> (owner decision, 23 Oct v4 §7).
+# Root /<slug> and the legacy /p/<slug> chain 301-redirect to the canonical
+# /org/<slug>; concrete app paths (/org/profile, /org/home, …) are
+# registered before these and always win.
+
+profiles_router = APIRouter()
 
 
-@root_router.get("/{slug}", response_class=HTMLResponse)
+@profiles_router.get("/org/{slug}", response_class=HTMLResponse)
 @public_route
-async def public_profile_root(request: Request, slug: str) -> HTMLResponse:
+async def public_profile_org(request: Request, slug: str) -> HTMLResponse:
     return await _profile_or_unavailable(request, slug)
 
 
-@root_router.get("/{slug}/rfq", response_class=HTMLResponse)
+@profiles_router.get("/org/{slug}/rfq", response_class=HTMLResponse)
 @public_route
-async def rfq_form(request: Request, slug: str) -> HTMLResponse:
+async def rfq_form_org(request: Request, slug: str) -> HTMLResponse:
     org, reason = await _public_org_or_none(slug)
     if org is None:
         return templates.TemplateResponse(
@@ -196,9 +203,9 @@ async def rfq_form(request: Request, slug: str) -> HTMLResponse:
     )
 
 
-@root_router.post("/{slug}/rfq", response_class=HTMLResponse)
+@profiles_router.post("/org/{slug}/rfq", response_class=HTMLResponse)
 @public_route
-async def rfq_submit(
+async def rfq_submit_org(
     request: Request,
     slug: str,
     vessel_imo: str = Form(...),
@@ -260,6 +267,22 @@ async def rfq_submit(
             status_code=400 if work_resp.status_code in (400, 404, 422) else 502,
         )
     return templates.TemplateResponse(request, "rfq_thanks.html", {"request": request})
+
+
+root_router = APIRouter()
+
+
+@root_router.get("/{slug}", response_class=HTMLResponse)
+@public_route
+async def public_profile_root(slug: str) -> RedirectResponse:
+    """Root /<slug> 301-redirects to the canonical /org/<slug> (v4 §7)."""
+    return RedirectResponse(f"/org/{slug}", status_code=301)
+
+
+@root_router.get("/{slug}/rfq", response_class=HTMLResponse)
+@public_route
+async def legacy_rfq_root(slug: str) -> RedirectResponse:
+    return RedirectResponse(f"/org/{slug}/rfq", status_code=301)
 
 
 # ---------------------------------------------------------------- dev media

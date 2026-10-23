@@ -1,4 +1,6 @@
 {% extends "base_public.html" %}{% block title %}{{ org.name }} — SeaVix{% endblock %}
 {% block content %}
-{% include "_public_org_content.html" %}
+<div class="sv-container sv-org-wrap">
+  {% include "_public_org_content.html" %}
+</div>
 {% endblock %}

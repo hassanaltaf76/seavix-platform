@@ -193,7 +193,7 @@ def test_view_mode_is_wysiwyg_and_ports_round_trip(arun, id_asgi):
                 # public page (after verify + go live) renders the SAME
                 # content partial — the articles must be identical
                 await _verify_email_and_go_live(idc, email, sid)
-                pub = await w.get(f"/{slug}")
+                pub = await w.get(f"/org/{slug}")
                 assert pub.status_code == 200
                 assert "Ports we serve" in pub.text
                 assert "Al Fujayrah" in pub.text and "Rotterdam" in pub.text
@@ -305,7 +305,7 @@ def test_description_renders_as_escaped_blocks_31h(arun, id_asgi):
 
                 # go live, then the PUBLIC page renders the same blocks
                 await _verify_email_and_go_live(idc, email, sid)
-                pub = await w.get(f"/{slug}")
+                pub = await w.get(f"/org/{slug}")
                 assert pub.status_code == 200
                 assert pub.text.count('<div class="sv-prose">') == 1
                 pub_prose = re.search(

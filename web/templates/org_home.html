@@ -29,7 +29,7 @@
 {#- 31j: trusted-device panel. Logout keeps trust, so a shared machine
     stays convenient; revoke-all is the one-click undo for every browser
     remembered at sign-in. -#}
-<section class="card">
+<section class="card" id="trusted-devices">
   <h2>Trusted devices</h2>
   {% if devices_revoked %}
   <p class="notice success" role="status">Signed out of all trusted devices —

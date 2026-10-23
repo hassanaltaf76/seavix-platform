@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}SeaVix{% endblock %}</title>
-  <meta name="theme-color" content="#FFFFFF">
+  <meta name="theme-color" content="#F7F8FA">
   <link rel="manifest" href="/static/site.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
   <link rel="icon" type="image/png" sizes="64x64" href="/static/brand/favicon-64.png">
@@ -19,41 +19,45 @@
     <button class="sv-burger" type="button"
             aria-label="Toggle navigation" aria-expanded="true"
             x-on:click="railCollapsed = !railCollapsed"
-            x-bind:aria-expanded="!railCollapsed.toString()">☰</button>
-    <nav class="sv-topnav" aria-label="Account">
-      {% if ctx is defined and ctx %}
-        {#- 31i: a signed-in user is ALWAYS verified (login gates on it), so
-            post-auth chrome carries zero verification state — the only
-            verification UI is the pre-login gate screen. -#}
-        <a href="/org/home">Your account</a>
+            x-bind:aria-expanded="(!railCollapsed).toString()">☰</button>
+    {#- v4 §5: top-right account menu — initials avatar + name, dropdown of
+        account actions. 31i: a signed-in user is ALWAYS verified (login
+        gates on it), so post-auth chrome carries zero verification state. -#}
+    {% if ctx is defined and ctx %}
+    <div class="sv-account" x-data="{ open: false }">
+      <button class="sv-account-btn" type="button"
+              aria-haspopup="menu" :aria-expanded="open.toString()"
+              @click="open = !open" @keydown.escape="open = false">
+        <span class="sv-avatar" aria-hidden="true">{{ rail_org.initials }}</span>
+        <span class="sv-account-name sv-ugc">{{ rail_org.name or "Your account" }}</span>
+      </button>
+      <div class="sv-dropdown" role="menu" x-show="open" x-cloak
+           @click.outside="open = false">
+        <a role="menuitem" href="/org/home">Your account</a>
+        <a role="menuitem" href="/org/home#trusted-devices">Trusted devices</a>
+        <div class="sv-dropdown-sep" role="separator"></div>
         <form method="post" action="/logout" class="sv-inline-form">
-          <button type="submit" class="sv-link-btn">Sign out</button>
+          <button type="submit" role="menuitem" class="sv-dropdown-danger">Sign out</button>
         </form>
-      {% else %}
-        <a href="/register">Register your company</a>
-        <a href="/login">Sign in</a>
-      {% endif %}
-    </nav>
+      </div>
+    </div>
+    {% endif %}
   </header>
 
   <div class="sv-shell" x-bind:class="railCollapsed ? 'sv-rail-collapsed' : ''">
-    <nav class="sv-rail" aria-label="Workspace">
+    {#- v4 §5: the rail is PRIMARY navigation — logo, company block (lands
+        on the profile blade), then WORKSPACE and COMPANY sections with one
+        active state per view. Visibility stays permission-driven. -#}
+    <nav class="sv-rail" aria-label="Primary">
       <div class="sv-rail-logo">
         <a href="/dashboard" aria-label="SeaVix"><img src="/static/brand/seavix-logo.png" alt="SeaVix"></a>
       </div>
 
-      {#- 31e/31g: the company cell links to the permission-gated profile
-          blade, so it renders ONLY when the membership holds
-          org.profile.view — visibility is permission-driven, never
-          role-name-driven. The cell shows the org logo when set, else
-          initials derived from the company name, plus the name.
-          31i: aria-current marks the cell while its blade is open — the
-          rail's single clear active-state indicator. -#}
       {% set can_view_profile = ctx is defined and ctx and ctx.memberships
               and 'org.profile.view' in ctx.memberships[0].permissions %}
       {% if can_view_profile %}
       <div class="sv-rail-tenant">
-        <a href="/org/profile"{% if request.url.path == "/org/profile" %} aria-current="page"{% endif %}>
+        <a href="/org/profile">
           {% if rail_org.logo_url %}
           <img class="sv-rail-company-logo" src="{{ rail_org.logo_url }}" alt="">
           {% else %}
@@ -63,6 +67,34 @@
             <strong>{{ rail_org.name }}</strong>
           </span>
         </a>
+      </div>
+      {% endif %}
+
+      <div class="sv-rail-section">
+        <h2>Workspace</h2>
+        <ul>
+          <li><a class="sv-rail-item" href="/dashboard"
+                 {% if active == "home" %}aria-current="page"{% endif %}>
+            <span class="sv-glyph" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+            </span>
+            <span class="sv-rail-label">Dashboard</span>
+          </a></li>
+        </ul>
+      </div>
+
+      {% if can_view_profile %}
+      <div class="sv-rail-section">
+        <h2>Company</h2>
+        <ul>
+          <li><a class="sv-rail-item" href="/org/profile"
+                 {% if active == "profile" %}aria-current="page"{% endif %}>
+            <span class="sv-glyph" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+            </span>
+            <span class="sv-rail-label">Profile</span>
+          </a></li>
+        </ul>
       </div>
       {% endif %}
     </nav>
@@ -86,7 +118,7 @@
           <div class="sv-blade-body" id="blade-body">
             {% block content %}{% endblock %}
             <footer class="site-footer">
-              <p>SeaVix — marine survey coordination. Local dev build.</p>
+              <p>SeaVix — marine survey coordination.</p>
             </footer>
           </div>
         </section>

@@ -208,12 +208,11 @@ def test_verified_user_logs_in_normally_and_post_auth_is_verification_free(arun,
                 editor = await w.get("/org/profile?view=edit")
                 _assert_zero_verification_markup(editor.text, "profile editor")
                 # the account menu itself: no tag, just account + sign out
-                topnav = re.search(
-                    r'<nav class="sv-topnav".*?</nav>', dash.text, re.S
-                ).group(0)
-                assert 'href="/org/home"' in topnav
-                assert 'action="/logout"' in topnav
-                assert "unverified" not in topnav
+                account_menu = dash.text[dash.text.index('class="sv-account"'):]
+                account_menu = account_menu[:account_menu.index("</header>")]
+                assert 'href="/org/home"' in account_menu
+                assert 'action="/logout"' in account_menu
+                assert "unverified" not in account_menu
 
                 # the old signed-in resend route is gone entirely
                 gone = await w.post("/org/verification/resend",

@@ -1,14 +1,15 @@
 {% extends "base_public.html" %}{% block title %}Profile unavailable — SeaVix{% endblock %}
 {% block content %}
-<section class="sv-hero">
-  <h1>Profile not available</h1>
-  <p class="lede sv-ugc">Sorry — the company profile <strong>{{ slug }}</strong>
-     isn't public
-     {% if reason == 'draft' %}yet (it's still a draft).
-     {% elif reason == 'suspended' %}(it has been suspended).
-     {% else %}(we couldn't find it).{% endif %}</p>
-  <div class="sv-hero-actions">
+<div class="sv-container sv-org-wrap">
+  <div class="sv-empty" role="alert">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/></svg>
+    <h2>Profile not available</h2>
+    <p class="lede sv-ugc">Sorry — the company profile <strong>{{ slug }}</strong>
+       isn't public
+       {% if reason == 'draft' %}yet (it's still a draft).
+       {% elif reason == 'suspended' %}(it has been suspended).
+       {% else %}(we couldn't find it).{% endif %}</p>
     <a class="button secondary" href="/">Back to SeaVix</a>
   </div>
-</section>
+</div>
 {% endblock %}

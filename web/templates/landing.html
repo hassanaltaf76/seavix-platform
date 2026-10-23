@@ -1,26 +1,59 @@
 {% extends "base_public.html" %}{% block title %}SeaVix — marine survey coordination{% endblock %}
+{% block public_header %}{#- v4 §6: the marketing page's chrome lives INSIDE
+  the navy hero band — the storefront is full-bleed from the first pixel. -#}{% endblock %}
 {% block content %}
-<section class="sv-hero">
-  <p class="sv-hero-eyebrow">Marine survey coordination</p>
-  <h1>Find marine survey companies.<br>Request quotes. Get to sea.</h1>
-  <p class="lede">SeaVix connects ship operators, charterers and yards with
-     qualified marine survey companies — pre-purchase, condition, bunker and
-     cargo surveys at terminals, anchorages and STS locations worldwide.</p>
-  <div class="sv-hero-actions">
-    <a class="button" href="/register">Register your company</a>
-    <a class="button secondary" href="/login">Sign in</a>
+{#- v4 §6 NAVY HERO: wordmark, Display headline, sub, two CTAs; the
+    ocean-photo logo art blends at low opacity on the right. -#}
+<section class="sv-hero-band">
+  <img class="sv-hero-art" src="/static/brand/seavix-logo.png" alt="" aria-hidden="true">
+  <div class="sv-container">
+    <nav class="sv-hero-nav" aria-label="Account">
+      <span class="sv-hero-wordmark">
+        <img src="/static/brand/favicon-64.png" alt="" width="24" height="24">
+        SeaVix
+      </span>
+      <span class="sv-hero-nav-links">
+        <a href="/login">Sign in</a>
+        <a class="sv-hero-cta" href="/register">Register</a>
+      </span>
+    </nav>
+    <div class="sv-hero-inner">
+      <h1 class="sv-display">Marine surveys, coordinated.</h1>
+      <p class="sv-hero-sub">SeaVix connects ship operators, charterers and
+         yards with qualified marine survey companies — pre-purchase,
+         condition, bunker and cargo surveys at terminals, anchorages and
+         STS locations worldwide.</p>
+      <div class="sv-hero-actions">
+        <a class="button primary-outline" href="/register">Register your company</a>
+        <a class="button solid-white" href="/login">Sign in</a>
+      </div>
+    </div>
   </div>
 </section>
-<section class="sv-features">
-  <div class="sv-feature">
-    <h2>For survey companies</h2>
-    <p>Create a public profile, publish your capabilities and receive
-       structured RFQs from vessel operators.</p>
-  </div>
-  <div class="sv-feature">
-    <h2>For ship operators &amp; charterers</h2>
-    <p>Browse live survey company profiles and raise RFQs with vessel IMO,
-       survey type, location and preferred date.</p>
-  </div>
-</section>
+
+<div class="sv-container">
+  <section class="sv-features" aria-label="What SeaVix does">
+    <div class="sv-feature sv-hoverable">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="3"/></svg>
+      <h2>For survey companies</h2>
+      <p>Create a public profile, publish your capabilities and ports of
+         operation, and receive structured RFQs from vessel operators.</p>
+      <a href="/register">Claim your page →</a>
+    </div>
+    <div class="sv-feature sv-hoverable">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18l1.5 3h15L21 18M3 18h18M3 18l2-9h14l2 9M12 9V4M9 4h6"/></svg>
+      <h2>For ship operators</h2>
+      <p>Browse live survey company profiles and raise RFQs with vessel IMO,
+         survey type, location and preferred date.</p>
+      <a href="/login">Find a surveyor →</a>
+    </div>
+    <div class="sv-feature sv-hoverable">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+      <h2>How RFQs work</h2>
+      <p>Send one structured request to a survey company. Scope, vessel and
+         timing travel together — no mail threads, no re-typing.</p>
+      <a href="/register">See it in action →</a>
+    </div>
+  </section>
+</div>
 {% endblock %}

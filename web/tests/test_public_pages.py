@@ -109,14 +109,14 @@ def test_landing_and_register_form_render(web):
 def test_profile_page_renders_and_hides_email(web):
     async def scenario():
         async with (await web["client"]()) as c:
-            resp = await c.get(f"/{LIVE_ORG['slug']}")
+            resp = await c.get(f"/org/{LIVE_ORG['slug']}")
             assert resp.status_code == 200
             assert LIVE_ORG["name"] in resp.text
             assert "Raise an RFQ" in resp.text
             assert LIVE_ORG["about"] in resp.text
             assert "@harbor.example" not in resp.text  # no email on public page
             # RFQ lives at the root URL now
-            assert f'href="/{LIVE_ORG["slug"]}/rfq"' in resp.text
+            assert f'href="/org/{LIVE_ORG["slug"]}/rfq"' in resp.text
             assert "/p/" not in resp.text
 
     _run(scenario())
@@ -147,7 +147,12 @@ def test_root_app_paths_win_over_slugs(web):
 def test_non_live_and_unknown_roots_show_friendly_page(web):
     async def scenario():
         async with (await web["client"]()) as c:
-            unknown = await c.get("/does-not-exist")
+            # v4 §7: the root catch-all 301s to the canonical /org/<slug>
+            root = await c.get("/does-not-exist", follow_redirects=False)
+            assert root.status_code == 301
+            assert root.headers["location"] == "/org/does-not-exist"
+
+            unknown = await c.get("/org/does-not-exist")
             assert unknown.status_code == 404
             assert "Profile not available" in unknown.text
 
@@ -158,7 +163,7 @@ def test_non_live_and_unknown_roots_show_friendly_page(web):
                 return StubResp(404, {})
 
             pages._identity_get = draft_stub
-            draft = await c.get("/draft-co")
+            draft = await c.get("/org/draft-co")
             assert draft.status_code == 404
             assert "still a draft" in draft.text
 
@@ -170,11 +175,26 @@ def test_legacy_p_paths_redirect_to_root(web):
         async with (await web["client"]()) as c:
             profile = await c.get(f"/p/{LIVE_ORG['slug']}", follow_redirects=False)
             assert profile.status_code == 301
-            assert profile.headers["location"] == f"/{LIVE_ORG['slug']}"
+            assert profile.headers["location"] == f"/org/{LIVE_ORG['slug']}"
 
             rfq = await c.get(f"/p/{LIVE_ORG['slug']}/rfq", follow_redirects=False)
             assert rfq.status_code == 301
-            assert rfq.headers["location"] == f"/{LIVE_ORG['slug']}/rfq"
+            assert rfq.headers["location"] == f"/org/{LIVE_ORG['slug']}/rfq"
+
+    _run(scenario())
+
+
+def test_root_slugs_redirect_to_org_prefix(web):
+    """v4 §7: /<slug> and /<slug>/rfq 301 to their /org/<slug> form."""
+    async def scenario():
+        async with (await web["client"]()) as c:
+            profile = await c.get(f"/{LIVE_ORG['slug']}", follow_redirects=False)
+            assert profile.status_code == 301
+            assert profile.headers["location"] == f"/org/{LIVE_ORG['slug']}"
+
+            rfq = await c.get(f"/{LIVE_ORG['slug']}/rfq", follow_redirects=False)
+            assert rfq.status_code == 301
+            assert rfq.headers["location"] == f"/org/{LIVE_ORG['slug']}/rfq"
 
     _run(scenario())
 
@@ -183,7 +203,7 @@ def test_honeypot_never_reaches_work_service(web):
     async def scenario():
         async with (await web["client"]()) as c:
             resp = await c.post(
-                f"/{LIVE_ORG['slug']}/rfq",
+                f"/org/{LIVE_ORG['slug']}/rfq",
                 data={**_rfq_data(), "website": "http://spam.example"},  # bot trap
             )
             assert resp.status_code == 200  # fake success
@@ -196,7 +216,7 @@ def test_honeypot_never_reaches_work_service(web):
 def test_rfq_forwards_to_work_service(web):
     async def scenario():
         async with (await web["client"]()) as c:
-            resp = await c.post(f"/{LIVE_ORG['slug']}/rfq", data=_rfq_data())
+            resp = await c.post(f"/org/{LIVE_ORG['slug']}/rfq", data=_rfq_data())
             assert resp.status_code == 200
             assert "Thank you" in resp.text
 
@@ -212,7 +232,7 @@ def test_work_service_rejection_renders_form_error(web):
     async def scenario():
         async with (await web["client"]()) as c:
             bad = {**_rfq_data(), "contact_email": ""}  # fails work validation
-            resp = await c.post(f"/{LIVE_ORG['slug']}/rfq", data=bad)
+            resp = await c.post(f"/org/{LIVE_ORG['slug']}/rfq", data=bad)
             assert resp.status_code == 400
             assert "error" in resp.text.lower()
 
@@ -224,7 +244,7 @@ def test_rate_limit_trips_on_sixth_submission(web):
         async with (await web["client"]()) as c:
             codes = []
             for _ in range(6):
-                resp = await c.post(f"/{LIVE_ORG['slug']}/rfq", data=_rfq_data())
+                resp = await c.post(f"/org/{LIVE_ORG['slug']}/rfq", data=_rfq_data())
                 codes.append(resp.status_code)
             assert codes[:5] == [200] * 5
             assert codes[5] == 429

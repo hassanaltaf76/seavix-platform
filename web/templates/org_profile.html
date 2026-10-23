@@ -10,56 +10,58 @@
 {% endblock %}
 {% block blade_tabs %}<nav class="sv-blade-tabs" aria-label="Profile sections">
   <a href="/org/profile"{% if mode == "view" %} aria-current="page"{% endif %}>Public page</a>
-  {% if org and org.profile_status == 'live' %}<a href="/{{ org.slug }}">Live page</a>{% endif %}
+  {% if org and org.profile_status == 'live' %}<a href="/org/{{ org.slug }}">Live page</a>{% endif %}
 </nav>{% endblock %}
 
 {% block content %}
-{#- 31e (amended per owner feedback; 31i reaffirms): the profile blade is a
-    PUBLIC-CONTENT surface — no account email line, no tag, and no go-live
-    notice may render here: on a public-content surface account state
-    misreads as company state. 31i: post-auth surfaces carry zero
-    verification state — the only verification UI is the pre-login gate. -#}
+{#- 31e/31i: the profile blade is a PUBLIC-CONTENT surface — no account
+    email line, no tag, no go-live notice: account state misreads as
+    company state here. 31i: post-auth surfaces carry zero verification
+    state. -#}
 
 {% if saved %}<p class="notice success" role="status">Saved.</p>{% endif %}
 
 {% if mode == "view" %}
 {#- 31f: WYSIWYG preview — the SAME content partial the public page at
-    /<slug> renders, fed the same resolved org shape. -#}
+    /org/<slug> renders, fed the same resolved org shape. -#}
 <section class="card sv-preview">
   <p class="sv-preview-hint">This is exactly what visitors see at
-     seavix.ai/{{ org.slug }}{% if org and org.profile_status != 'live' %} —
+     seavix.ai/org/{{ org.slug }}{% if org and org.profile_status != 'live' %} —
      your page is <strong>{{ org.profile_status }}</strong>, so it is not
      public yet{% endif %}.</p>
   {% if org %}{% include "_public_org_content.html" %}{% endif %}
 </section>
 
 {% else %}
-{#- EDIT MODE (org.profile.edit) — the 31d view-edit-save Save button
-    persists about + slug + ports in one PUT. 31g: Save stays disabled
-    until the form is actually dirty (any edit, port add or removal). -#}
+{#- EDIT MODE (org.profile.edit) — the 31d view-edit-save pattern: Save's
+    sticky bar appears once the form is dirty (v4 §6: Cancel left, Save
+    right, Save disabled until dirty). -#}
 {% if org %}
 <p><a href="/org/profile">← Back to preview</a></p>
 
 <section class="card">
   <h2>What visitors see</h2>
-  {#- 31j: the CURRENT public address state, stated plainly. An
-      auto-generated placeholder slug gets a loud "choose your address"
-      prompt; a chosen slug gets the plain "your public page" line with
-      a View link. -#}
+  {#- 31j: the CURRENT public address state, stated plainly in a soft info
+      callout (v4 §6). An auto-generated placeholder slug gets a loud
+      "choose your address" prompt; a chosen slug gets the plain URL. -#}
   {% if slug_is_placeholder %}
-  <p class="notice sv-slug-callout" role="status">
-    <strong>Choose your public address: seavix.ai/{{ org.slug }}</strong><br>
-    <span>This address was generated when you registered — pick one that
-          matches your company. It is where your SeaVix page lives.</span>
+  <p class="sv-info-callout sv-slug-callout" role="status">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+    <span><strong>Choose your public address: seavix.ai/org/{{ org.slug }}</strong><br>
+          <span class="sv-muted">This address was generated when you registered —
+          pick one that matches your company. It is where your SeaVix page
+          lives.</span></span>
   </p>
   {% else %}
-  <p class="notice sv-slug-callout" role="status">
-    <strong>Your public page: seavix.ai/{{ org.slug }}</strong>
-    {% if org.profile_status == 'live' %}
-    — <a href="/{{ org.slug }}">View it live</a>
-    {% endif %}
+  <p class="sv-info-callout sv-slug-callout" role="status">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+    <span><strong>Your public page: seavix.ai/org/{{ org.slug }}</strong>
+          {% if org.profile_status == 'live' %}
+          — <a href="/org/{{ org.slug }}">View it live</a>
+          {% endif %}</span>
   </p>
   {% endif %}
+
   <form method="post" action="/org/profile" class="sv-form"
         x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false, dirty: false,
                   async search() {
@@ -86,10 +88,10 @@
            value="{{ membership.slug }}" @input="dirty = true">
     {#- 31j: exactly where the page is, and the draft→404 rule, inline. -#}
     {% if org.profile_status == 'live' %}
-    <small>Your page is <strong>live</strong> — seavix.ai/{{ org.slug }} is
-           reachable for visitors right now.</small>
+    <small>Your page is <strong>live</strong> — seavix.ai/org/{{ org.slug }}
+           is reachable for visitors right now.</small>
     {% else %}
-    <small>Your page is at seavix.ai/{{ org.slug }} and becomes reachable
+    <small>Your page is at seavix.ai/org/{{ org.slug }} and becomes reachable
            only when it is <strong>live</strong> — while it is a
            <strong>{{ org.profile_status }}</strong>, that address shows
            visitors a not-found page.</small>
@@ -97,10 +99,9 @@
     {% if slug_error %}<p class="sv-field-error" role="alert">{{ slug_error }}</p>{% endif %}
 
     {#- 31m: public contact block — address, phone, public email, whatsapp.
-        Saved with the rest of the page in one PUT (Save's dirty-tracking
-        covers them); empty fields clear the column. contact_email is the
-        PUBLIC business contact — it is never prefilled from, or linked
-        to, the account/login email. -#}
+        Saved with the rest of the page in one PUT; empty fields clear the
+        column. contact_email is the PUBLIC business contact — never
+        prefilled from, or linked to, the account/login email. -#}
     <label for="address">Company address — shown on your public page</label>
     <textarea id="address" name="address" rows="3"
               @input="dirty = true">{{ org.address or "" }}</textarea>
@@ -156,7 +157,12 @@
              serve" on your public page.</small>
     </div>
 
-    <p><button type="submit" :disabled="!dirty">Save public page</button></p>
+    {#- v4 §6: the sticky save bar appears when the form is dirty —
+        Cancel left, Save right, Save disabled until dirty. -#}
+    <div class="sv-save-bar" x-show="dirty" x-cloak>
+      <a class="button secondary" href="/org/profile">Cancel</a>
+      <button type="submit" :disabled="!dirty">Save public page</button>
+    </div>
   </form>
 </section>
 

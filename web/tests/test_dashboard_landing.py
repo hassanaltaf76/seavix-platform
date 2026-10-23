@@ -84,8 +84,7 @@ async def _role_session(idc: httpx.AsyncClient, email: str,
     return sid
 
 
-PLACEHOLDER = ("Your operational overview will live here — jobs, RFQs "
-               "and activity arrive in upcoming releases.")
+PLACEHOLDER = "Arriving in an upcoming release."
 
 
 def test_signed_in_landing_and_post_login_land_on_dashboard(arun, id_asgi):
@@ -138,7 +137,8 @@ def test_signed_in_landing_and_post_login_land_on_dashboard(arun, id_asgi):
                 dash = await w.get("/dashboard")
                 assert dash.status_code == 200
                 assert "<h1>Dashboard</h1>" in dash.text
-                assert PLACEHOLDER in dash.text
+                assert dash.text.count(PLACEHOLDER) == 3
+                assert "sv-skel-card" in dash.text
                 # top-level blade: crumb root IS the page; × closes to itself
                 assert '<li aria-current="page">Home</li>' in dash.text
                 close = re.search(
@@ -192,7 +192,8 @@ def test_dashboard_renders_for_every_member_rail_cell_permission_driven(arun, id
                     dash = await w.get("/dashboard")
                     assert dash.status_code == 200, (name, dash.status_code)
                     assert "<h1>Dashboard</h1>" in dash.text, name
-                    assert PLACEHOLDER in dash.text, name
+                    assert dash.text.count(PLACEHOLDER) == 3, name  # Jobs / RFQs / Activity
+                    assert "sv-skel-card" in dash.text, name
                     if can_view:
                         assert "sv-rail-tenant" in dash.text, name
                         assert "sv-rail-initials" in dash.text, name

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}SeaVix{% endblock %}</title>
-  <meta name="theme-color" content="#FFFFFF">
+  <meta name="theme-color" content="#F7F8FA">
   <link rel="manifest" href="/static/site.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
   <link rel="icon" type="image/png" sizes="64x64" href="/static/brand/favicon-64.png">
@@ -14,6 +14,7 @@
 </head>
 <body>
   <div class="sv-public">
+    {% block public_header %}
     <header class="sv-public-header">
       <a class="sv-public-brand" href="/" aria-label="SeaVix">
         <img src="/static/brand/seavix-logo.png" alt="SeaVix">
@@ -23,13 +24,17 @@
         <a class="sv-public-cta" href="/register">Register</a>
       </nav>
     </header>
+    {% endblock %}
 
     <main class="sv-public-main">
       {% block content %}{% endblock %}
     </main>
 
     <footer class="sv-public-footer">
-      SeaVix — marine survey coordination.
+      <div class="sv-container">
+        <span>© 2026 SeaVix — marine survey coordination.</span>
+        <span><a href="mailto:hello@seavix.ai">hello@seavix.ai</a></span>
+      </div>
     </footer>
   </div>
 </body>

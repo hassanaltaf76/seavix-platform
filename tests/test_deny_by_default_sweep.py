@@ -82,6 +82,10 @@ WEB_PUBLIC = {
     "/register",
     "/p/{slug}",
     "/p/{slug}/rfq",
+    # v4 §7: canonical public profiles at /org/<slug>
+    "/org/{slug}",
+    "/org/{slug}/rfq",
+    # root /<slug> and /<slug>/rfq are 301 redirects to /org/<slug>
     "/{slug}",
     "/{slug}/rfq",
     "/media/{key:path}",

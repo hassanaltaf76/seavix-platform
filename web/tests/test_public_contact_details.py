@@ -85,7 +85,7 @@ def test_contact_block_round_trip_links_and_byte_equality(arun, id_asgi):
                 # go live: the public page renders the SAME article,
                 # byte for byte (31f contract holds with 31m content)
                 await _verify_email_and_go_live(idc, email, sid)
-                pub = await w.get(f"/{slug}")
+                pub = await w.get(f"/org/{slug}")
                 assert pub.status_code == 200
                 assert '<h2>Contact</h2>' in pub.text
                 assert f'href="tel:{PHONE}"' in pub.text
@@ -120,7 +120,7 @@ def test_contact_section_absent_until_a_field_is_set(arun, id_asgi):
                 await _verify_email_and_go_live(idc, email, sid)
 
                 # nothing set -> NO contact markup at all, either surface
-                pub = await w.get(f"/{slug}")
+                pub = await w.get(f"/org/{slug}")
                 assert pub.status_code == 200
                 assert "sv-org-contact" not in pub.text
                 assert "<h2>Contact</h2>" not in pub.text
@@ -134,7 +134,7 @@ def test_contact_section_absent_until_a_field_is_set(arun, id_asgi):
                     follow_redirects=False,
                 )
                 assert saved.status_code == 303
-                pub = await w.get(f"/{slug}")
+                pub = await w.get(f"/org/{slug}")
                 assert '<h2>Contact</h2>' in pub.text
                 assert "Suite 1404, Marina Plaza" in pub.text
                 article = _article(pub.text)
@@ -232,7 +232,7 @@ def test_contact_validation_rejects_bad_values_inline(arun, id_asgi):
 
                 # public page is untouched by any of the rejected saves
                 await _verify_email_and_go_live(idc, email, sid)
-                pub_page = await w.get(f"/{slug}")
+                pub_page = await w.get(f"/org/{slug}")
                 assert WHATSAPP in pub_page.text
 
     arun(scenario())
@@ -272,7 +272,7 @@ def test_contact_fields_clear_when_emptied(arun, id_asgi):
                     assert pub.json()[field] is None
 
                 await _verify_email_and_go_live(idc, email, sid)
-                pub_page = await w.get(f"/{slug}")
+                pub_page = await w.get(f"/org/{slug}")
                 assert "sv-org-contact" not in pub_page.text
                 assert "<h2>Contact</h2>" not in pub_page.text
 
