@@ -70,7 +70,10 @@ def test_registration_happy_path_server_slug_and_dup_email(arun):
             g = await c.get(f"/api/orgs/{slug}")
             assert g.status_code == 200
             assert g.json()["type"] == "survey_company"
-            assert "email" not in g.text
+            # public-safe JSON: never the account email VALUE (31m adds the
+            # contact_email KEY — the public business contact, null until set)
+            assert email not in g.text
+            assert g.json()["contact_email"] is None
 
             # duplicate email -> field-level 409
             r3 = await _register(c, email=email)

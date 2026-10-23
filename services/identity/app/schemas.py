@@ -40,6 +40,11 @@ class PublicOrgResponse(BaseModel):
     about: str | None
     website: str | None
     phone: str | None
+    # 31m: public contact block. contact_email is the PUBLIC business
+    # contact — the account/login email never enters this model.
+    address: str | None
+    contact_email: str | None
+    whatsapp: str | None
     logo_url: str | None
     profile_status: str
     # ports of operation as UN/LOCODE codes (31f); the web app resolves

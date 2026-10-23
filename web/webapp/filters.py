@@ -33,5 +33,13 @@ def paragraphs(text: Any) -> Markup:
     return Markup("\n".join(out))
 
 
+def digits(text: Any) -> str:
+    """31m: strip everything that is not a digit — the wa.me href carries
+    the number in pure-digit international form while the visible text
+    keeps the user's original formatting."""
+    return re.sub(r"\D", "", str(text or ""))
+
+
 def install(env: Any) -> None:
     env.filters["paragraphs"] = paragraphs
+    env.filters["digits"] = digits

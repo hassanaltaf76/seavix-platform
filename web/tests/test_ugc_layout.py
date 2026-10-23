@@ -62,9 +62,17 @@ def test_200_char_unbroken_string_stays_inside_container(tmp_path):
         <div class="sv-prose"><p>{LONG}</p><p>Second block with {LONG}</p></div>
       </div>
     </header>
+    <section class="sv-org-contact">
+      <h2>Contact</h2>
+      <div class="sv-prose"><p>{LONG}</p></div>
+      <ul class="sv-org-facts">
+        <li>Phone: <a href="tel:{LONG}">{LONG}</a></li>
+        <li>Email: <a href="mailto:{LONG}">{LONG}</a></li>
+        <li>WhatsApp: {LONG} — <a href="https://wa.me/12345678901">{LONG}</a></li>
+      </ul>
+    </section>
     <ul class="sv-org-facts">
       <li>Website: <a href="#" rel="nofollow">{LONG}</a></li>
-      <li>Phone: {LONG}</li>
     </ul>
     <p class="sv-org-ports"><strong>Ports we serve:</strong>
       <span class="sv-port">Al Fujayrah</span></p>
@@ -97,5 +105,6 @@ def test_200_char_unbroken_string_stays_inside_container(tmp_path):
     assert 'data-ugc-verdict="contained"' in out, (
         "unbroken UGC escaped its container:\n" + out[-800:]
     )
-    # multi-paragraph input still renders as two prose blocks
-    assert out.count("<p>") == 2  # the ports <p> carries a class attribute
+    # prose blocks intact: two description <p> + one 31m address <p>
+    # (the ports <p> carries a class attribute)
+    assert out.count("<p>") == 3

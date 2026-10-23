@@ -143,7 +143,7 @@ def _view_context(ctx, membership, org, saved: bool) -> dict:
 
 
 def _edit_context(ctx, membership, org, *, slug_error=None, port_error=None,
-                  logo_saved=False, logo_error=None) -> dict:
+                  logo_saved=False, logo_error=None, field_errors=None) -> dict:
     return {
         "request": None, "ctx": ctx, "membership": membership, "org": org,
         "rail_org": _rail_org(org, membership),
@@ -151,6 +151,9 @@ def _edit_context(ctx, membership, org, *, slug_error=None, port_error=None,
         "can_edit": _has(membership, ORG_PROFILE_EDIT),
         "slug_error": slug_error, "port_error": port_error,
         "logo_saved": logo_saved, "logo_error": logo_error,
+        # 31m: per-field inline errors for the public contact block
+        # (address/phone/contact_email/whatsapp), keyed by field name.
+        "field_errors": field_errors or {},
         # 31j: the editor states the public address plainly — placeholder
         # slug vs chosen slug, and draft vs live reachability.
         "slug_is_placeholder": _is_generated_slug(
@@ -209,14 +212,18 @@ async def org_profile_update(
     request: Request,
     slug: str = Form(...),
     about: str = Form(""),
+    address: str = Form(""),
+    phone: str = Form(""),
+    contact_email: str = Form(""),
+    whatsapp: str = Form(""),
     ports: list[str] = Form([]),
     ctx: AuthContext = Depends(require_auth),
 ):
     """Edit-mode Save: services description + page slug + ports of
-    operation in one PUT. Proxies the identity profile update; unknown
-    port codes are rejected against the registry before any write; field
-    errors re-render edit mode inline. 31e: edits require
-    org.profile.edit — otherwise the same 404 as the blade."""
+    operation + the public contact block in one PUT. Proxies the identity
+    profile update; unknown port codes are rejected against the registry
+    before any write; field errors re-render edit mode inline. 31e: edits
+    require org.profile.edit — otherwise the same 404 as the blade."""
     membership = _first_membership(ctx)
     if membership is None or membership.org_type != "survey_company":
         raise HTTPException(status_code=403, detail="not available")
@@ -237,31 +244,52 @@ async def org_profile_update(
             status_code=422,
         )
 
+    # 31m: the contact block rides the same Save; empty fields clear the
+    # column. contact_email is the PUBLIC business contact — nothing here
+    # ever reads the account email.
+    submitted = {
+        "about": about.strip() or None,
+        "address": address.strip() or None,
+        "phone": phone.strip() or None,
+        "contact_email": contact_email.strip() or None,
+        "whatsapp": whatsapp.strip() or None,
+    }
     sid = session_id_from(request)
     resp = await identity_request(
         "PUT", "/api/orgs/me/profile",
-        json={"slug": slug.strip(), "about": about.strip() or None,
-              "ports": codes},
+        json={"slug": slug.strip(), **submitted, "ports": codes},
         headers={SESSION_HEADER: sid} if sid else {},
     )
     if resp.status_code == 200:
         return _redirect("/org/profile?saved=1")
-    slug_error = "could not save — try again"
-    if resp.status_code == 409:
-        detail = resp.json().get("detail", {})
+
+    # re-render edit mode with the SUBMITTED values (the user keeps what
+    # they typed) and the field error surfaced inline
+    org = {**(org or {}), **submitted, "ports": resolved}
+    slug_error = None
+    field_errors: dict[str, str] = {}
+    detail = resp.json().get("detail")
+    if resp.status_code == 409 and isinstance(detail, dict):
         slug_error = f"{detail.get('field', 'slug')}: {detail.get('message', 'conflict')}"
-    elif resp.status_code == 422:
-        detail = resp.json().get("detail", [])
-        msg = ""
-        if isinstance(detail, list) and detail:
-            msg = str(detail[0].get("msg", ""))
-        slug_error = ("that address is reserved — pick another"
-                      if "reserved" in msg else
-                      "use 2-64 lowercase letters, digits and dashes")
+    elif resp.status_code == 422 and isinstance(detail, list):
+        for item in detail:
+            msg = str(item.get("msg", ""))
+            if msg.startswith("Value error, "):
+                msg = msg[len("Value error, "):]
+            loc = item.get("loc") or []
+            field = str(loc[-1]) if loc else ""
+            if field == "slug":
+                slug_error = ("that address is reserved — pick another"
+                              if "reserved" in msg else
+                              "use 2-64 lowercase letters, digits and dashes")
+            else:
+                field_errors[field] = msg
+    if slug_error is None:
+        slug_error = "could not save — try again"
     return _render(
         request, "org_profile.html",
-        {**_edit_context(ctx, membership, org, slug_error=slug_error),
-         "org": {**(org or {}), "ports": resolved}},
+        _edit_context(ctx, membership, org, slug_error=slug_error,
+                      field_errors=field_errors),
         status_code=resp.status_code if resp.status_code in (409, 422) else 502,
     )
 

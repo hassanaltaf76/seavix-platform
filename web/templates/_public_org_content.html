@@ -1,8 +1,17 @@
 {#- Shared public-org content (task 31f): rendered by /<slug> AND by the
     profile blade's view mode, so the preview is WYSIWYG by construction.
-    Expects `org` with name/about/website/phone/logo_url/slug and `ports`
-    as RESOLVED rows [{code, name, country}] (the web app resolves names
-    via the registry before rendering). -#}
+    Expects `org` with name/about/website/phone/address/contact_email/
+    whatsapp/logo_url/slug and `ports` as RESOLVED rows
+    [{code, name, country}] (the web app resolves names via the registry
+    before rendering).
+
+    31m: the Contact section renders AFTER the description, only when at
+    least one contact field is set — empty block, no markup at all.
+    address is multi-line free text via the shared `paragraphs` filter;
+    phone is a tel: link; contact_email is the PUBLIC business contact
+    (mailto:) — never the account email; whatsapp is a click-to-chat
+    wa.me link (non-digits stripped for the href, the original number
+    shown as the text). Everything stays inside article.sv-ugc (31l). -#}
 <article class="sv-ugc">
   <header class="sv-org-header">
     {% if org.logo_url %}
@@ -18,10 +27,22 @@
       {% if org.about %}<div class="sv-prose">{{ org.about | paragraphs }}</div>{% endif %}
     </div>
   </header>
+  {% if org.address or org.phone or org.contact_email or org.whatsapp %}
+  <section class="sv-org-contact">
+    <h2>Contact</h2>
+    {% if org.address %}<div class="sv-prose">{{ org.address | paragraphs }}</div>{% endif %}
+    <ul class="sv-org-facts">
+      {% if org.phone %}<li>Phone: <a href="tel:{{ org.phone }}">{{ org.phone }}</a></li>{% endif %}
+      {% if org.contact_email %}<li>Email: <a href="mailto:{{ org.contact_email }}">{{ org.contact_email }}</a></li>{% endif %}
+      {% if org.whatsapp %}<li>WhatsApp: {{ org.whatsapp }} — <a href="https://wa.me/{{ org.whatsapp | digits }}" rel="nofollow noopener" target="_blank">Chat on WhatsApp</a></li>{% endif %}
+    </ul>
+  </section>
+  {% endif %}
+  {% if org.website %}
   <ul class="sv-org-facts">
-    {% if org.website %}<li>Website: <a href="{{ org.website }}" rel="nofollow">{{ org.website }}</a></li>{% endif %}
-    {% if org.phone %}<li>Phone: {{ org.phone }}</li>{% endif %}
+    <li>Website: <a href="{{ org.website }}" rel="nofollow">{{ org.website }}</a></li>
   </ul>
+  {% endif %}
   {% if org.ports %}
   <p class="sv-org-ports"><strong>Ports we serve:</strong>
     {% for p in org.ports %}<span class="sv-port" title="{{ p.code }} — {{ p.country }}">{{ p.name }}</span>{% if not loop.last %}<span class="sv-port-sep" aria-hidden="true"> · </span>{% endif %}{% endfor %}

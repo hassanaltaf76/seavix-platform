@@ -96,6 +96,36 @@
     {% endif %}
     {% if slug_error %}<p class="sv-field-error" role="alert">{{ slug_error }}</p>{% endif %}
 
+    {#- 31m: public contact block — address, phone, public email, whatsapp.
+        Saved with the rest of the page in one PUT (Save's dirty-tracking
+        covers them); empty fields clear the column. contact_email is the
+        PUBLIC business contact — it is never prefilled from, or linked
+        to, the account/login email. -#}
+    <label for="address">Company address — shown on your public page</label>
+    <textarea id="address" name="address" rows="3"
+              @input="dirty = true">{{ org.address or "" }}</textarea>
+    {% if field_errors.get("address") %}<p class="sv-field-error" role="alert">{{ field_errors.get("address") }}</p>{% endif %}
+
+    <label for="phone">Phone</label>
+    <input id="phone" name="phone" type="tel"
+           value="{{ org.phone or "" }}" @input="dirty = true">
+    <small>Shown on your public page as a call link.</small>
+
+    <label for="contact_email">Public email address</label>
+    <input id="contact_email" name="contact_email" type="email"
+           value="{{ org.contact_email or "" }}" @input="dirty = true">
+    <small>Your public business contact — shown on your public page.
+           Separate from your login email, which stays private.</small>
+    {% if field_errors.get("contact_email") %}<p class="sv-field-error" role="alert">{{ field_errors.get("contact_email") }}</p>{% endif %}
+
+    <label for="whatsapp">WhatsApp number</label>
+    <input id="whatsapp" name="whatsapp" type="text"
+           placeholder="+971 50 123 4567"
+           value="{{ org.whatsapp or "" }}" @input="dirty = true">
+    <small>International format — shown on your public page as a
+           Chat on WhatsApp link.</small>
+    {% if field_errors.get("whatsapp") %}<p class="sv-field-error" role="alert">{{ field_errors.get("whatsapp") }}</p>{% endif %}
+
     <div class="sv-port-picker">
       <label for="port-search">Ports of operation — search by port name,
              UN/LOCODE or country</label>

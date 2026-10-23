@@ -689,6 +689,11 @@ h2 { font-size: 1.08rem; }
 .sv-org-facts { list-style: none; margin: 1rem 0 0; padding: 0; color: var(--seavix-text-secondary); }
 .sv-org-facts li { margin: 0.2rem 0; }
 
+/* 31m: public contact block — address prose + tel:/mailto:/wa.me links */
+.sv-org-contact { margin-top: 1.25rem; }
+.sv-org-contact h2 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+.sv-org-contact .sv-prose p { margin: 0 0 0.5rem; }
+
 /* ===================================================== AUTH LAYOUT
    /login /register /forgot-password /reset-password /login/otp and the
    registration verification family: centered card, zero app chrome. */

@@ -232,7 +232,7 @@ def test_save_is_disabled_until_dirty(arun, id_asgi):
                 assert 'class="sv-form"\n        x-data=' in editor.text
                 assert "dirty: false" in editor.text
                 assert ':disabled="!dirty"' in editor.text
-                assert editor.text.count('@input="dirty = true"') == 2  # about + slug
+                assert editor.text.count('@input="dirty = true"') == 6  # about + slug + 31m contact block (address, phone, contact_email, whatsapp)
                 # the disabled styling ships in the stylesheet
                 import pathlib
 

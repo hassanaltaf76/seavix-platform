@@ -11,7 +11,7 @@ import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, EmailStr, field_validator
 from seavix_ports import AuthContext, require_auth
 from sqlalchemy import text
 
@@ -65,12 +65,45 @@ class ProfileUpdate(BaseModel):
     about: str | None = None
     website: str | None = None
     phone: str | None = None
+    # 31m: public contact block. contact_email is the PUBLIC business
+    # contact — it is validated and stored on its own column and is never
+    # derived from (or checked against) the account email. address is
+    # multi-line free text; whatsapp is international format with loose
+    # validation (+, digits, spaces, dashes, parens; >= 7 digits).
+    address: str | None = None
+    contact_email: EmailStr | None = None
+    whatsapp: str | None = None
     slug: str | None = None  # optional: set/change the public page slug
     # Ports of operation (task 31f): UN/LOCODE codes, cross-service
     # reference to registry.port — existence is validated by the web app
     # against the registry; identity validates the code FORMAT and owns
     # persistence. None = leave the org's ports untouched.
     ports: list[str] | None = None
+
+    @field_validator("about", "website", "phone", "address", "contact_email", mode="before")
+    @classmethod
+    def blank_to_none(cls, v: str | None) -> str | None:
+        # 31m: empty form fields clear the column instead of storing ""
+        # (contact_email passes through here BEFORE EmailStr parsing)
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
+    @field_validator("whatsapp")
+    @classmethod
+    def whatsapp_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"[0-9+()\-\s]+", v):
+            raise ValueError(
+                "whatsapp: use only +, digits, spaces, dashes and parentheses"
+            )
+        if len(re.sub(r"\D", "", v)) < 7:
+            raise ValueError("whatsapp: at least 7 digits")
+        return v
 
     @field_validator("slug")
     @classmethod
@@ -137,12 +170,17 @@ async def update_profile(
         await session.execute(
             text(
                 "UPDATE organization SET about = :about, website = :website, "
-                "phone = :phone, slug = COALESCE(:slug, slug) WHERE id = :id"
+                "phone = :phone, address = :address, "
+                "contact_email = :contact_email, whatsapp = :whatsapp, "
+                "slug = COALESCE(:slug, slug) WHERE id = :id"
             ),
             {
                 "about": payload.about,
                 "website": payload.website,
                 "phone": payload.phone,
+                "address": payload.address,
+                "contact_email": payload.contact_email,
+                "whatsapp": payload.whatsapp,
                 "slug": payload.slug,
                 "id": org_id,
             },
