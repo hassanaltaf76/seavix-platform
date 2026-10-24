@@ -50,19 +50,26 @@ def web(monkeypatch):
 
     posted: list[dict] = []
 
-    async def fake_post(payload: dict) -> StubResp:
+    async def fake_post(payload: dict, headers=None) -> StubResp:
         posted.append(payload)
-        if payload["org_slug"] == LIVE_ORG["slug"] and payload["contact_email"]:
-            return StubResp(201, {"id": "rfq-1", "status": "open"})
+        if payload["org_slug"] == LIVE_ORG["slug"] and payload["vessel_name"]:
+            return StubResp(201, {"id": "rfq-1", "status": "awaiting_quote"})
         return StubResp(400, {"detail": "invalid RFQ"})
 
     monkeypatch.setattr(pages, "_post_public_rfq", fake_post)
+
+    async def _authed_submitter(request):
+        return {"memberships": [{"org_id": "org-1", "slug": "mine",
+                                 "org_type": "client", "roles": ["client"],
+                                 "permissions": ["rfq.create", "rfq.view"]}]}
+
+    monkeypatch.setattr(pages, "_rfq_submitter", _authed_submitter)
 
     async def _client():
         transport = httpx.ASGITransport(app=app)
         return httpx.AsyncClient(transport=transport, base_url="http://web")
 
-    return {"client": _client, "posted": posted}
+    return {"client": _client, "posted": posted, "monkeypatch": monkeypatch}
 
 
 def _run(coro):
@@ -71,10 +78,12 @@ def _run(coro):
 
 def _rfq_data():
     return {
+        "vessel_name": "MT Sea Falcon",
         "vessel_imo": "9074729",
         "survey_types": ["condition"],
         "location_type": "anchorage",
-        "contact_email": "charterer@example.com",
+        "port_name": "Karachi anchorage",
+        "reference_no": "REF-77",
         "preferred_date": "2026-11-01",
         "scope": "Annual condition survey",
     }
@@ -213,25 +222,48 @@ def test_honeypot_never_reaches_work_service(web):
     assert web["posted"] == []  # nothing was forwarded to the work service
 
 
+def test_rfq_anonymous_submit_redirects_to_register(web):
+    """32b SUBMIT GUARD: an anonymous submitter registers first; the
+    standard flow returns them to the form via `next`."""
+    async def _anon(request):
+        return None
+
+    web["monkeypatch"].setattr(pages, "_rfq_submitter", _anon)
+
+    async def scenario():
+        async with (await web["client"]()) as c:
+            resp = await c.post(f"/org/{LIVE_ORG['slug']}/rfq",
+                                data=_rfq_data(), follow_redirects=False)
+            assert resp.status_code == 303
+            assert resp.headers["location"] == \
+                f"/register?next=/org/{LIVE_ORG['slug']}/rfq"
+
+    _run(scenario())
+    assert web["posted"] == []  # nothing reached the work service
+
+
 def test_rfq_forwards_to_work_service(web):
     async def scenario():
         async with (await web["client"]()) as c:
             resp = await c.post(f"/org/{LIVE_ORG['slug']}/rfq", data=_rfq_data())
             assert resp.status_code == 200
             assert "Thank you" in resp.text
+            assert "Track your requests" in resp.text
 
     _run(scenario())
     (payload,) = web["posted"]
     assert payload["org_slug"] == LIVE_ORG["slug"]
-    assert payload["contact_email"] == "charterer@example.com"
+    assert payload["vessel_name"] == "MT Sea Falcon"
     assert payload["survey_types"] == ["condition"]
     assert payload["vessel_imo"] == "9074729"
+    assert payload["port_name"] == "Karachi anchorage"
+    assert payload["reference_no"] == "REF-77"
 
 
 def test_work_service_rejection_renders_form_error(web):
     async def scenario():
         async with (await web["client"]()) as c:
-            bad = {**_rfq_data(), "contact_email": ""}  # fails work validation
+            bad = {**_rfq_data(), "vessel_name": ""}  # fails web validation
             resp = await c.post(f"/org/{LIVE_ORG['slug']}/rfq", data=bad)
             assert resp.status_code == 400
             assert "error" in resp.text.lower()
@@ -239,16 +271,39 @@ def test_work_service_rejection_renders_form_error(web):
     _run(scenario())
 
 
+def test_rfq_validation_errors(web):
+    async def scenario():
+        async with (await web["client"]()) as c:
+            no_survey = await c.post(
+                f"/org/{LIVE_ORG['slug']}/rfq",
+                data={**_rfq_data(), "survey_types": []})
+            assert no_survey.status_code == 400
+            bad_imo = await c.post(
+                f"/org/{LIVE_ORG['slug']}/rfq",
+                data={**_rfq_data(), "vessel_imo": "123"})
+            assert bad_imo.status_code == 400
+
+    _run(scenario())
+    assert web["posted"] == []
+
+
 def test_rate_limit_trips_on_sixth_submission(web):
     async def scenario():
+        # anonymous posts: the limiter runs BEFORE the submit guard, so
+        # the allowance is consumed and the 6th submission trips to 429
+        async def _anon(request):
+            return None
+
+        web["monkeypatch"].setattr(pages, "_rfq_submitter", _anon)
         async with (await web["client"]()) as c:
             codes = []
             for _ in range(6):
-                resp = await c.post(f"/org/{LIVE_ORG['slug']}/rfq", data=_rfq_data())
+                resp = await c.post(f"/org/{LIVE_ORG['slug']}/rfq",
+                                    data=_rfq_data(), follow_redirects=False)
                 codes.append(resp.status_code)
-            assert codes[:5] == [200] * 5
+            assert codes[:5] == [303] * 5  # submit guard: register first
             assert codes[5] == 429
 
     _run(scenario())
-    # limiter tripped before the 6th forward: exactly 5 calls reached work
-    assert len(web["posted"]) == 5
+    # limiter tripped before the 6th forward: nothing reached work
+    assert web["posted"] == []

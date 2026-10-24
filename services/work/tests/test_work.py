@@ -24,6 +24,10 @@ CLIENT_ORG = str(uuid.uuid4())
 SURVEY_ORG = str(uuid.uuid4())
 
 
+async def fake_get_identity_org(org_id: str) -> dict:
+    return {"id": org_id, "name": f"Org {org_id[:8]}"}
+
+
 @pytest.fixture()
 def client(arun, monkeypatch):
     """ASGI client + identity stubs. caller() switches the authenticated org."""
@@ -45,6 +49,8 @@ def client(arun, monkeypatch):
 
     monkeypatch.setattr(spine, "caller_org", fake_caller_org)
     monkeypatch.setattr(spine, "resolve_public_org", fake_resolve)
+    monkeypatch.setattr(spine, "get_identity_org",
+                        fake_get_identity_org)
     received = []
     app.state.event_bus.subscribe("rfq.created", received.append)
     app.state.event_bus.subscribe("quote.sent", received.append)
@@ -193,12 +199,20 @@ def test_public_intake(client):
             })
             assert ok.status_code == 201
             rfq_id = ok.json()["id"]
+            assert ok.json()["status"] == "awaiting_quote"  # 32b vocabulary
+            # 32b: reads are org-scoped — the target org reads its own row
+            client.state["org_id"] = SURVEY_ORG
             body = (await c.get(f"/api/rfqs/{rfq_id}")).json()
             assert body["source"] == "public"
+            assert body["channel"] == "public_page"
+            assert body["status"] == "awaiting_quote"
             assert body["requesting_org_id"] is None     # anonymous (decision a)
             assert body["billing_org_id"] is None
             assert body["contact_email"] == "buyer@example.com"  # EmailStr trims
             assert body["target_org_id"] == SURVEY_ORG
+            # a non-involved org gets a plain 404 (org-scoping, never 403)
+            client.state["org_id"] = CLIENT_ORG
+            assert (await c.get(f"/api/rfqs/{rfq_id}")).status_code == 404
 
             # non-live org rejected
             bad = await c.post("/api/public/rfqs", json={

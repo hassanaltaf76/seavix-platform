@@ -26,10 +26,16 @@ CLIENT_ORG = str(uuid.uuid4())
 SURVEY_ORG = str(uuid.uuid4())
 
 
+async def fake_get_identity_org(org_id: str) -> dict:
+    return {"id": org_id, "name": f"Org {org_id[:8]}"}
+
+
 @pytest.fixture()
 def client(arun, monkeypatch):
+    state = {"org_id": CLIENT_ORG}
+
     async def fake_caller_org(request):
-        return {"org_id": CLIENT_ORG, "slug": "stub", "type": "stub"}
+        return {"org_id": state["org_id"], "slug": "stub", "type": "stub"}
 
     async def fake_resolve(slug: str):
         return {"org_id": SURVEY_ORG, "slug": slug, "type": "survey_company",
@@ -37,12 +43,15 @@ def client(arun, monkeypatch):
 
     monkeypatch.setattr(spine, "caller_org", fake_caller_org)
     monkeypatch.setattr(spine, "resolve_public_org", fake_resolve)
+    monkeypatch.setattr(spine, "get_identity_org",
+                        fake_get_identity_org)
     transport = httpx.ASGITransport(app=app)
     c = httpx.AsyncClient(transport=transport, base_url="http://work")
 
     class Handle:
         def __init__(self):
             self.c = c
+            self.state = state
             self.run = arun
 
         async def __aenter__(self):
@@ -85,7 +94,10 @@ def test_public_intake_multi_survey_types(client):
                 "location_type": "STS",
             })
             assert r.status_code == 201, r.text
+            # 32b: reads are org-scoped — the target org reads its own row
+            client.state["org_id"] = SURVEY_ORG
             g = await c.get(f"/api/rfqs/{r.json()['id']}")
+            assert g.status_code == 200
             assert sorted(g.json()["survey_types"]) == [
                 "bunker_quantity", "custom_thing"]
 

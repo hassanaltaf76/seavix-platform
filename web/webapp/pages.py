@@ -1,6 +1,7 @@
 """Public pages: landing, registration, org profile, RFQ intake, dev media."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import httpx
@@ -9,7 +10,12 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from .auth import authenticated_home_redirect
+from .auth import (
+    SESSION_HEADER,
+    authenticated_home_redirect,
+    session_context,
+    session_id_from,
+)
 from .config import blob_root
 from .filters import install as install_template_filters
 from .identity_client import identity_request
@@ -23,7 +29,7 @@ install_template_filters(templates.env)
 limiter = RateLimiter(limit=5, window_seconds=3600)
 
 LOCATION_TYPES = ("terminal", "STS", "anchorage", "OPL", "repair-berth", "dry-dock")
-ORG_TYPES = ("agent", "management", "survey_company")
+ORG_TYPES = ("agent", "management", "survey_company", "client")
 
 
 # ------------------------------------------------------------------ 32d
@@ -57,9 +63,18 @@ async def _identity_get(path: str) -> httpx.Response:
     return await identity_request("GET", path)
 
 
-async def _post_public_rfq(payload: dict) -> httpx.Response:
+async def _post_public_rfq(payload: dict, headers: dict | None = None) -> httpx.Response:
     """RFQ intake lives in the work service (spine)."""
-    return await work_request("POST", "/api/public/rfqs", json=payload)
+    return await work_request("POST", "/api/public/rfqs", json=payload,
+                              headers=headers)
+
+
+async def _rfq_submitter(request: Request) -> dict | None:
+    """32b: the RFQ routes are public (the middleware skips auth
+    resolution there), so the submit guard asks identity directly —
+    a valid session means the funnel continues, none means register.
+    """
+    return await session_context(request)
 
 
 # ---------------------------------------------------------------- landing
@@ -79,11 +94,21 @@ async def landing(request: Request) -> HTMLResponse:
 
 @router.get("/register", response_class=HTMLResponse)
 @public_route
-async def register_form(request: Request) -> HTMLResponse:
+async def register_form(request: Request, next: str = "") -> HTMLResponse:
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
         return redirect
-    return templates.TemplateResponse(request, "register.html", {"request": request, "error": None, "form": {}}
+    from .auth import safe_next
+
+    target = safe_next(next)
+    return templates.TemplateResponse(
+        request, "register.html",
+        {"request": request, "error": None, "form": {},
+         "next": target,
+         # 32b funnel: arriving from an RFQ form, the registrant is a ship
+         # operator — preselect the client type for them.
+         "rfq_funnel": bool(target) and target.startswith("/org/")
+         and target.endswith("/rfq")},
     )
 
 
@@ -96,23 +121,32 @@ async def register_submit(
     email: str = Form(...),
     password: str = Form(...),
     confirm_password: str = Form(...),
+    next: str = Form(""),
 ) -> HTMLResponse:
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
         return redirect
+    from .auth import safe_next
+
+    target = safe_next(next)
     form = {"org_name": org_name, "org_type": org_type, "email": email}
     if org_type not in ORG_TYPES:
         return templates.TemplateResponse(
             request, "register.html",
             {"request": request, "error": "please choose an organization type",
-             "form": form},
+             "form": form, "next": target,
+             "rfq_funnel": bool(target) and target.startswith("/org/")
+             and target.endswith("/rfq")},
             status_code=400,
         )
     if password != confirm_password:
         # Client + server guard: no account is created on a mismatch.
         return templates.TemplateResponse(
             request, "register.html",
-            {"request": request, "error": "Passwords do not match.", "form": form},
+            {"request": request, "error": "Passwords do not match.", "form": form,
+             "next": target,
+             "rfq_funnel": bool(target) and target.startswith("/org/")
+             and target.endswith("/rfq")},
             status_code=400,
         )
     resp = await identity_request(
@@ -122,25 +156,36 @@ async def register_submit(
     if resp.status_code == 201:
         # Email verification is required before the profile can go live;
         # send the first code immediately and move the user to the code step.
+        # 32b: the funnel's return target rides the verification link.
+        send_body: dict = {"email": email.lower()}
+        if target:
+            send_body["next"] = target
         await identity_request(
-            "POST", "/api/register/verify/send", json={"email": email.lower()}
+            "POST", "/api/register/verify/send", json=send_body
         )
         return templates.TemplateResponse(
             request,
             "verify_email.html",
             {"request": request, "email": email.lower(), "error": None,
-             "resent": False},
+             "resent": False, "next": target},
         )
     if resp.status_code == 409:
         detail = resp.json().get("detail", {})
         msg = f"{detail.get('field', 'field')}: {detail.get('message', 'conflict')}"
-        return templates.TemplateResponse(request, "register.html", {"request": request, "error": msg, "form": form},
+        return templates.TemplateResponse(
+            request, "register.html",
+            {"request": request, "error": msg, "form": form, "next": target,
+             "rfq_funnel": bool(target) and target.startswith("/org/")
+             and target.endswith("/rfq")},
             status_code=409,
         )
     if resp.status_code == 422:
         return templates.TemplateResponse(
             request, "register.html",
-            {"request": request, "error": "please check the form fields", "form": form},
+            {"request": request, "error": "please check the form fields",
+             "form": form, "next": target,
+             "rfq_funnel": bool(target) and target.startswith("/org/")
+             and target.endswith("/rfq")},
             status_code=400,
         )
     raise HTTPException(status_code=502, detail="registration service error")
@@ -189,7 +234,22 @@ async def _profile_or_unavailable(request: Request, slug: str) -> HTMLResponse:
     # resolved `org` shape the page preview renders, so preview and
     # public page stay pixel-identical.
     org["ports"] = await resolve_ports(org.get("ports", []))
-    return templates.TemplateResponse(request, "profile.html", {"request": request, "org": org})
+    # 32b SEO: description = the org's about flattened + truncated to
+    # 160 chars (the storefront's search/social snippet).
+    about = " ".join((org.get("about") or "").split())
+    if len(about) > 160:
+        about = about[:159].rstrip() + "…"
+    meta_description = about or (
+        f"Request marine survey services from {org['name']} on SeaVix."
+    )
+    base = str(request.base_url).rstrip("/")
+    return templates.TemplateResponse(
+        request, "profile.html",
+        {"request": request, "org": org,
+         "meta_description": meta_description,
+         "og_image": f"{base}{org['logo_url']}" if org.get("logo_url") else None,
+         "canonical_url": f"{base}/org/{slug}"},
+    )
 
 
 # ---------------------------------------------------------------- profiles
@@ -209,7 +269,8 @@ async def public_profile_org(request: Request, slug: str) -> HTMLResponse:
 
 @profiles_router.get("/org/{slug}/rfq", response_class=HTMLResponse)
 @public_route
-async def rfq_form_org(request: Request, slug: str) -> HTMLResponse:
+async def rfq_form_org(request: Request, slug: str,
+                       ready: str = "") -> HTMLResponse:
     org, reason = await _public_org_or_none(slug)
     if org is None:
         return templates.TemplateResponse(
@@ -217,12 +278,16 @@ async def rfq_form_org(request: Request, slug: str) -> HTMLResponse:
             {"request": request, "slug": slug, "reason": reason},
             status_code=404,
         )
+    # 32b: the funnel returns here after verify+login (?ready=1) — the
+    # form re-renders with the success flash for the signed-in user.
+    submitter = await _rfq_submitter(request) if ready == "1" else None
     return templates.TemplateResponse(request, "rfq_form.html", {
             "request": request,
             "slug": slug,
             "org_name": org["name"],
             "location_types": LOCATION_TYPES,
             "error": None,
+            "ready_flash": submitter is not None,
         },
     )
 
@@ -232,19 +297,24 @@ async def rfq_form_org(request: Request, slug: str) -> HTMLResponse:
 async def rfq_submit_org(
     request: Request,
     slug: str,
-    vessel_imo: str = Form(...),
+    vessel_name: str = Form(""),  # validated below for a clean form error
+    vessel_imo: str = Form(""),
     survey_types: list[str] = Form([]),  # 32d: catalog chip picker (multi)
     location_type: str = Form(...),
-    contact_email: str = Form(""),  # validated below for a clean form error
+    port_name: str = Form(""),
+    reference_no: str = Form(""),
     preferred_date: str = Form(""),
     scope: str = Form(""),
+    contact_email: str = Form(""),  # optional — registered users are
+        # identified by their org; kept for API-level back-compat
     website: str = Form(""),  # honeypot: must stay empty (real users never see it)
 ) -> HTMLResponse:
     client_host = request.client.host if request.client else "unknown"
 
     # Honeypot: bots fill hidden fields. Pretend success, persist nothing.
     if website.strip():
-        return templates.TemplateResponse(request, "rfq_thanks.html", {"request": request})
+        return templates.TemplateResponse(request, "rfq_thanks.html",
+                                          {"request": request})
 
     if not limiter.allow(f"rfq:{client_host}"):
         raise HTTPException(
@@ -255,52 +325,59 @@ async def rfq_submit_org(
     if org is None:
         raise HTTPException(status_code=404, detail="organization not available")
 
-    if not contact_email.strip():
+    # 32b SUBMIT GUARD: anonymous submitters register first — the standard
+    # flow (email+password, verification link, OTP, trust device) returns
+    # them here via `next` afterwards.
+    submitter = await _rfq_submitter(request)
+    if submitter is None:
+        return RedirectResponse(f"/register?next=/org/{slug}/rfq",
+                                status_code=303)
+
+    def _form_error(message: str, status: int) -> HTMLResponse:
         return templates.TemplateResponse(request, "rfq_form.html", {
                 "request": request,
                 "slug": slug,
                 "org_name": org["name"],
                 "location_types": LOCATION_TYPES,
-                "error": "contact email is required",
+                "error": message,
             },
-            status_code=400,
+            status_code=status,
         )
+
+    name = vessel_name.strip()
+    if not name:
+        return _form_error("vessel name is required", 400)
+    imo = vessel_imo.strip()
+    if imo and not re.fullmatch(r"[0-9]{7}", imo):
+        return _form_error("the IMO number is 7 digits", 400)
 
     codes = [s.strip() for s in survey_types if s.strip()]
     if not codes:
-        return templates.TemplateResponse(request, "rfq_form.html", {
-                "request": request,
-                "slug": slug,
-                "org_name": org["name"],
-                "location_types": LOCATION_TYPES,
-                "error": "pick at least one survey type",
-            },
-            status_code=400,
-        )
+        return _form_error("pick at least one survey type", 400)
 
+    sid = session_id_from(request)
     work_resp = await _post_public_rfq({
         "org_slug": slug,
-        "contact_email": contact_email.strip(),
-        "vessel_imo": vessel_imo.strip() or None,
+        "contact_email": contact_email.strip() or None,
+        "vessel_name": name,
+        "vessel_imo": imo or None,
         "survey_types": codes,
         "location_type": location_type,
+        "port_name": port_name.strip() or None,
+        "reference_no": reference_no.strip() or None,
         "preferred_date": preferred_date or None,
         "scope_notes": scope or None,
-    })
+    }, headers={SESSION_HEADER: sid} if sid else None)
     if work_resp.status_code != 201:
         error = work_resp.json().get("detail", "could not submit RFQ")
         if isinstance(error, list):
             error = "; ".join(str(e.get("msg", e)) for e in error)
-        return templates.TemplateResponse(request, "rfq_form.html", {
-                "request": request,
-                "slug": slug,
-                "org_name": org["name"],
-                "location_types": LOCATION_TYPES,
-                "error": str(error),
-            },
-            status_code=400 if work_resp.status_code in (400, 404, 422) else 502,
-        )
-    return templates.TemplateResponse(request, "rfq_thanks.html", {"request": request})
+        return _form_error(str(error),
+                           400 if work_resp.status_code in (400, 404, 422)
+                           else 502)
+    # 32b: confirmation + the tracking entry point (client-rail RFQs).
+    return templates.TemplateResponse(request, "rfq_thanks.html",
+                                      {"request": request, "track": True})
 
 
 root_router = APIRouter()

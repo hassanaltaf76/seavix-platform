@@ -1,0 +1,110 @@
+{% extends "base.html" %}{% block title %}RFQ {{ rfq.reference_no or rfq.id[:8] }} — SeaVix{% endblock %}
+{% set active = "rfqs" %}
+{% block page_title %}
+  <h1>{% if rfq.reference_no %}<span class="sv-ugc">{{ rfq.reference_no }}</span>
+      {% else %}RFQ {{ rfq.id[:8] }}{% endif %}</h1>
+{% endblock %}
+{% block page_desc %}
+  <p class="sv-page-desc">
+    <span class="sv-status sv-status--{{ rfq.status }}">{{
+        status_labels.get(rfq.status, rfq.status) }}</span>
+    <span class="sv-status sv-status--channel sv-status-gap">{{
+        channel_labels.get(rfq.channel, rfq.channel) }}</span>
+  </p>
+{% endblock %}
+{% block page_actions %}
+  <a class="button secondary" href="/org/rfqs">← Back to RFQs</a>
+{% endblock %}
+
+{% block content %}
+{% if created %}<p class="notice success" role="status">RFQ raised.</p>{% endif %}
+
+<section class="sv-section-card">
+  <div class="sv-section-head">
+    <h2>Request</h2>
+    <p>The details as submitted.</p>
+  </div>
+  <div class="sv-section-body">
+    <dl class="sv-dl">
+      {% if is_client %}
+      <div><dt>Survey company</dt>
+        <dd class="sv-ugc">{{ org_names.get(rfq.target_org_id) or "—" }}</dd></div>
+      {% else %}
+      <div><dt>Client</dt>
+        <dd class="sv-ugc">{{ org_names.get(rfq.requesting_org_id)
+            or rfq.contact_email or "—" }}</dd></div>
+      {% endif %}
+      <div><dt>Vessel</dt>
+        <dd class="sv-ugc">{{ rfq.vessel_name or "—" }}
+          {% if rfq.vessel_imo %}<span class="sv-mono">IMO {{ rfq.vessel_imo }}</span>{% endif %}
+        </dd></div>
+      <div><dt>Survey types</dt>
+        <dd>{% for c in rfq.survey_types %}
+          <span class="sv-chip">{{ labels.get(c, c) }}</span>{% if not loop.last %} {% endif %}
+          {% endfor %}</dd></div>
+      <div><dt>Location</dt>
+        <dd class="sv-ugc">{{ rfq.location_type }}
+          {% if rfq.port_name %} — {{ rfq.port_name }}{% endif %}</dd></div>
+      <div><dt>Preferred date</dt>
+        <dd class="sv-mono">{{ rfq.preferred_date or "—" }}</dd></div>
+      {% if rfq.reference_no %}
+      <div><dt>Client reference</dt>
+        <dd class="sv-ugc sv-mono">{{ rfq.reference_no }}</dd></div>
+      {% endif %}
+      <div><dt>Received</dt>
+        <dd class="sv-mono">{{ rfq.created_at[:10] }}</dd></div>
+    </dl>
+    {% if rfq.scope_notes %}
+    <div class="sv-prose"><strong>Scope of work</strong>
+      <p class="sv-ugc">{{ rfq.scope_notes }}</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if not is_client and client %}
+{#- 32b: the client contact card — a quote addresses a person ("Dear
+    Capt. Amin Dar, Managing Director"). -#}
+<section class="sv-section-card">
+  <div class="sv-section-head">
+    <h2>Client contact</h2>
+    <p>{{ client.org.name }} — <span class="sv-chip">{{
+        relationship_labels.get(client.relationship_type,
+                                client.relationship_type) }}</span></p>
+  </div>
+  <div class="sv-section-body">
+    {% if client.org.contact_person %}
+    <p><strong>{{ client.org.contact_person }}</strong>
+      {% if client.org.designation %}<br>{{ client.org.designation }}{% endif %}
+    </p>
+    {% endif %}
+    {% set lines = address_lines(client.org) %}
+    {% if client.org.contact_email %}
+    <p><strong>Email</strong><br><a href="mailto:{{ client.org.contact_email }}">{{ client.org.contact_email }}</a></p>
+    {% endif %}
+    {% if client.org.phone %}
+    <p><strong>Phone</strong><br>{{ client.org.phone_cc }} {{ client.org.phone }}</p>
+    {% endif %}
+    {% if client.org.whatsapp %}
+    <p><strong>WhatsApp</strong><br>{{ client.org.whatsapp_cc }} {{ client.org.whatsapp }}</p>
+    {% endif %}
+    {% if lines %}
+    <p><strong>Address</strong><br>
+      {% for line in lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+    </p>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+<section class="sv-section-card">
+  <div class="sv-section-head">
+    <h2>Quotes</h2>
+    <p>Pricing revisions for this RFQ.</p>
+  </div>
+  <div class="sv-section-body">
+    <p class="sv-info-callout" role="status">Quotes arrive with task 32c.</p>
+  </div>
+</section>
+
+{{ keepalive | safe }}{% endblock %}

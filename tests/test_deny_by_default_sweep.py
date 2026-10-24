@@ -142,6 +142,12 @@ WEB_PROTECTED = {
     "/org/clients",
     "/org/clients/new",
     "/org/clients/{client_id}",
+    # 32b: tenant RFQ pages (rfq.create management surface; the client
+    # role reaches the list/detail of its own org with rfq.view)
+    "/org/rfqs",
+    "/org/rfqs/new",
+    "/org/rfqs/{rfq_id}",
+    "/org/rfqs/clients.json",
     # 32d: survey-type picker proxy + the three picker create proxies
     # (identity catalog reference data, session forwarded)
     "/org/survey-types/search",

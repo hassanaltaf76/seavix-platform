@@ -2,6 +2,9 @@
 {% block content %}
 <div class="sv-container sv-org-wrap">
 <h1>Request a quotation from <span class="sv-ugc">{{ org_name }}</span></h1>
+{% if ready_flash %}
+<p class="notice success" role="status">Account ready — submit your RFQ.</p>
+{% endif %}
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 <form method="post" action="/org/{{ slug }}/rfq" class="form"
       x-data='{ stSelected: [],
@@ -37,8 +40,14 @@
                     if (resp.ok) this.addSurveyType(await resp.json());
                   } finally { this.stCreating = false; }
                 } }'>
-  <label for="vessel_imo">Vessel IMO number</label>
-  <input id="vessel_imo" name="vessel_imo" type="text" required
+  {#- 32b: the quoting surveyor addresses the vessel and the client's own
+      reference (Pak Marine quote-doc field spec, master doc §4). -#}
+  <label for="vessel_name">Vessel name</label>
+  <input id="vessel_name" name="vessel_name" type="text" required
+         maxlength="200" placeholder="e.g. MT Sea Falcon" class="sv-ugc">
+
+  <label for="vessel_imo">Vessel IMO number — optional</label>
+  <input id="vessel_imo" name="vessel_imo" type="text"
          pattern="[0-9]{7}" title="7-digit IMO number">
 
   {#- 32d: survey type is the catalog-backed chip picker (multi-select) —
@@ -87,11 +96,18 @@
     {% for t in location_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
   </select>
 
-  <label for="contact_email">Your email</label>
-  <input id="contact_email" name="contact_email" type="email" required>
+  {#- 32b: free-text port/place alongside the location-type vocabulary
+      (escaped user content via .sv-ugc). -#}
+  <label for="port_name">Port / place</label>
+  <input id="port_name" name="port_name" type="text" maxlength="200"
+         placeholder="e.g. Karachi anchorage, Pakistan" class="sv-ugc">
 
   <label for="preferred_date">Preferred date</label>
   <input id="preferred_date" name="preferred_date" type="date">
+
+  <label for="reference_no">Your reference — optional</label>
+  <input id="reference_no" name="reference_no" type="text" maxlength="100"
+         placeholder="e.g. PMS-QT-38-2026" class="sv-ugc">
 
   <label for="scope">Scope of work</label>
   <textarea id="scope" name="scope" rows="5"

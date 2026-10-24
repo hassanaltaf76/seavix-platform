@@ -108,15 +108,20 @@ async def create_client_org(payload: ClientOrgCreate, request: Request) -> dict:
         await session.execute(
             text(
                 "INSERT INTO organization (id, name, type, slug, contact_email, "
+                "contact_person, designation, "
                 "phone, phone_cc, whatsapp, whatsapp_cc, address_line1, "
                 "address_line2, city, state, postal_code, country_code, "
                 "created_at) VALUES (:id, :name, 'client', :slug, :cemail, "
+                ":cperson, :designation, "
                 ":phone, :phone_cc, :whatsapp, :whatsapp_cc, :a1, :a2, :city, "
                 ":state, :postal, :country, now())"
             ),
             {
                 "id": org_id, "name": payload.name, "slug": slug,
-                "cemail": contact_email, "phone": payload.phone,
+                "cemail": contact_email,
+                "cperson": payload.contact_person,
+                "designation": payload.designation,
+                "phone": payload.phone,
                 "phone_cc": payload.phone_cc, "whatsapp": payload.whatsapp,
                 "whatsapp_cc": payload.whatsapp_cc,
                 "a1": payload.address_line1, "a2": payload.address_line2,
@@ -139,7 +144,9 @@ async def create_client_org(payload: ClientOrgCreate, request: Request) -> dict:
                       "email": str(payload.email).lower()}),
     )
     return {"org_id": org_id, "slug": slug, "type": "client",
-            "contact_email": contact_email}
+            "contact_email": contact_email,
+            "contact_person": payload.contact_person,
+            "designation": payload.designation}
 
 
 @router.get("/api/internal/orgs/id/{org_id}")
@@ -153,8 +160,9 @@ async def org_by_id(org_id: str, request: Request) -> dict:
         row = (
             await session.execute(
                 text(
-                    "SELECT id, name, type, slug, contact_email, phone, "
-                    "phone_cc, whatsapp, whatsapp_cc, address_line1, "
+                    "SELECT id, name, type, slug, contact_email, "
+                    "contact_person, designation, "
+                    "phone, phone_cc, whatsapp, whatsapp_cc, address_line1, "
                     "address_line2, city, state, postal_code, country_code "
                     "FROM organization WHERE id = :id"
                 ),

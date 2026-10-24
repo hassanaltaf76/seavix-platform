@@ -28,7 +28,8 @@ AUTH_TEMPLATES = ("login", "register", "forgot_password", "reset_password",
 PUBLIC_TEMPLATES = ("landing", "profile", "profile_unavailable",
                     "rfq_form", "rfq_thanks")
 PAGE_TEMPLATES = ("org_home", "org_profile", "org_not_found", "dashboard",
-                  "org_clients", "org_client_new", "org_client_detail")
+                  "org_clients", "org_client_new", "org_client_detail",
+                  "org_rfqs", "org_rfq_new", "org_rfq_detail")
 
 
 def _tokens() -> dict[str, str]:
@@ -219,7 +220,10 @@ def test_rail_structure_and_active_state():
     # the rail is the home of primary navigation: future slots documented
     assert "sv-rail-badge" in STYLE
     # company cell: logo-or-initials + name, permission-driven, top placed
-    assert "'org.profile.view' in ctx.memberships[0].permissions" in BASE
+    # 32b: the rail resolves membership0 once and gates from it — the
+    # permission-driven contract is the same, the variable name evolved.
+    assert "'org.profile.view' in membership0.permissions" in BASE
+    assert "'rfq.create' in membership0.permissions" in BASE  # 32b rail slot
     assert "rail_org.logo_url" in BASE
     assert 'class="sv-rail-initials"' in BASE
     assert "rail_org.initials" in BASE
@@ -229,12 +233,16 @@ def test_rail_structure_and_active_state():
     logo_at = BASE.index('class="sv-rail-logo"')
     tenant_at = BASE.index('class="sv-rail-tenant"')
     assert logo_at < tenant_at
-    # exactly one active-state marker mechanism in the shell (rail-scoped:
-    # three items, conditionally set; the page chrome carries no other).
-    # 32a: the Clients entry adds the third marker — same mechanism.
+    # exactly one active-state marker mechanism in the shell (rail-scoped,
+    # conditionally set; the page chrome carries no other). 32a added the
+    # Clients marker, 32b the RFQs slot — the tenant rail carries four
+    # items (Dashboard · Profile · RFQs · Clients) and the registered-
+    # client rail one (RFQs under Workspace), same mechanism throughout.
     rail = BASE[BASE.index('class="sv-rail"'):BASE.index('class="sv-page"')]
-    assert rail.count('aria-current="page"') == 3
+    assert rail.count('aria-current="page"') == 5
     assert '{% if active == "clients" %}aria-current="page"' in BASE
+    assert '{% if active == "rfqs" %}aria-current="page"' in BASE
+    assert BASE.count('{% if active == "rfqs" %}aria-current="page"') == 2
 
 
 def test_topbar_account_menu():
@@ -774,7 +782,10 @@ def test_profile_blade_is_permission_gated_31e():
     assert "'org.logo.upload' in membership.permissions" in text
     assert 'mode == "view" and can_edit' in text
     home = (TEMPLATES / "org_home.html").read_text()
-    assert "'org.profile.view' in ctx.memberships[0].permissions" in BASE
+    # 32b: the rail resolves membership0 once and gates from it — the
+    # permission-driven contract is the same, the variable name evolved.
+    assert "'org.profile.view' in membership0.permissions" in BASE
+    assert "'rfq.create' in membership0.permissions" in BASE  # 32b rail slot
     assert 'href="/org/profile"' in BASE
     routes = Path(__file__).resolve().parents[1] / "webapp" / "org_pages.py"
     routes_text = routes.read_text()

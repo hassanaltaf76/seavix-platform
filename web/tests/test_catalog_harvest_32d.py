@@ -70,13 +70,37 @@ def test_custom_entry_harvest_end_to_end(arun, id_asgi):
                 assert dup.status_code == 200, dup.text
                 assert dup.json()["code"] == code
 
-            # the public page renders the custom chip for org A
+                # 32b: a custom survey type created from the anonymous
+                # picker, then a REGISTERED funnel submit (org B's
+                # session) carrying system + custom survey types
+                created = await wb.post("/org/rfq/survey-types/create",
+                                        json={"label": f"Drone inspection {u}"})
+                assert created.status_code == 201, created.text
+                custom_st = created.json()["code"]
+
+                from webapp import pages
+                pages.limiter._hits.clear()  # shared dev limiter: fresh key
+                rfq = await wb.post(
+                    f"/org/{slug_a}/rfq",
+                    data={
+                        "vessel_name": "MT Harvest",
+                        "vessel_imo": "9074729",
+                        "survey_types": ["pre_purchase", custom_st],
+                        "location_type": "anchorage",
+                        "port_name": "Jebel Ali",
+                        "reference_no": f"REF-{u}",
+                    },
+                )
+                assert rfq.status_code == 200, rfq.text[:300]
+                assert "Thank you" in rfq.text
+
+            # the public page renders the custom chip for org A; the RFQ
+            # form picker stays anonymous and catalog-backed
             async with _web() as wpub:
                 pub = await wpub.get(f"/org/{slug_a}")
                 assert pub.status_code == 200
                 assert label in pub.text
 
-                # the RFQ form picker is anonymous and catalog-backed
                 form = await wpub.get(f"/org/{slug_a}/rfq")
                 assert form.status_code == 200
                 assert 'id="survey-type-search"' in form.text
@@ -90,32 +114,27 @@ def test_custom_entry_harvest_end_to_end(arun, id_asgi):
 
                 created = await wpub.post("/org/rfq/survey-types/create",
                                           json={"label": f"Drone inspection {u}"})
-                assert created.status_code == 201, created.text
-                custom_st = created.json()["code"]
-
-                # submit the RFQ with TWO survey types (system + custom)
-                from webapp import pages
-                pages.limiter._hits.clear()  # shared dev limiter: fresh key
-                rfq = await wpub.post(
-                    f"/org/{slug_a}/rfq",
-                    data={
-                        "vessel_imo": "9074729",
-                        "survey_types": ["pre_purchase", custom_st],
-                        "location_type": "anchorage",
-                        "contact_email": f"charterer-{u}@example.com",
-                    },
-                )
-                assert rfq.status_code == 200, rfq.text[:300]
-                assert "Thank you" in rfq.text
+                assert created.status_code in (200, 201), created.text
+                assert created.json()["code"] == custom_st  # duplicate selects
 
             # the work RFQ stored the org-independent multi-select
+            from app.db import SessionLocal as IdSession
+
+            async with IdSession() as ids:
+                org_b = (await ids.execute(
+                    sql("SELECT o.id FROM organization o "
+                        "JOIN membership m ON m.org_id = o.id "
+                        "JOIN app_user u ON u.id = m.user_id "
+                        "WHERE u.email = :e"),
+                    {"e": f"harv-b-{u}@example.com"})).scalar_one()
+
             from work.db import SessionLocal
 
             async with SessionLocal() as s:
                 rfq_id = (await s.execute(
-                    sql("SELECT id FROM rfq WHERE contact_email = :e "
+                    sql("SELECT id FROM rfq WHERE requesting_org_id = :o "
                         "ORDER BY created_at DESC LIMIT 1"),
-                    {"e": f"charterer-{u}@example.com"})).scalar_one()
+                    {"o": org_b})).scalar_one()
                 codes = set((await s.execute(
                     sql("SELECT survey_type FROM rfq_survey_type "
                         "WHERE rfq_id = :id"), {"id": rfq_id})).scalars().all())
@@ -125,5 +144,13 @@ def test_custom_entry_harvest_end_to_end(arun, id_asgi):
                     sql("SELECT survey_type FROM rfq WHERE id = :id"),
                     {"id": rfq_id})).scalar_one()
                 assert legacy == "pre_purchase"
+                # 32b: funnel provenance — the registered requester + fields
+                row = (await s.execute(
+                    sql("SELECT channel, vessel_name, port_name, reference_no "
+                        "FROM rfq WHERE id = :id"), {"id": rfq_id})).mappings().one()
+                assert row["channel"] == "public_page"
+                assert row["vessel_name"] == "MT Harvest"
+                assert row["port_name"] == "Jebel Ali"
+                assert row["reference_no"] == f"REF-{u}"
 
     arun(scenario())

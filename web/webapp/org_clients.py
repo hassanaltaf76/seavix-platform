@@ -148,6 +148,8 @@ async def client_create(
     name: str = Form(""),
     relationship_type: str = Form(""),
     email: str = Form(""),
+    contact_person: str = Form(""),
+    designation: str = Form(""),
     contact_email: str = Form(""),
     phone_cc: str = Form(""),
     phone: str = Form(""),
@@ -166,6 +168,7 @@ async def client_create(
         return _page_not_found(request, ctx)
     values = {
         "name": name, "relationship_type": relationship_type, "email": email,
+        "contact_person": contact_person, "designation": designation,
         "contact_email": contact_email, "phone_cc": phone_cc, "phone": phone,
         "whatsapp_cc": whatsapp_cc, "whatsapp": whatsapp,
         "address_line1": address_line1, "address_line2": address_line2,

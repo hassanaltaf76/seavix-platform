@@ -55,15 +55,23 @@
         <a href="/dashboard" aria-label="SeaVix"><img src="/static/brand/seavix-logo.png" alt="SeaVix"></a>
       </div>
 
-      {% set can_view_profile = ctx is defined and ctx and ctx.memberships
-              and 'org.profile.view' in ctx.memberships[0].permissions %}
-      {#- 32a: the Clients entry is its own permission (client.view) — the
-          COMPANY section shows when EITHER entry is visible. -#}
-      {% set can_view_clients = ctx is defined and ctx and ctx.memberships
-              and 'client.view' in ctx.memberships[0].permissions %}
-      {% if can_view_profile %}
+      {% set membership0 = ctx.memberships[0] if ctx is defined and ctx
+              and ctx.memberships else None %}
+      {#- 32b: the registered-client rail shows RFQs and nothing else —
+          the client role holds rfq.create + rfq.view ONLY. -#}
+      {% set is_client_org = membership0 is not none
+              and membership0.org_type == 'client' %}
+      {% set can_view_profile = membership0 is not none
+              and 'org.profile.view' in membership0.permissions %}
+      {% set can_view_clients = membership0 is not none
+              and 'client.view' in membership0.permissions %}
+      {% set can_manage_rfqs = membership0 is not none and not is_client_org
+              and 'rfq.create' in membership0.permissions %}
+      {% set can_view_own_rfqs = is_client_org and membership0 is not none
+              and 'rfq.view' in membership0.permissions %}
+      {% if can_view_profile or is_client_org %}
       <div class="sv-rail-tenant">
-        <a href="/org/profile">
+        <a href="{{ '/org/rfqs' if is_client_org else '/org/profile' }}">
           {% if rail_org.logo_url %}
           <img class="sv-rail-company-logo" src="{{ rail_org.logo_url }}" alt="">
           {% else %}
@@ -79,6 +87,7 @@
       <div class="sv-rail-section">
         <h2>Workspace</h2>
         <ul>
+          {% if not is_client_org %}
           <li><a class="sv-rail-item" href="/dashboard"
                  {% if active == "home" %}aria-current="page"{% endif %}>
             <span class="sv-glyph" aria-hidden="true">
@@ -86,10 +95,20 @@
             </span>
             <span class="sv-rail-label">Dashboard</span>
           </a></li>
+          {% endif %}
+          {% if can_view_own_rfqs %}
+          <li><a class="sv-rail-item" href="/org/rfqs"
+                 {% if active == "rfqs" %}aria-current="page"{% endif %}>
+            <span class="sv-glyph" aria-hidden="true">
+              <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+            </span>
+            <span class="sv-rail-label">RFQs</span>
+          </a></li>
+          {% endif %}
         </ul>
       </div>
 
-      {% if can_view_profile or can_view_clients %}
+      {% if can_view_profile or can_view_clients or can_manage_rfqs %}
       <div class="sv-rail-section">
         <h2>Company</h2>
         <ul>
@@ -100,6 +119,15 @@
               <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
             </span>
             <span class="sv-rail-label">Profile</span>
+          </a></li>
+          {% endif %}
+          {% if can_manage_rfqs %}
+          <li><a class="sv-rail-item" href="/org/rfqs"
+                 {% if active == "rfqs" %}aria-current="page"{% endif %}>
+            <span class="sv-glyph" aria-hidden="true">
+              <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+            </span>
+            <span class="sv-rail-label">RFQs</span>
           </a></li>
           {% endif %}
           {% if can_view_clients %}

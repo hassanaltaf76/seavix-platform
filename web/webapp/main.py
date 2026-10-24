@@ -19,6 +19,7 @@ from .pages import (
 from .auth_pages import router as auth_pages_router
 from .org_clients import router as org_clients_router
 from .org_pages import router as org_pages_router
+from .org_rfqs import router as org_rfqs_router
 
 WEB_ROOT = Path(__file__).resolve().parent.parent
 
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_pages_router)
     app.include_router(org_pages_router)
     app.include_router(org_clients_router)
+    app.include_router(org_rfqs_router)
     # v4 §7: public profiles canonical at /org/<slug> — AFTER /org/profile
     # and friends (concrete paths win), BEFORE the root catch-all
     app.include_router(pages_profiles_router)

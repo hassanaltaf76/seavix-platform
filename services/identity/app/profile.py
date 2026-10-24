@@ -216,7 +216,9 @@ class ClientOrgCreate(BaseModel):
     rules, kept intentionally in sync) plus `name` and the claiming email.
     No membership, no app_user, no Firebase account: the org sits in the
     directory until a matching self-registration claims it (TODO hook in
-    register.py — deliberately NOT built in 32a)."""
+    register.py — deliberately NOT built in 32a). 32b: contact_person +
+    designation — a quote addresses a person ("Dear Capt. Amin Dar,
+    Managing Director"; Pak Marine quote-doc field spec, master doc §4)."""
 
     type: Literal["client"] = "client"
     name: str = Field(min_length=1, max_length=200)
@@ -226,6 +228,9 @@ class ClientOrgCreate(BaseModel):
     # app_user row; there is no other email column).
     email: EmailStr
     contact_email: EmailStr | None = None
+    # 32b: who a quote addresses — free text, optional.
+    contact_person: str | None = Field(default=None, max_length=120)
+    designation: str | None = Field(default=None, max_length=120)
     phone: str | None = None
     phone_cc: str | None = None
     whatsapp: str | None = None
@@ -238,7 +243,8 @@ class ClientOrgCreate(BaseModel):
     country_code: str | None = None
 
     @field_validator(
-        "contact_email", "phone", "phone_cc", "whatsapp", "whatsapp_cc",
+        "contact_email", "contact_person", "designation", "phone", "phone_cc",
+        "whatsapp", "whatsapp_cc",
         "address_line1", "address_line2", "city", "state", "postal_code",
         "country_code", mode="before",
     )

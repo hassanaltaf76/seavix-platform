@@ -58,11 +58,12 @@ def test_create_unclaimed_client_org(arun):
             app.state.event_bus.subscribe("org.created", events.append)
             app.state.event_bus.subscribe("client.created", events.append)
 
-            r = await _create(c)
+            r = await _create(c, email=f"ops-{uuid.uuid4().hex[:8]}@example.com")
             assert r.status_code == 201, r.text
             body = r.json()
             assert body["type"] == "client"
             org_id = body["org_id"]
+            created_email = body["contact_email"]
 
             # events: lifecycle + domain, both on the EventBus port
             types = [e["type"] for e in events]
@@ -83,8 +84,12 @@ def test_create_unclaimed_client_org(arun):
                     sql("SELECT 1 FROM membership WHERE org_id = :o"),
                     {"o": org_id})).first()
                 assert m is None
+                # 32b hardening: assert against THIS creation's email, not
+                # a global pattern — the shared dev DB accumulates rows
+                # from every suite that ever registered an 'ops-*' user.
                 au = (await s.execute(
-                    sql("SELECT 1 FROM app_user WHERE email LIKE 'ops-%@example.com'"),
+                    sql("SELECT 1 FROM app_user WHERE email = :e"),
+                    {"e": created_email},
                 )).first()
                 assert au is None
                 row = (await s.execute(

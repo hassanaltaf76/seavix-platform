@@ -8,6 +8,7 @@
 <form method="post" action="/register/verify" class="sv-auth-form">
   <input type="hidden" name="email" value="{{ email }}">
   <input type="hidden" name="oob_code" value="{{ oob_code }}">
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
   <button type="submit">Verify my email address</button>
 </form>
 {% else %}
@@ -16,6 +17,6 @@
 {% endif %}
 <div class="sv-auth-links">
   <p><a href="/register/verify/resend">Request a new verification email</a></p>
-  <p><a href="/login">Back to sign in</a></p>
+  <p><a href="/login{% if next %}?next={{ next }}{% endif %}">Back to sign in</a></p>
 </div>
 {% endblock %}

@@ -6,6 +6,11 @@
     <h2>Thank you</h2>
     <p>Your RFQ has been submitted. The survey company will review
        the scope and respond via your contact channel.</p>
+    {% if track %}
+    {#- 32b: the registered funnel's confirmation links straight into the
+        client-rail tracking surface. -#}
+    <p><a class="button" href="/org/rfqs">Track your requests</a></p>
+    {% endif %}
     <a class="button secondary" href="/">Back to SeaVix</a>
   </div>
 </div>

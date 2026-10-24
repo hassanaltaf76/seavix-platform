@@ -19,8 +19,9 @@
 <div class="sv-auth-links">
   <form method="post" action="/register/verify/resend">
     <input type="hidden" name="email" value="{{ email }}">
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
     <button type="submit" class="sv-resend">Resend verification email</button>
   </form>
-  <p>Already verified? <a href="/login">Sign in</a></p>
+  <p>Already verified? <a href="/login{% if next %}?next={{ next }}{% endif %}">Sign in</a></p>
 </div>
 {% endblock %}

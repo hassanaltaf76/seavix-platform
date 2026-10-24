@@ -21,10 +21,12 @@ from .auth import (
     clear_trusted_cookie,
     home_for,
     login_redirect,
+    safe_next,
     session_id_from,
     set_session_cookie,
     set_trusted_cookie,
     trusted_token_from,
+    with_ready_flag,
 )
 from .filters import install as install_template_filters
 from .identity_client import identity_request
@@ -38,13 +40,15 @@ install_template_filters(templates.env)
 
 @router.get("/login", response_class=HTMLResponse)
 @public_route
-async def login_form(request: Request):
+async def login_form(request: Request, next: str = ""):
     # 31c signed-out-only: a live session goes straight home
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
         return redirect
     return templates.TemplateResponse(
-        request, "login.html", {"request": request, "error": None, "form": {}}
+        request, "login.html",
+        {"request": request, "error": None, "form": {},
+         "next": safe_next(next)},
     )
 
 
@@ -54,10 +58,12 @@ async def login_submit(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
+    next: str = Form(""),
 ) -> HTMLResponse:
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
         return redirect
+    target = safe_next(next)
     email = email.lower()
     payload: dict = {"email": email, "password": password}
     # 31j: forward the trusted-device cookie (if any) so the identity
@@ -78,8 +84,11 @@ async def login_submit(
         # unlimited resend, and never advance toward a session.
         detail = resp.json().get("detail", {})
         if isinstance(detail, dict) and detail.get("code") == "email_unverified":
+            send_body: dict = {"email": email}
+            if target:
+                send_body["next"] = target
             sent = await identity_request(
-                "POST", "/api/register/verify/send", json={"email": email}
+                "POST", "/api/register/verify/send", json=send_body
             )
             error = None
             if sent.status_code == 429:
@@ -99,14 +108,18 @@ async def login_submit(
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"request": request, "error": error, "form": {"email": email}},
+            {"request": request, "error": error,
+             "form": {"email": email}, "next": target},
             status_code=resp.status_code if resp.status_code == 429 else 401,
         )
     body = resp.json()
     if body.get("session_id"):
         # 31j trusted device: factor 2 skipped, session issued directly.
         kind = body["memberships"][0]["type"] if body["memberships"] else None
-        response = RedirectResponse(home_for(kind), status_code=303)
+        response = RedirectResponse(
+            with_ready_flag(target) if target else home_for(kind),
+            status_code=303,
+        )
         set_session_cookie(response, body["session_id"])
         if body.get("trusted_device"):
             set_trusted_cookie(response, body["trusted_device"])
@@ -115,7 +128,7 @@ async def login_submit(
         request,
         "login_otp.html",
         {"request": request, "email": body["email"], "error": None,
-         "resent": False},
+         "resent": False, "next": target},
     )
     if body.get("trusted_device_valid") is False:
         # stale/rotated-elsewhere cookie — drop it so the browser stops
@@ -161,10 +174,12 @@ async def login_otp_submit(
     email: str = Form(...),
     code: str = Form(...),
     trust_device: str | None = Form(None),
+    next: str = Form(""),
 ):
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
         return redirect
+    target = safe_next(next)
     resp = await identity_request(
         "POST",
         "/api/auth/login/verify",
@@ -180,13 +195,15 @@ async def login_otp_submit(
             request,
             "login_otp.html",
             {"request": request, "email": email.lower(), "resent": False,
-             "error": "invalid or expired code"},
+             "error": "invalid or expired code", "next": target},
             status_code=401,
         )
     body = resp.json()
     kind = body["memberships"][0]["type"] if body["memberships"] else None
-    target = home_for(kind)
-    response = RedirectResponse(target, status_code=303)
+    # 32b: the funnel's return target wins over the default home — the
+    # RFQ form re-renders with the ready flash.
+    target_path = with_ready_flag(target) if target else home_for(kind)
+    response = RedirectResponse(target_path, status_code=303)
     set_session_cookie(response, body["session_id"])
     if body.get("trusted_device"):
         # 31j: the box was checked — enrol this browser for 30 days
@@ -196,24 +213,27 @@ async def login_otp_submit(
 
 @router.post("/login/otp/resend", response_class=HTMLResponse)
 @public_route
-async def login_otp_resend(request: Request, email: str = Form(...)) -> HTMLResponse:
+async def login_otp_resend(request: Request, email: str = Form(...),
+                           next: str = Form("")) -> HTMLResponse:
     """Fresh sign-in code; no send quota on the identity side."""
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
         return redirect
+    target = safe_next(next)
     await identity_request(
         "POST", "/api/auth/login/resend", json={"email": email.lower()}
     )
     return templates.TemplateResponse(
         request, "login_otp.html",
         {"request": request, "email": email.lower(), "resent": True,
-         "error": None},
+         "error": None, "next": target},
     )
 
 
 @router.get("/login/otp", response_class=HTMLResponse)
 @public_route
-async def login_otp_form(request: Request, email: str = "") -> HTMLResponse:
+async def login_otp_form(request: Request, email: str = "",
+                         next: str = "") -> HTMLResponse:
     """Direct GET renders the code form (e.g. back-button); the challenge
     itself only starts via POST /login."""
     redirect = await authenticated_home_redirect(request)
@@ -221,7 +241,8 @@ async def login_otp_form(request: Request, email: str = "") -> HTMLResponse:
         return redirect
     return templates.TemplateResponse(
         request, "login_otp.html",
-        {"request": request, "email": email, "error": None, "resent": False},
+        {"request": request, "email": email, "error": None, "resent": False,
+         "next": safe_next(next)},
     )
 
 
@@ -352,21 +373,25 @@ async def reset_submit(
 
 @router.get("/register/verify/confirm", response_class=HTMLResponse)
 @public_route
-async def register_verify_form(request: Request, email: str = "", oob_code: str = ""):
-    """Deep-link target of the verification email: confirms on POST."""
+async def register_verify_form(request: Request, email: str = "",
+                               oob_code: str = "", next: str = ""):
+    """Deep-link target of the verification email: confirms on POST.
+    32b: the emailed link may carry the funnel's return target."""
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
         return redirect
+    target = safe_next(next)
     if not oob_code:
         return templates.TemplateResponse(
             request, "verify_email_confirm.html",
             {"request": request, "email": email, "oob_code": "",
-             "error": "missing verification code"},
+             "error": "missing verification code", "next": target},
             status_code=400,
         )
     return templates.TemplateResponse(
         request, "verify_email_confirm.html",
-        {"request": request, "email": email, "oob_code": oob_code, "error": None},
+        {"request": request, "email": email, "oob_code": oob_code,
+         "error": None, "next": target},
     )
 
 
@@ -376,10 +401,12 @@ async def register_verify_submit(
     request: Request,
     email: str = Form(...),
     oob_code: str = Form(...),
+    next: str = Form(""),
 ):
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
         return redirect
+    target = safe_next(next)
     resp = await identity_request(
         "POST",
         "/api/register/verify/confirm",
@@ -390,22 +417,28 @@ async def register_verify_submit(
             request,
             "verify_email_confirm.html",
             {"request": request, "email": email.lower(), "oob_code": oob_code,
-             "error": "verification link is invalid or expired — request a new one"},
+             "error": "verification link is invalid or expired — request a new one",
+             "next": target},
             status_code=400,
         )
     return templates.TemplateResponse(
-        request, "verify_email_done.html", {"request": request}
+        request, "verify_email_done.html", {"request": request, "next": target}
     )
 
 
 @router.post("/register/verify/resend", response_class=HTMLResponse)
 @public_route
-async def register_verify_resend(request: Request, email: str = Form(...)) -> HTMLResponse:
+async def register_verify_resend(request: Request, email: str = Form(...),
+                                 next: str = Form("")) -> HTMLResponse:
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
         return redirect
+    target = safe_next(next)
+    send_body: dict = {"email": email.lower()}
+    if target:
+        send_body["next"] = target
     resp = await identity_request(
-        "POST", "/api/register/verify/send", json={"email": email.lower()}
+        "POST", "/api/register/verify/send", json=send_body
     )
     error = None
     resent = True
@@ -419,5 +452,5 @@ async def register_verify_resend(request: Request, email: str = Form(...)) -> HT
         request,
         "verify_email.html",
         {"request": request, "email": email.lower(), "error": error,
-         "resent": resent},
+         "resent": resent, "next": target},
     )

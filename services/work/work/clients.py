@@ -50,6 +50,10 @@ class ClientIn(BaseModel):
     relationship_type: Literal[*RELATIONSHIP_TYPES]
     email: EmailStr
     contact_email: EmailStr | None = None
+    # 32b (32a amendment): a quote addresses a person — "Dear Capt. Amin
+    # Dar, Managing Director" (Pak Marine quote-doc field spec, §4).
+    contact_person: str | None = Field(default=None, max_length=120)
+    designation: str | None = Field(default=None, max_length=120)
     phone: str | None = None
     phone_cc: str | None = None
     whatsapp: str | None = None

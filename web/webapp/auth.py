@@ -70,6 +70,24 @@ def login_redirect() -> RedirectResponse:
     return RedirectResponse("/login", status_code=303)
 
 
+def safe_next(raw: str | None) -> str | None:
+    """32b funnel: post-login return target. Local paths only — a value
+    that does not start with a single '/' is dropped (never an open
+    redirect). Empty/absent -> None."""
+    if not raw:
+        return None
+    raw = raw.strip()
+    if not raw or not raw.startswith("/") or raw.startswith("//"):
+        return None
+    return raw
+
+
+def with_ready_flag(next_path: str) -> str:
+    """The funnel's 'ready' flash: landing back on the RFQ form after
+    verify+login shows 'Account ready — submit your RFQ'."""
+    return f"{next_path}{'&' if '?' in next_path else '?'}ready=1"
+
+
 def home_for(_org_type: str | None = None) -> str:
     """Post-login landing (31g landing rule): EVERY member lands on
     /dashboard — the post-auth shell any active member can count on

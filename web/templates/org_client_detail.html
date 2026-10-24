@@ -17,6 +17,11 @@
   </div>
   <div class="sv-section-body">
     {% set lines = address_lines(client.org) %}
+    {% if client.org.contact_person %}
+    <p><strong>Contact person</strong><br>{{ client.org.contact_person }}
+      {% if client.org.designation %} — {{ client.org.designation }}{% endif %}
+    </p>
+    {% endif %}
     {% if client.org.contact_email %}
     <p><strong>Email</strong><br><a href="mailto:{{ client.org.contact_email }}">{{ client.org.contact_email }}</a></p>
     {% endif %}

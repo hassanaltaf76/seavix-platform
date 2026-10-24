@@ -370,6 +370,35 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
   font-size: 13px; line-height: 20px;
 }
 .notice.success { background: var(--success-bg); color: var(--success-ink); }
+
+/* 32b: RFQ status + channel badges — tinted chips in the v4 token family. */
+.sv-status {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px; font-weight: 500; line-height: 16px;
+  white-space: nowrap;
+}
+.sv-status--awaiting_quote { background: var(--warning-bg); color: var(--warning-ink); }
+.sv-status--quoted { background: var(--info-bg); color: var(--info-ink); }
+.sv-status--accepted { background: var(--success-bg); color: var(--success-ink); }
+.sv-status--declined,
+.sv-status--expired { background: var(--danger-bg); color: var(--danger-ink); }
+.sv-status--channel { background: var(--bg); color: var(--text-2);
+  border: 1px solid var(--border); }
+.sv-status-gap { margin-left: 6px; }
+
+/* 32b: detail-page definition list + radio rows. */
+.sv-dl { margin: 0; display: grid; gap: 12px; }
+.sv-dl > div { display: grid; grid-template-columns: 160px 1fr; gap: 12px; }
+.sv-dl dt { color: var(--text-2); font-size: 12px; font-weight: 500;
+  line-height: 16px; text-transform: uppercase; letter-spacing: 0.04em;
+  padding-top: 1px; }
+.sv-dl dd { margin: 0; font-size: 14px; line-height: 22px; }
+.sv-radio-row { display: flex; flex-wrap: wrap; gap: 16px; margin: 0.25rem 0 0.75rem; }
+.sv-radio-row .sv-checkbox { align-items: center; }
+.sv-radio-row input[type="radio"] { width: 16px; height: 16px; flex: none;
+  accent-color: var(--accent); margin: 0; }
 .error {
   color: var(--danger-ink);
   background: var(--danger-bg);

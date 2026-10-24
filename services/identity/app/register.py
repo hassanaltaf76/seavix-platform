@@ -117,17 +117,22 @@ async def register(payload: RegisterRequest, request: Request) -> RegisterRespon
             ),
             {"id": user_id, "email": email, "uid": fb["localId"]},
         )
+        # 32b: a CLIENT org's first member is issued the 'client' system
+        # role (rfq.create + rfq.view ONLY) — the registered-client rail
+        # shows RFQs and nothing else. Every other org type keeps the
+        # owner binding (full permission set).
+        primary_role = "client" if payload.org_type == "client" else "owner"
         await session.execute(
             text(
                 "INSERT INTO membership (user_id, org_id, role) "
-                "VALUES (:uid, :org, 'owner')"
+                "VALUES (:uid, :org, :role)"
             ),
-            {"uid": user_id, "org": org_id},
+            {"uid": user_id, "org": org_id, "role": primary_role},
         )
-        # Default RBAC roles for the new org (D2) + owner binding.
+        # Default RBAC roles for the new org (D2) + primary binding.
         await seed_default_roles(session, org_id)
-        owner_role_id = await role_id_by_name(session, org_id, "owner")
-        await assign_roles(session, user_id, org_id, [owner_role_id])
+        primary_role_id = await role_id_by_name(session, org_id, primary_role)
+        await assign_roles(session, user_id, org_id, [primary_role_id])
         await session.commit()
 
     _grant_owner_tuple(fb["localId"], org_id)

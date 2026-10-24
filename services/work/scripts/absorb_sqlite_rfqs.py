@@ -3,7 +3,8 @@
 Source: var/web.db (task-12 shortcut table rfq: id, org_slug, vessel_imo,
 survey_type, location_type, preferred_date, scope, created_at — NOTE the old
 public form collected no contact_email, so contact_email stays NULL here).
-Target: work.rfq with source='public', status='open', target_org_id resolved
+Target: work.rfq with source='public', channel='public_page',
+status='awaiting_quote', target_org_id resolved
 from the org slug via the identity database (read-only lookup — this script
 is the documented exception to "no cross-service DB access").
 
@@ -84,9 +85,10 @@ async def absorb(sqlite_path: Path = DEFAULT_SQLITE) -> dict:
                     "INSERT INTO rfq (id, requesting_org_id, billing_org_id, "
                     "target_org_id, contact_email, vessel_imo, survey_type, "
                     "location_type, preferred_date, scope_notes, source, "
-                    "status, created_at) VALUES "
+                    "channel, status, created_at) VALUES "
                     "(:id, NULL, NULL, :target, NULL, :imo, :stype, :ltype, "
-                    " :pdate, :scope, 'public', 'open', :created) "
+                    " :pdate, :scope, 'public', 'public_page', "
+                    " 'awaiting_quote', :created) "
                     "ON CONFLICT (id) DO NOTHING"
                 ),
                 {

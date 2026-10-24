@@ -1,4 +1,17 @@
-{% extends "base_public.html" %}{% block title %}{{ org.name }} — SeaVix{% endblock %}
+{% extends "base_public.html" %}
+{% block title %}{{ org.name }} — Marine survey services | SeaVix{% endblock %}
+{% block head_meta %}
+{#- 32b SEO (the marketing purpose of the public page): meta description
+    from the org's about (already flattened/truncated to 160 by the
+    handler) + Open Graph tags. og:image is the logo's absolute URL when
+    the org has one; og:url is the canonical public page address. -#}
+<meta name="description" content="{{ meta_description }}">
+<meta property="og:title" content="{{ org.name }} — Marine survey services | SeaVix">
+<meta property="og:description" content="{{ meta_description }}">
+{% if og_image %}<meta property="og:image" content="{{ og_image }}">{% endif %}
+<meta property="og:url" content="{{ canonical_url }}">
+<meta property="og:type" content="website">
+{% endblock %}
 {% block content %}
 <div class="sv-container sv-org-wrap">
   {% include "_public_org_content.html" %}

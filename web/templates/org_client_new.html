@@ -47,6 +47,20 @@
       {% if field_errors.get("email") %}<p class="sv-field-error" role="alert">{{ field_errors.get("email") }}</p>{% endif %}
       <small>The address they will sign up with — it claims this profile,
              and it is how you reach them until then.</small>
+
+      {#- 32b: a quote addresses a person — "Dear Capt. Amin Dar, Managing
+          Director" (Pak Marine quote-doc field spec, master doc §4). -#}
+      <label for="contact_person">Contact person — optional</label>
+      <input id="contact_person" name="contact_person" type="text"
+             maxlength="120" placeholder="e.g. Capt. Amin Dar"
+             value="{{ values.get("contact_person", "") }}" @input="dirty = true">
+      {% if field_errors.get("contact_person") %}<p class="sv-field-error" role="alert">{{ field_errors.get("contact_person") }}</p>{% endif %}
+
+      <label for="designation">Designation — optional</label>
+      <input id="designation" name="designation" type="text"
+             maxlength="120" placeholder="e.g. Managing Director"
+             value="{{ values.get("designation", "") }}" @input="dirty = true">
+      {% if field_errors.get("designation") %}<p class="sv-field-error" role="alert">{{ field_errors.get("designation") }}</p>{% endif %}
     </div>
   </section>
 

@@ -8,6 +8,7 @@
 {% if resent %}<p class="sv-auth-sub" role="status">A new code is on its way.</p>{% endif %}
 <form method="post" action="/login/otp" class="sv-auth-form">
   <input type="hidden" name="email" value="{{ email }}">
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
   <div class="sv-field sv-code-wrap">
     <label for="code">Sign-in code</label>
     <input id="code" name="code" class="sv-code-input" required
@@ -26,6 +27,7 @@
 <div class="sv-auth-links">
   <form method="post" action="/login/otp/resend" id="resend-form">
     <input type="hidden" name="email" value="{{ email }}">
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
     <button type="submit" class="sv-resend" id="resend-btn">Resend code</button>
   </form>
   <p><a href="/login">Back to sign in</a></p>

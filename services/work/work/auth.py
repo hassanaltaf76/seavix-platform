@@ -32,19 +32,32 @@ def identity_transport() -> httpx.AsyncBaseTransport | None:
 
 
 async def caller_org(request: Request) -> dict:
-    header = request.headers.get("authorization", "")
-    if not header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="missing bearer token")
+    """The caller's org — via identity's auth-context so BOTH credential
+    kinds work: machine clients present a Firebase bearer, the web app's
+    session cookie rides X-Seavix-Session. (32b: the RFQ spine is now
+    reachable from the browser, not only from bearer-token API clients.)"""
+    headers: dict[str, str] = {}
+    auth = request.headers.get("authorization", "")
+    if auth:
+        headers["Authorization"] = auth
+    sid = request.headers.get(SESSION_HEADER, "")
+    if sid:
+        headers[SESSION_HEADER] = sid
+    if not headers:
+        raise HTTPException(status_code=401, detail="missing credentials")
     async with httpx.AsyncClient(
         base_url=identity_base_url(), timeout=10.0, transport=_identity_transport
     ) as c:
-        resp = await c.get("/api/internal/whoami",
-                           headers={"Authorization": header})
+        resp = await c.get("/api/internal/auth-context", headers=headers)
     if resp.status_code == 401:
-        raise HTTPException(status_code=401, detail="invalid token")
+        raise HTTPException(status_code=401, detail="invalid credentials")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="identity service error")
-    return resp.json()
+    memberships = resp.json().get("memberships") or []
+    if not memberships:
+        raise HTTPException(status_code=401, detail="no org membership")
+    m = memberships[0]
+    return {"org_id": m["org_id"], "slug": m["slug"], "type": m["org_type"]}
 
 
 async def caller_member(request: Request) -> dict:

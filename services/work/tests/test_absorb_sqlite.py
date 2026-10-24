@@ -63,15 +63,17 @@ def test_absorb_fixture_sqlite(arun, tmp_path):
         async with SessionLocal() as session:
             row = (
                 await session.execute(
-                    text("SELECT target_org_id, source, status, scope_notes, "
-                         "contact_email, created_at FROM rfq WHERE id = :id"),
+                    text("SELECT target_org_id, source, channel, status, "
+                         "scope_notes, contact_email, created_at "
+                         "FROM rfq WHERE id = :id"),
                     {"id": rows[0]["id"]},
                 )
             ).mappings().one()
         return row
 
     row = arun(check())
-    assert row["source"] == "public" and row["status"] == "open"
+    assert row["source"] == "public" and row["channel"] == "public_page"
+    assert row["status"] == "awaiting_quote"  # 32b: 'open' renamed
     assert row["scope_notes"] == "Old intake row"
     assert row["contact_email"] is None  # old form collected no email
     assert str(row["created_at"].tzinfo)  # timestamptz preserved

@@ -11,7 +11,7 @@ import os
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import text
 
 from seavix_ports import (AuthenticatedUser, FirebaseAuthProvider,
@@ -318,14 +318,35 @@ async def login_resend(payload: OtpResend, request: Request) -> dict:
 
 # ------------------------------------------------- registration verification
 
+class VerifySend(ResetStart):
+    """32b: the public RFQ funnel threads a post-login return target
+    through the verification link. Local paths only — the value becomes a
+    URL query param on OUR confirm page, never an open redirect."""
+
+    next: str | None = None
+
+    @field_validator("next")
+    @classmethod
+    def local_path_only(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        if not v.startswith("/") or v.startswith("//"):
+            raise ValueError("next must be a local path")
+        return v
+
+
 @router.post("/api/register/verify/send")
 @public_route
-async def register_verify_send(payload: ResetStart, request: Request) -> dict:
+async def register_verify_send(payload: VerifySend, request: Request) -> dict:
     """Admin SDK verification link, delivered through the SeaVix mail
     pipeline (our template — no Firebase Trigger Email extension).
 
     31e: no send quota (owner decision 24 Oct) — resends are unlimited and
-    write nothing to the OTP ledger."""
+    write nothing to the OTP ledger. 32b: an optional `next` rides
+    the link so the funnel returns the new user to where they signed up."""
     email = payload.email.lower()
     async with SessionLocal() as session:
         user = (
@@ -345,7 +366,8 @@ async def register_verify_send(payload: ResetStart, request: Request) -> dict:
 
     action = auth.generate_email_verification_link(email)
     link = _web_link("/register/verify/confirm", email=email,
-                     oob_code=_oob_code(action))
+                     oob_code=_oob_code(action),
+                     **({"next": payload.next} if payload.next else {}))
     subject, plain, html = email_verification_email(link)
     await get_mailer().send(email, subject, plain, html)
     await _publish(request, "auth.verification_link_sent", "app_user", email,

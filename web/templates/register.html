@@ -1,9 +1,15 @@
 {% extends "base_auth.html" %}{% block title %}Register — SeaVix{% endblock %}
 {% block content %}
 <h1>Create your account</h1>
+{% if rfq_funnel %}
+<p class="sv-auth-sub">One quick step before your RFQ goes to the survey
+   company — create your free account to submit and track it.</p>
+{% else %}
 <p class="sv-auth-sub">Set up your organization in a couple of minutes.</p>
+{% endif %}
 {% if error %}<p class="sv-form-error" role="alert">{{ error }}</p>{% endif %}
 <form method="post" action="/register" class="sv-auth-form" id="register-form" novalidate>
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
   <div class="sv-field">
     <label for="org_name">Organization name</label>
     <input id="org_name" name="org_name" required maxlength="200" autocomplete="organization"
@@ -12,7 +18,8 @@
   <div class="sv-field">
     <label for="org_type">Organization type</label>
     <select id="org_type" name="org_type" required>
-      <option value="" {% if not form.get('org_type') %}selected{% endif %} disabled>Select…</option>
+      <option value="" {% if not form.get('org_type') and not rfq_funnel %}selected{% endif %} disabled>Select…</option>
+      <option value="client" {% if form.get('org_type') == 'client' or (rfq_funnel and not form.get('org_type')) %}selected{% endif %}>Ship operator — requesting surveys</option>
       <option value="agent" {% if form.get('org_type') == 'agent' %}selected{% endif %}>Port Agent</option>
       <option value="management" {% if form.get('org_type') == 'management' %}selected{% endif %}>Management Company</option>
       <option value="survey_company" {% if form.get('org_type') == 'survey_company' %}selected{% endif %}>Surveyor</option>

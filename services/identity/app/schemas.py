@@ -10,12 +10,15 @@ SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 
 # Organization type, chosen from a dropdown at registration (form values map
 # to these). Stored verbatim in organization.type (TEXT — no migration).
-ORG_TYPES = ("agent", "management", "survey_company")
+# 32b: 'client' joins the vocabulary — the ship-operator funnel
+# registration (the public RFQ intake guard lands there). Client orgs get
+# the 'client' system role instead of 'owner' (RFQs section only).
+ORG_TYPES = ("agent", "management", "survey_company", "client")
 
 
 class RegisterRequest(BaseModel):
     org_name: str = Field(min_length=1, max_length=200)
-    org_type: Literal["agent", "management", "survey_company"]
+    org_type: Literal["agent", "management", "survey_company", "client"]
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
     confirm_password: str = Field(min_length=6, max_length=128)

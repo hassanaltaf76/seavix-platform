@@ -12,5 +12,5 @@
       <span><strong>Go live</strong> — publish your profile and start receiving
       RFQs.</span></li>
 </ol>
-<div class="sv-auth-cta"><a class="button" href="/login">Continue to sign in</a></div>
+<div class="sv-auth-cta"><a class="button" href="/login{% if next %}?next={{ next }}{% endif %}">Continue to sign in</a></div>
 {% endblock %}
