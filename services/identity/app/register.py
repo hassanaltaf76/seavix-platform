@@ -72,6 +72,17 @@ def _grant_owner_tuple(firebase_uid: str, org_id: str) -> None:
 @public_route
 async def register(payload: RegisterRequest, request: Request) -> RegisterResponse:
     email = payload.email.lower()
+    # 32a TODO (claiming — DELIBERATELY NOT BUILT): manual client creation
+    # leaves an UNCLAIMED client org in the directory (type='client', no
+    # membership/app_user — see POST /api/internal/orgs). When this
+    # registration's email matches such an org's stored contact email, the
+    # flow should CLAIM it instead of creating a duplicate org: attach the
+    # new user as owner, seed roles, and flip the directory edge's meaning
+    # from "unclaimed" to "registered client". Matching is by email exactly
+    # as the dup-check below reads app_user.email; the claim transaction
+    # replaces the INSERT block below. The directory edge
+    # (work.client_directory) needs no change — client_org_id already
+    # points at the org.
     async with SessionLocal() as session:
         if (
             await session.execute(

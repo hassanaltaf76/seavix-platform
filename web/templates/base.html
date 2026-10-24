@@ -57,6 +57,10 @@
 
       {% set can_view_profile = ctx is defined and ctx and ctx.memberships
               and 'org.profile.view' in ctx.memberships[0].permissions %}
+      {#- 32a: the Clients entry is its own permission (client.view) — the
+          COMPANY section shows when EITHER entry is visible. -#}
+      {% set can_view_clients = ctx is defined and ctx and ctx.memberships
+              and 'client.view' in ctx.memberships[0].permissions %}
       {% if can_view_profile %}
       <div class="sv-rail-tenant">
         <a href="/org/profile">
@@ -85,10 +89,11 @@
         </ul>
       </div>
 
-      {% if can_view_profile %}
+      {% if can_view_profile or can_view_clients %}
       <div class="sv-rail-section">
         <h2>Company</h2>
         <ul>
+          {% if can_view_profile %}
           <li><a class="sv-rail-item" href="/org/profile"
                  {% if active == "profile" %}aria-current="page"{% endif %}>
             <span class="sv-glyph" aria-hidden="true">
@@ -96,6 +101,16 @@
             </span>
             <span class="sv-rail-label">Profile</span>
           </a></li>
+          {% endif %}
+          {% if can_view_clients %}
+          <li><a class="sv-rail-item" href="/org/clients"
+                 {% if active == "clients" %}aria-current="page"{% endif %}>
+            <span class="sv-glyph" aria-hidden="true">
+              <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </span>
+            <span class="sv-rail-label">Clients</span>
+          </a></li>
+          {% endif %}
         </ul>
       </div>
       {% endif %}

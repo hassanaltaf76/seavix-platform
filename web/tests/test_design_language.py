@@ -27,7 +27,8 @@ AUTH_TEMPLATES = ("login", "register", "forgot_password", "reset_password",
                   "verify_email_done", "verify_gate")
 PUBLIC_TEMPLATES = ("landing", "profile", "profile_unavailable",
                     "rfq_form", "rfq_thanks")
-PAGE_TEMPLATES = ("org_home", "org_profile", "org_not_found", "dashboard")
+PAGE_TEMPLATES = ("org_home", "org_profile", "org_not_found", "dashboard",
+                  "org_clients", "org_client_new", "org_client_detail")
 
 
 def _tokens() -> dict[str, str]:
@@ -229,9 +230,11 @@ def test_rail_structure_and_active_state():
     tenant_at = BASE.index('class="sv-rail-tenant"')
     assert logo_at < tenant_at
     # exactly one active-state marker mechanism in the shell (rail-scoped:
-    # two items, conditionally set; the page chrome carries no other)
+    # three items, conditionally set; the page chrome carries no other).
+    # 32a: the Clients entry adds the third marker — same mechanism.
     rail = BASE[BASE.index('class="sv-rail"'):BASE.index('class="sv-page"')]
-    assert rail.count('aria-current="page"') == 2
+    assert rail.count('aria-current="page"') == 3
+    assert '{% if active == "clients" %}aria-current="page"' in BASE
 
 
 def test_topbar_account_menu():
@@ -299,7 +302,9 @@ def test_section_card_settings_pattern_31p():
     stacked = re.search(
         r"@media \(max-width: 1023px\)\s*\{(.*?)\}", STYLE, re.S)
     assert stacked and "grid-template-columns: 1fr" in stacked.group(1)
-    for name in ("org_home", "org_profile"):
+    # 32a: the client directory pages carry the same section-card pattern
+    for name in ("org_home", "org_profile", "org_clients", "org_client_new",
+                 "org_client_detail"):
         text = (TEMPLATES / f"{name}.html").read_text()
         assert 'class="sv-section-card"' in text, f"{name}: section cards"
         assert "sv-section-head" in text, f"{name}: label column"
@@ -428,8 +433,15 @@ def test_structured_address_and_dial_codes_31t():
     # 31u: the three selects are .sv-search-select comboboxes over the
     # vendored list injected once (window.svCountries, flags included);
     # the value rides a hidden input per 31t field name; typing in the
-    # search box is NOT dirty-bound — pick/clear are (the 31q contract)
-    assert "window.svCountries" in editor
+    # search box is NOT dirty-bound — pick/clear are (the 31q contract).
+    # 32a: the countries injection + the svSearchSelect factory live in
+    # the shared _sv_search_select.html partial (the add-client form
+    # includes it too); the three usages stay on the page itself.
+    shared_ss = (TEMPLATES / "_sv_search_select.html").read_text()
+    assert "window.svCountries" in shared_ss
+    assert "function svSearchSelect(opts)" in shared_ss
+    assert "window.svCountries" not in editor.replace(
+        "{% include \"_sv_search_select.html\" %}", "")
     assert editor.count("svSearchSelect({") == 3
     assert 'valueKey: "iso2"' in editor                 # country picker
     assert editor.count('valueKey: "dial"') == 2        # dial-code pickers
@@ -437,7 +449,7 @@ def test_structured_address_and_dial_codes_31t():
     assert '@click="pick(c)"' in editor
     assert '@click="clear()"' in editor
     assert '@sv-dirty="dirty = true"' in editor  # form listener
-    assert editor.count("this.$dispatch('sv-dirty')") == 2  # pick + clear
+    assert shared_ss.count("this.$dispatch('sv-dirty')") == 2  # pick+clear
     # flags: regional-indicator emoji from the alpha-2 letters, rendered
     # server-side into the injected items (no assets, no CDN)
     filters_src = (Path(__file__).resolve().parents[1]

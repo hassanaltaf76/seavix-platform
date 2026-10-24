@@ -43,76 +43,11 @@
     view mode still renders it). Three chip pickers (services, vessel
     types, ports) ride one Save with dirty-tracking. -#}
 {% if org %}
-    {#- 31u: the vendored countries list as combobox items (flags computed
-        server-side) + the shared .sv-search-select factory. Both must
-        exist before Alpine initializes; they are plain scripts. -#}
-    <script>window.svCountries = {{ sv_countries | tojson_u }};</script>
-    <script>
-    // 31u: .sv-search-select — the chip pickers' SINGLE-select cousin: a
-    // searchable combobox over the vendored countries list (client-side
-    // filter, debounced — no endpoint; the list is a constant). The
-    // visible input shows the query while typing and the selected label
-    // otherwise; the picked VALUE rides a hidden input, so the plain
-    // form POST keeps its 31t field names (country_code / phone_cc /
-    // whatsapp_cc). Pick/clear mark the form dirty; typing alone does
-    // NOT (the 31q dirty contract).
-    function svSearchSelect(opts) {
-      return {
-        items: opts.items,
-        valueKey: opts.valueKey,
-        format: opts.format,
-        value: opts.value || "",
-        label: opts.label || "",
-        q: "",
-        needle: "",
-        open: false,
-        active: -1,
-        filtered() {
-          const q = this.needle.toLowerCase();
-          if (!q) return this.items;
-          return this.items.filter((c) =>
-            c.name.toLowerCase().includes(q) ||
-            c.dial.toLowerCase().includes(q) ||
-            c.iso2.toLowerCase().includes(q));
-        },
-        show() { this.open = true; this.active = -1; },
-        hide() { this.open = false; this.q = ""; this.needle = ""; this.active = -1; },
-        pick(c) {
-          this.value = c[this.valueKey];
-          this.label = this.format(c);
-          this.hide();
-          this.$dispatch('sv-dirty');   // 31q contract: a pick IS dirty
-        },
-        clear() {
-          this.value = ""; this.label = ""; this.q = "";
-          this.needle = ""; this.open = false; this.active = -1;
-          this.$dispatch('sv-dirty');   // clearing IS dirty too
-        },
-        move(step) {
-          const r = this.filtered();
-          if (!r.length) return;
-          this.active = this.active < 0
-            ? (step > 0 ? 0 : r.length - 1)
-            : (this.active + step + r.length) % r.length;
-          this.$nextTick(() => {
-            const list = this.$refs.list;
-            const el = list && list.querySelector(
-              ".sv-search-select-option.is-active");
-            if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
-          });
-        },
-        onKey(e) {
-          if (e.key === "ArrowDown") { e.preventDefault(); this.open = true; this.move(1); }
-          else if (e.key === "ArrowUp") { e.preventDefault(); this.open = true; this.move(-1); }
-          else if (e.key === "Enter" && this.open && (this.active >= 0 || this.needle)) {
-            const r = this.filtered();
-            const c = r[this.active >= 0 ? this.active : 0];
-            if (c) { e.preventDefault(); this.pick(c); }
-          }
-        },
-      };
-    }
-    </script>
+    {#- 31u: the vendored countries list + the shared .sv-search-select
+        factory now live in the _sv_search_select.html partial (also used
+        by the add-client form). Both must exist before Alpine initializes;
+        they are plain scripts. -#}
+    {% include "_sv_search_select.html" %}
     <form method="post" action="/org/profile" class="sv-form"
           @input="valid = $el.checkValidity()"
           @sv-dirty="dirty = true"

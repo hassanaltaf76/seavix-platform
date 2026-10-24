@@ -25,6 +25,15 @@ os.environ.setdefault(
     "REGISTRY_DATABASE_URL",
     "postgresql+asyncpg://seavix:dev@localhost:5432/seavix_registry",
 )
+# 32a: web tests now run the work service in-process too (client directory
+# pages proxy it) — bind it to its own database BEFORE first import for the
+# same first-import-wins reason: without this, whoever imports work.db
+# first (web/tests/conftest.py during collection) inherits DATABASE_URL
+# (seavix_identity) and every work query dies on missing tables.
+os.environ.setdefault(
+    "WORK_DATABASE_URL",
+    "postgresql+asyncpg://seavix:dev@localhost:5432/seavix_work",
+)
 # The platform .env may carry real DEV_SMTP_* credentials for manual QA.
 # Tests must stay hermetic on LogMailSender: blank them here (setdefault
 # semantics in the services' .env loaders mean these real-env values win).

@@ -15,10 +15,15 @@ Catalog (v1, stage-1):
 - rfq.create             raise RFQs against other orgs (work service)
 - rfq.view               see RFQs addressed to / raised by the org (work service)
 - quote.create           draft quotes on received RFQs (work service)
+- quote.view             see quotes on the org's RFQs (work service)
 - quote.send             send a quote revision (work service)
 - quote.accept           accept a quote, creating a job (work service)
 - job.view               view jobs (work service)
 - job.assign             assign jobs to surveyors (work service)
+- client.view            see the tenant's client directory (work service)
+- client.create          add a client (unclaimed org + directory edge, work)
+- client.edit            edit a client's directory entry (reserved; the
+                         edit surface ships in a later slice)
 
 work-service permissions are catalogued now and enforced when those routes
 get their own wall (they carry no identity-DB enforcement today).
@@ -39,10 +44,14 @@ class Permission(str, enum.Enum):
     RFQ_CREATE = "rfq.create"
     RFQ_VIEW = "rfq.view"
     QUOTE_CREATE = "quote.create"
+    QUOTE_VIEW = "quote.view"
     QUOTE_SEND = "quote.send"
     QUOTE_ACCEPT = "quote.accept"
     JOB_VIEW = "job.view"
     JOB_ASSIGN = "job.assign"
+    CLIENT_VIEW = "client.view"
+    CLIENT_CREATE = "client.create"
+    CLIENT_EDIT = "client.edit"
 
 
 ALL_PERMISSIONS: frozenset[str] = frozenset(p.value for p in Permission)
@@ -60,6 +69,13 @@ def valid_permissions(values: list[str]) -> list[str]:
 # - ops: profile VIEW only — the blade renders read-only, no edit controls
 # - surveyor/viewer: NO profile access — direct navigation 404s and the
 #   rail company cell is hidden (permission-driven, not role-name-driven)
+#
+# 32a client directory: ops gains the client-directory permissions plus
+# quote.view; the "client" role is the REGISTERED-CLIENT role (issued to
+# members of a claimed client org): raise and see their own RFQs — nothing
+# else. It is org-scoped: work-service loaders resolve the caller's org and
+# scope every query to it, so a client-role membership reaches only its own
+# org's data.
 DEFAULT_ROLES: dict[str, frozenset[str]] = {
     "owner": ALL_PERMISSIONS,
     "admin": ALL_PERMISSIONS - {Permission.ROLE_MANAGE.value},
@@ -68,10 +84,14 @@ DEFAULT_ROLES: dict[str, frozenset[str]] = {
         Permission.RFQ_CREATE.value,
         Permission.RFQ_VIEW.value,
         Permission.QUOTE_CREATE.value,
+        Permission.QUOTE_VIEW.value,
         Permission.QUOTE_SEND.value,
         Permission.QUOTE_ACCEPT.value,
         Permission.JOB_VIEW.value,
         Permission.JOB_ASSIGN.value,
+        Permission.CLIENT_VIEW.value,
+        Permission.CLIENT_CREATE.value,
+        Permission.CLIENT_EDIT.value,
     }),
     "surveyor": frozenset({
         Permission.RFQ_VIEW.value,
@@ -80,5 +100,9 @@ DEFAULT_ROLES: dict[str, frozenset[str]] = {
     "viewer": frozenset({
         Permission.RFQ_VIEW.value,
         Permission.JOB_VIEW.value,
+    }),
+    "client": frozenset({
+        Permission.RFQ_CREATE.value,
+        Permission.RFQ_VIEW.value,
     }),
 }

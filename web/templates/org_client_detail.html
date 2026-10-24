@@ -1,0 +1,52 @@
+{% extends "base.html" %}{% block title %}{{ client.org.name }} — SeaVix{% endblock %}
+{% set active = "clients" %}
+{% block page_title %}<h1 class="sv-ugc">{{ client.org.name }}</h1>{% endblock %}
+{% block page_desc %}<p class="sv-page-desc"><span class="sv-chip">{{ relationship_labels.get(client.relationship_type, client.relationship_type) }}</span>
+   client since {{ client.created_at[:10] }}</p>{% endblock %}
+{% block page_actions %}
+  <a class="button secondary" href="/org/clients">← Back to clients</a>
+{% endblock %}
+
+{% block content %}
+{% if created %}<p class="notice success" role="status">Client added.</p>{% endif %}
+
+<section class="sv-section-card">
+  <div class="sv-section-head">
+    <h2>Contact</h2>
+    <p>How to reach {{ client.org.name }}.</p>
+  </div>
+  <div class="sv-section-body">
+    {% set lines = address_lines(client.org) %}
+    {% if client.org.contact_email %}
+    <p><strong>Email</strong><br><a href="mailto:{{ client.org.contact_email }}">{{ client.org.contact_email }}</a></p>
+    {% endif %}
+    {% if client.org.phone %}
+    <p><strong>Phone</strong><br>{{ client.org.phone_cc }} {{ client.org.phone }}</p>
+    {% endif %}
+    {% if client.org.whatsapp %}
+    <p><strong>WhatsApp</strong><br>{{ client.org.whatsapp_cc }} {{ client.org.whatsapp }}</p>
+    {% endif %}
+    {% if lines %}
+    <p><strong>Address</strong><br>
+      {% for line in lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+    </p>
+    {% endif %}
+    {% if not client.org.contact_email and not client.org.phone and not client.org.whatsapp and not lines %}
+    <p class="sv-info-callout" role="status">No contact details yet — add them
+       here when the client claims their profile.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="sv-section-card">
+  <div class="sv-section-head">
+    <h2>RFQs</h2>
+    <p>Requests for quotation this client has raised with you.</p>
+  </div>
+  <div class="sv-section-body">
+    <p class="sv-info-callout" role="status">RFQs raised for this client
+       arrive with task 32b.</p>
+  </div>
+</section>
+
+{{ keepalive | safe }}{% endblock %}

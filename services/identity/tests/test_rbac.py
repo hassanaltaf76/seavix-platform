@@ -152,11 +152,24 @@ def test_default_roles_seeded_on_registration(arun):
             resp = await c.get("/api/orgs/me/roles", headers=_auth(sid))
             assert resp.status_code == 200
             roles = {r["name"]: r for r in resp.json()["roles"]}
-            assert set(roles) == {"owner", "admin", "ops", "surveyor", "viewer"}
+            # 32a: the registered-client role joins the five 31e roles
+            assert set(roles) == {
+                "owner", "admin", "ops", "surveyor", "viewer", "client",
+            }
             for r in roles.values():
                 assert r["is_system"] is True
             assert set(roles["owner"]["permissions"]) == set(ALL_PERMISSIONS)
             assert "role.manage" not in roles["admin"]["permissions"]
+            # 32a: admin holds every new permission except role.manage
+            for perm in ("client.view", "client.create", "client.edit",
+                         "rfq.create", "rfq.view", "quote.view",
+                         "quote.create"):
+                assert perm in roles["admin"]["permissions"], perm
+            # 32a: the client role is the registered-client role — raise
+            # and see RFQs, nothing else (org-scoped in the work loaders)
+            assert roles["client"]["permissions"] == sorted(
+                {"rfq.create", "rfq.view"}
+            )
             # 31e: surveyor/viewer carry NO org.profile.view — the profile
             # blade is gated to ops-and-above
             assert roles["viewer"]["permissions"] == sorted(
@@ -166,6 +179,13 @@ def test_default_roles_seeded_on_registration(arun):
                 {"rfq.view", "job.view"}
             )
             assert "org.profile.view" in roles["ops"]["permissions"]
+            # 32a: ops holds the client-directory permissions + quote.view
+            for perm in ("client.view", "client.create", "client.edit",
+                         "quote.view"):
+                assert perm in roles["ops"]["permissions"], perm
+            for perm in ("client.view", "client.create", "client.edit"):
+                assert perm not in roles["surveyor"]["permissions"], perm
+                assert perm not in roles["viewer"]["permissions"], perm
 
             # the owner membership resolved through the AuthContext carries
             # the owner role and every permission

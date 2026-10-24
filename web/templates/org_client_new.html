@@ -1,0 +1,226 @@
+{% extends "base.html" %}{% block title %}Add client — SeaVix{% endblock %}
+{% set active = "clients" %}
+{% block page_title %}<h1>Add client</h1>{% endblock %}
+{% block page_desc %}<p class="sv-page-desc">Create a directory entry for an
+   organization you work with. They are invited to claim their profile when
+   they sign up with the same email.</p>{% endblock %}
+{% block page_actions %}
+  {#- §9 documented back-link: the create form returns to the directory. -#}
+  <a class="button secondary" href="/org/clients">← Back to clients</a>
+{% endblock %}
+
+{% block content %}
+{% include "_sv_search_select.html" %}
+
+{% if form_error %}<p class="notice error" role="alert">{{ form_error }}</p>{% endif %}
+
+<form method="post" action="/org/clients/new" class="sv-form"
+      @input="valid = $el.checkValidity()"
+      @sv-dirty="dirty = true"
+      x-data='{ dirty: false, valid: true }'>
+
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>Client</h2>
+      <p>Who they are and how you work together.</p>
+    </div>
+    <div class="sv-section-body">
+      <label for="name">Organization name</label>
+      <input id="name" name="name" type="text" required maxlength="200"
+             value="{{ values.get("name", "") }}" @input="dirty = true">
+      {% if field_errors.get("name") %}<p class="sv-field-error" role="alert">{{ field_errors.get("name") }}</p>{% endif %}
+
+      <label for="relationship_type">Relationship</label>
+      <select id="relationship_type" name="relationship_type" required
+              @change="dirty = true">
+        <option value="" {% if not values.get("relationship_type") %}selected{% endif %}>—</option>
+        {% for code, label in relationship_labels.items() %}
+        <option value="{{ code }}" {% if values.get("relationship_type") == code %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      {% if field_errors.get("relationship_type") %}<p class="sv-field-error" role="alert">{{ field_errors.get("relationship_type") }}</p>{% endif %}
+      <small>How this organization works with yours.</small>
+
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required
+             value="{{ values.get("email", "") }}" @input="dirty = true">
+      {% if field_errors.get("email") %}<p class="sv-field-error" role="alert">{{ field_errors.get("email") }}</p>{% endif %}
+      <small>The address they will sign up with — it claims this profile,
+             and it is how you reach them until then.</small>
+    </div>
+  </section>
+
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>Contact details</h2>
+      <p>Where they are and how to reach them.</p>
+    </div>
+    <div class="sv-section-body">
+      {#- 31t block — the same field set and components as the profile
+          editor (country + dial-code .sv-search-select comboboxes with
+          flags, shared via _sv_search_select.html). Empty fields stay
+          empty; the client's profile renders what is set. -#}
+      <label for="address_line1">Address line 1</label>
+      <input id="address_line1" name="address_line1" type="text"
+             value="{{ values.get("address_line1", "") }}" @input="dirty = true">
+
+      <label for="address_line2">Address line 2 — optional</label>
+      <input id="address_line2" name="address_line2" type="text"
+             value="{{ values.get("address_line2", "") }}" @input="dirty = true">
+
+      <div class="sv-addr-grid">
+        <div>
+          <label for="city">City</label>
+          <input id="city" name="city" type="text"
+                 value="{{ values.get("city", "") }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="state">State/Province — optional</label>
+          <input id="state" name="state" type="text"
+                 value="{{ values.get("state", "") }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="postal_code">Postal code — optional</label>
+          <input id="postal_code" name="postal_code" type="text"
+                 value="{{ values.get("postal_code", "") }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="country_code">Country</label>
+          <div class="sv-search-select"
+               x-data='svSearchSelect({ items: svCountries, valueKey: "iso2",
+                 format: (c) => c.flag + " " + c.name,
+                 value: {{ values.get("country_code", "") | tojson_u }},
+                 label: {{ country_label | tojson_u }} })'
+               @click.outside="hide()">
+            <input type="hidden" name="country_code"
+                   value="{{ values.get("country_code", "") }}" :value="value">
+            <div class="sv-search-select-box">
+              <input id="country_code" type="text" autocomplete="off"
+                     role="combobox" :aria-expanded="open"
+                     aria-controls="country-code-results"
+                     placeholder="—" :value="q || label"
+                     @input="q = $event.target.value"
+                     @input.debounce.150ms="needle = q.trim(); open = true; active = -1"
+                     @focus="show()" @keydown="onKey($event)"
+                     @keydown.escape="hide()">
+              <button type="button" class="sv-search-select-x" x-show="value"
+                      x-cloak @click="clear()"
+                      aria-label="Clear country">×</button>
+            </div>
+            <ul id="country-code-results" x-ref="list"
+                class="sv-picker-results" x-show="open" role="listbox">
+              <template x-for="(c, idx) in filtered()" :key="c.iso2">
+                <li><button type="button" role="option"
+                      class="sv-search-select-option"
+                      :class="idx === active ? 'is-active' : ''"
+                      :aria-selected="value === c.iso2"
+                      @click="pick(c)"
+                      x-text="format(c)"></button></li>
+              </template>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <label for="phone_cc">Phone</label>
+      <div class="sv-cc-row">
+        <div class="sv-search-select sv-cc-picker"
+             x-data='svSearchSelect({ items: svCountries, valueKey: "dial",
+               format: (c) => c.flag + " " + c.dial + " — " + c.name,
+               value: {{ phone_prefill.cc | tojson_u }},
+               label: {{ phone_prefill.label | tojson_u }} })'
+             @click.outside="hide()">
+          <input type="hidden" name="phone_cc"
+                 value="{{ phone_prefill.cc }}" :value="value">
+          <div class="sv-search-select-box">
+            <input id="phone_cc" type="text" autocomplete="off"
+                   role="combobox" :aria-expanded="open"
+                   aria-controls="phone-cc-results"
+                   placeholder="code" :value="q || label"
+                   @input="q = $event.target.value"
+                   @input.debounce.150ms="needle = q.trim(); open = true; active = -1"
+                   @focus="show()" @keydown="onKey($event)"
+                   @keydown.escape="hide()">
+            <button type="button" class="sv-search-select-x" x-show="value"
+                    x-cloak @click="clear()"
+                    aria-label="Clear phone country code">×</button>
+          </div>
+          <ul id="phone-cc-results" x-ref="list"
+              class="sv-picker-results" x-show="open" role="listbox">
+            <template x-for="(c, idx) in filtered()" :key="c.iso2">
+              <li><button type="button" role="option"
+                    class="sv-search-select-option"
+                    :class="idx === active ? 'is-active' : ''"
+                    :aria-selected="value === c.dial"
+                    @click="pick(c)"
+                    x-text="format(c)"></button></li>
+            </template>
+          </ul>
+        </div>
+        <input id="phone" name="phone" type="tel"
+               placeholder="national number, e.g. 50 123 4567"
+               value="{{ phone_prefill.national }}" @input="dirty = true">
+      </div>
+      {% if field_errors.get("phone") %}<p class="sv-field-error" role="alert">{{ field_errors.get("phone") }}</p>{% endif %}
+      {% if field_errors.get("phone_cc") %}<p class="sv-field-error" role="alert">{{ field_errors.get("phone_cc") }}</p>{% endif %}
+
+      <label for="contact_email">Public email address — optional</label>
+      <input id="contact_email" name="contact_email" type="email"
+             value="{{ values.get("contact_email", "") }}" @input="dirty = true">
+      <small>A separate public business contact, if different from the
+             claiming email above.</small>
+      {% if field_errors.get("contact_email") %}<p class="sv-field-error" role="alert">{{ field_errors.get("contact_email") }}</p>{% endif %}
+
+      <label for="whatsapp_cc">WhatsApp number</label>
+      <div class="sv-cc-row">
+        <div class="sv-search-select sv-cc-picker"
+             x-data='svSearchSelect({ items: svCountries, valueKey: "dial",
+               format: (c) => c.flag + " " + c.dial + " — " + c.name,
+               value: {{ whatsapp_prefill.cc | tojson_u }},
+               label: {{ whatsapp_prefill.label | tojson_u }} })'
+             @click.outside="hide()">
+          <input type="hidden" name="whatsapp_cc"
+                 value="{{ whatsapp_prefill.cc }}" :value="value">
+          <div class="sv-search-select-box">
+            <input id="whatsapp_cc" type="text" autocomplete="off"
+                   role="combobox" :aria-expanded="open"
+                   aria-controls="whatsapp-cc-results"
+                   placeholder="code" :value="q || label"
+                   @input="q = $event.target.value"
+                   @input.debounce.150ms="needle = q.trim(); open = true; active = -1"
+                   @focus="show()" @keydown="onKey($event)"
+                   @keydown.escape="hide()">
+            <button type="button" class="sv-search-select-x" x-show="value"
+                    x-cloak @click="clear()"
+                    aria-label="Clear WhatsApp country code">×</button>
+          </div>
+          <ul id="whatsapp-cc-results" x-ref="list"
+              class="sv-picker-results" x-show="open" role="listbox">
+            <template x-for="(c, idx) in filtered()" :key="c.iso2">
+              <li><button type="button" role="option"
+                    class="sv-search-select-option"
+                    :class="idx === active ? 'is-active' : ''"
+                    :aria-selected="value === c.dial"
+                    @click="pick(c)"
+                    x-text="format(c)"></button></li>
+            </template>
+          </ul>
+        </div>
+        <input id="whatsapp" name="whatsapp" type="text"
+               placeholder="national number, e.g. 50 123 4567"
+               value="{{ whatsapp_prefill.national }}" @input="dirty = true">
+      </div>
+      {% if field_errors.get("whatsapp") %}<p class="sv-field-error" role="alert">{{ field_errors.get("whatsapp") }}</p>{% endif %}
+      {% if field_errors.get("whatsapp_cc") %}<p class="sv-field-error" role="alert">{{ field_errors.get("whatsapp_cc") }}</p>{% endif %}
+    </div>
+  </section>
+
+  {#- v4 §4/§9: the sticky save bar appears when the form is dirty —
+      Cancel left, Save right, Save disabled until dirty. -#}
+  <div class="sv-save-bar" x-show="dirty" x-cloak>
+    <a class="button secondary" href="/org/clients">Cancel</a>
+    <button type="submit" :disabled="!(dirty && valid)">Add client</button>
+  </div>
+</form>
+
+{{ keepalive | safe }}{% endblock %}

@@ -27,22 +27,37 @@ sys.path.insert(
         os.path.join(os.path.dirname(__file__), "..", "..", "services", "registry")
     ),
 )
+sys.path.insert(
+    0,
+    os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "services", "work")
+    ),
+)
 
 from app.main import app as identity_app  # noqa: E402  (identity service)
 from registry.main import app as registry_app  # noqa: E402  (registry service)
+from work.main import app as work_app  # noqa: E402  (work service)
+from work.clients import (  # noqa: E402  (work → identity seam)
+    set_identity_transport as set_work_identity_transport,
+)
 
 from webapp.identity_client import set_identity_transport  # noqa: E402
 from webapp.main import app as web_app  # noqa: E402
 from webapp.registry_client import set_registry_transport  # noqa: E402
+from webapp.work_client import set_work_transport  # noqa: E402
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _wire_service_transports():
     set_identity_transport(httpx.ASGITransport(app=identity_app))
     set_registry_transport(httpx.ASGITransport(app=registry_app))
+    set_work_transport(httpx.ASGITransport(app=work_app))
+    set_work_identity_transport(httpx.ASGITransport(app=identity_app))
     yield
     set_identity_transport(None)
     set_registry_transport(None)
+    set_work_transport(None)
+    set_work_identity_transport(None)
 
 
 @pytest.fixture(scope="session")

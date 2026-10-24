@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from seavix_ports import InMemoryEventBus
 
+from .clients import router as clients_router
 from .spine import router as spine_router
 
 
@@ -20,6 +21,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "work"}
 
     app.include_router(spine_router)
+    app.include_router(clients_router)
     return app
 
 

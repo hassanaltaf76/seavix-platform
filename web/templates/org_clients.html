@@ -1,0 +1,54 @@
+{% extends "base.html" %}{% block title %}Clients — SeaVix{% endblock %}
+{% set active = "clients" %}
+{% block page_title %}<h1>Clients</h1>{% endblock %}
+{% block page_desc %}<p class="sv-page-desc">Organizations you work with.
+   Add a client before they join SeaVix — they claim their profile when
+   they sign up with the same email.</p>{% endblock %}
+{% block page_actions %}
+  {% if can_create %}
+  <a class="button" href="/org/clients/new">Add client</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+{% if created %}<p class="notice success" role="status">Client added.</p>{% endif %}
+
+<section class="sv-section-card">
+  <div class="sv-section-head">
+    <h2>Client directory</h2>
+    <p>Every organization linked to your company, by relationship.</p>
+  </div>
+  <div class="sv-section-body">
+    {% if clients %}
+    <table class="sv-table">
+      <thead>
+        <tr><th scope="col">Name</th><th scope="col">Relationship</th>
+            <th scope="col">Email</th><th scope="col">Phone</th>
+            <th scope="col">Location</th></tr>
+      </thead>
+      <tbody>
+        {% for c in clients %}
+        <tr>
+          <td><a class="sv-ugc" href="/org/clients/{{ c.id }}">{{ c.org.name }}</a></td>
+          <td><span class="sv-chip">{{ relationship_labels.get(c.relationship_type, c.relationship_type) }}</span></td>
+          <td>{{ c.org.contact_email or "—" }}</td>
+          <td>{% if c.org.phone %}{{ c.org.phone_cc }} {{ c.org.phone }}{% else %}—{% endif %}</td>
+          <td>{% if c.org.city %}{{ c.org.city }}{% if c.org.country_code %}, {% endif %}{% endif %}{% if c.org.country_code %}{{ flag(c.org.country_code) }} {{ country_name(c.org.country_code) }}{% endif %}{% if not c.org.city and not c.org.country_code %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="sv-empty">
+      <svg class="sv-ic sv-ic-40" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <h2>No clients yet</h2>
+      <p>Add the organizations you work with — management clients, surveyor
+         subcontractors or port agents. They appear here before they join
+         SeaVix, and claim their profile when they sign up.</p>
+      {% if can_create %}<a class="button" href="/org/clients/new">Add client</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{{ keepalive | safe }}{% endblock %}

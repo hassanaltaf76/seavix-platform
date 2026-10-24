@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import re
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from seavix_ports import AuthContext, require_auth
 import sqlalchemy as sa
 from sqlalchemy import text
@@ -205,6 +206,85 @@ class ProfileUpdate(BaseModel):
         return out
 
 
+class ClientOrgCreate(BaseModel):
+    """32a: request body for POST /api/internal/orgs — an UNCLAIMED client
+    organization. Mirrors ProfileUpdate's contact section (same validation
+    rules, kept intentionally in sync) plus `name` and the claiming email.
+    No membership, no app_user, no Firebase account: the org sits in the
+    directory until a matching self-registration claims it (TODO hook in
+    register.py — deliberately NOT built in 32a)."""
+
+    type: Literal["client"] = "client"
+    name: str = Field(min_length=1, max_length=200)
+    # The client's identifying email — the future claim hook matches a
+    # self-registration against it. Stored on the PUBLIC contact column
+    # when no separate contact_email is given (an unclaimed org has no
+    # app_user row; there is no other email column).
+    email: EmailStr
+    contact_email: EmailStr | None = None
+    phone: str | None = None
+    phone_cc: str | None = None
+    whatsapp: str | None = None
+    whatsapp_cc: str | None = None
+    address_line1: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country_code: str | None = None
+
+    @field_validator(
+        "contact_email", "phone", "phone_cc", "whatsapp", "whatsapp_cc",
+        "address_line1", "address_line2", "city", "state", "postal_code",
+        "country_code", mode="before",
+    )
+    @classmethod
+    def blank_to_none(cls, v: str | None) -> str | None:
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
+    @field_validator("phone", "whatsapp")
+    @classmethod
+    def national_number(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        if not re.fullmatch(r"[0-9\-\s]+", v):
+            raise ValueError(
+                "use only digits, spaces and dashes — the country code "
+                "has its own field"
+            )
+        digits = len(re.sub(r"\D", "", v))
+        if not 5 <= digits <= 14:
+            raise ValueError(
+                f"use 5-14 digits for the national number ({digits} given)"
+            )
+        return v
+
+    @field_validator("country_code")
+    @classmethod
+    def iso_alpha2(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not re.fullmatch(r"[A-Z]{2}", v):
+            raise ValueError("country must be an ISO alpha-2 code (e.g. AE)")
+        return v
+
+    @field_validator("phone_cc", "whatsapp_cc")
+    @classmethod
+    def dial_code(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not re.fullmatch(r"\+\d{1,4}", v):
+            raise ValueError(
+                "country code must look like +971 (plus, 1-4 digits)"
+            )
+        return v
+
+
 class StatusUpdate(BaseModel):
     status: str
 
@@ -223,6 +303,11 @@ async def update_profile(
     membership = require_permission(ctx, Permission.ORG_PROFILE_EDIT.value)
     org_id = membership.org_id
     async with SessionLocal() as session:
+        org_type = (
+            await session.execute(
+                text("SELECT type FROM organization WHERE id = :id"), {"id": org_id}
+            )
+        ).scalar_one()
         if payload.slug is not None:
             taken = (
                 await session.execute(
@@ -327,6 +412,16 @@ async def update_profile(
                     [{"id": org_id, "code": c} for c in codes],
                 )
         await session.commit()
+    # 32a: editing a CLIENT organization's profile is a client.updated event
+    # (the org IS the client — a client is an organization). For unclaimed
+    # client orgs this only fires after claiming, since only then does a
+    # membership with org.profile.edit exist to call this endpoint.
+    if org_type == "client":
+        await _publish(
+            request, "client.updated", org_id,
+            {"fields": sorted(k for k, v in payload.model_dump().items()
+                              if v is not None)},
+        )
     return {"org_id": org_id, **payload.model_dump()}
 
 

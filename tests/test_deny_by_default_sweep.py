@@ -43,6 +43,11 @@ IDENTITY_PUBLIC = {
     "/api/auth/reset/finish",
     "/api/orgs/{slug}",
     "/api/internal/orgs/{slug}",
+    # 32a: unclaimed-client-org creation + directory-field read. Loopback-
+    # only guard inside the handlers (request.client check) — same
+    # documented service-auth gap as the slug lookup above
+    "/api/internal/orgs",
+    "/api/internal/orgs/id/{org_id}",
     # invite acceptance (the invitee has no credentials yet); guarded by the
     # single-use hashed token, not by the wall
     "/api/public/invites/accept",
@@ -121,6 +126,10 @@ WEB_PROTECTED = {
     "/org/vessel-types/search",
     # 31j: 'Sign out all trusted devices' (account surface action)
     "/account/trusted-devices/revoke-all",
+    # 32a: client directory pages (client.view / client.create gated)
+    "/org/clients",
+    "/org/clients/new",
+    "/org/clients/{client_id}",
 }
 
 
