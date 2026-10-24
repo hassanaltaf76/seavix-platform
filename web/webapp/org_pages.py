@@ -167,12 +167,15 @@ def _page_not_found(request: Request, ctx: AuthContext) -> HTMLResponse:
     )
 
 
-def _view_context(ctx, membership, org, saved: bool) -> dict:
+def _view_context(ctx, membership, org, saved: bool,
+                  published: bool = False, unpublished: bool = False) -> dict:
     return {
         "request": None, "ctx": ctx, "membership": membership, "org": org,
         "rail_org": _rail_org(org, membership),
         "keepalive": _KEEPALIVE, "mode": "view",
         "can_edit": _has(membership, ORG_PROFILE_EDIT), "saved": saved,
+        "published": published, "unpublished": unpublished,
+        "can_publish": _has(membership, ORG_PROFILE_PUBLISH),
     }
 
 
@@ -235,6 +238,8 @@ async def org_profile(
     request: Request,
     view: str = "",
     saved: str = "",
+    published: str = "",
+    unpublished: str = "",
     ctx: AuthContext = Depends(require_auth),
 ):
     membership = _first_membership(ctx)
@@ -253,7 +258,83 @@ async def org_profile(
         return _render(request, "org_profile.html",
                        _edit_context(ctx, membership, org))
     return _render(request, "org_profile.html",
-                   _view_context(ctx, membership, org, saved == "1"))
+                   _view_context(ctx, membership, org, saved == "1",
+                                 published == "1", unpublished == "1"))
+
+
+ORG_PROFILE_PUBLISH = "org.profile.publish"
+
+
+def _publish_context(ctx, membership, org, error=None) -> dict:
+    return {
+        "request": None, "ctx": ctx, "membership": membership, "org": org,
+        "rail_org": _rail_org(org, membership),
+        "keepalive": _KEEPALIVE, "mode": "view", "error": error,
+    }
+
+
+@router.get("/org/profile/publish", response_class=HTMLResponse)
+async def profile_publish_form(
+    request: Request, ctx: AuthContext = Depends(require_auth),
+):
+    """Owner 24 Oct: the canonical publish flow is
+    Profile → Edit → Preview → Publish / Go live. The preview links here;
+    this is the explicit human gate (no silent state change on Save)."""
+    membership = _first_membership(ctx)
+    if membership is None:
+        return _redirect("/org/home")
+    if membership.org_type != "survey_company":
+        return _redirect(home_for(membership.org_type))
+    if not _has(membership, ORG_PROFILE_PUBLISH):
+        return _page_not_found(request, ctx)
+    org = await _org_summary(membership.slug)
+    return _render(request, "org_profile_publish.html",
+                   _publish_context(ctx, membership, org))
+
+
+@router.post("/org/profile/publish")
+async def profile_publish(
+    request: Request,
+    action: str = Form("live"),
+    ctx: AuthContext = Depends(require_auth),
+):
+    membership = _first_membership(ctx)
+    if membership is None:
+        return _redirect("/org/home")
+    if membership.org_type != "survey_company":
+        return _redirect(home_for(membership.org_type))
+    if not _has(membership, ORG_PROFILE_PUBLISH):
+        return _page_not_found(request, ctx)
+    org = await _org_summary(membership.slug)
+    if action not in ("live", "draft"):
+        return _render(request, "org_profile_publish.html",
+                       _publish_context(ctx, membership, org,
+                                        error="unknown action"),
+                       status_code=422)
+    sid = session_id_from(request)
+    resp = await identity_request(
+        "POST", "/api/orgs/me/profile-status", json={"status": action},
+        headers={SESSION_HEADER: sid} if sid else {},
+    )
+    if resp.status_code == 200:
+        flag = "published" if action == "live" else "unpublished"
+        return _redirect(f"/org/profile?{flag}=1")
+    detail = ""
+    try:
+        detail = str(resp.json().get("detail", ""))
+    except Exception:
+        pass
+    if resp.status_code == 403:
+        return _render(request, "org_profile_publish.html",
+                       _publish_context(ctx, membership, org,
+                                        error=detail or
+                                        "verify your email before going live"),
+                       status_code=403)
+    return _render(request, "org_profile_publish.html",
+                   _publish_context(ctx, membership, org,
+                                    error=detail or "could not update — "
+                                    "try again"),
+                   status_code=502)
 
 
 @router.get("/org/ports/search")
@@ -512,19 +593,81 @@ async def org_profile_logo(
     )
 
 
-@router.get("/org/home", response_class=HTMLResponse)
-async def org_home(request: Request, ctx: AuthContext = Depends(require_auth),
-                   devices: str = ""):
+async def _org_home_context(
+    request: Request, ctx: AuthContext, *, devices_revoked: bool = False,
+    password_changed: bool = False, password_error: str | None = None,
+) -> dict:
     membership = _first_membership(ctx)
     org = await _org_summary(membership.slug) if membership else None
+    return {
+        "request": request, "ctx": ctx, "membership": membership, "org": org,
+        "rail_org": _rail_org(org, membership),
+        "trusted_device_count": await _trusted_device_count(request),
+        "devices_revoked": devices_revoked,
+        "password_changed": password_changed,
+        "password_error": password_error,
+        "keepalive": _KEEPALIVE,
+    }
+
+
+@router.get("/org/home", response_class=HTMLResponse)
+async def org_home(request: Request, ctx: AuthContext = Depends(require_auth),
+                   devices: str = "", password: str = ""):
     return templates.TemplateResponse(
         request,
         "org_home.html",
-        {"request": request, "ctx": ctx, "membership": membership, "org": org,
-         "rail_org": _rail_org(org, membership),
-         "trusted_device_count": await _trusted_device_count(request),
-         "devices_revoked": devices == "revoked",
-         "keepalive": _KEEPALIVE},
+        await _org_home_context(
+            request, ctx,
+            devices_revoked=devices == "revoked",
+            password_changed=password == "changed",
+        ),
+    )
+
+
+@router.post("/account/password")
+async def account_change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    ctx: AuthContext = Depends(require_auth),
+):
+    """32b FEATURE 3: Account → Change password. The signed-in session is
+    the reauthentication factor — identity verifies the current password,
+    rotates the Firebase password, and revokes every OTHER session and
+    trusted device. This browser's session deliberately survives, so the
+    success path is a plain redirect with a flash; a 422 re-renders the
+    account page inline with the validation detail."""
+    sid = session_id_from(request)
+    if not sid:
+        return _redirect("/login")  # the wall guarantees a session; fail closed
+    resp = await identity_request(
+        "POST", "/api/auth/change-password",
+        json={"current_password": current_password,
+              "new_password": new_password,
+              "confirm_password": confirm_password},
+        headers={SESSION_HEADER: sid},
+    )
+    if resp.status_code == 200:
+        return _redirect("/org/home?password=changed")
+
+    error = "could not change password — try again"
+    try:
+        detail = resp.json().get("detail")
+    except Exception:
+        detail = None
+    if resp.status_code == 422:
+        if isinstance(detail, dict):
+            error = str(detail.get("message") or error)
+        elif isinstance(detail, list) and detail:
+            msg = str(detail[0].get("msg", ""))
+            if msg.startswith("Value error, "):
+                msg = msg[len("Value error, "):]
+            error = msg or error
+    return _render(
+        request, "org_home.html",
+        await _org_home_context(request, ctx, password_error=error),
+        status_code=422 if resp.status_code == 422 else 502,
     )
 
 

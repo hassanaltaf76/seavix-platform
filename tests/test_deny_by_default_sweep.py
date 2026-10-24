@@ -81,6 +81,9 @@ IDENTITY_PROTECTED = {
     "/api/orgs/me/idps/{idp_id}",
     "/api/auth/session",
     "/api/auth/session/refresh",
+    # 32b: signed-in change password — session-header reauthentication +
+    # current-password verification; no OTP, no email in this flow
+    "/api/auth/change-password",
     # 31j: trusted-device account surface (list + revoke-all)
     "/api/auth/trusted-devices",
     # 31q: system-catalog combobox backends (services / vessel types) —
@@ -130,6 +133,7 @@ WEB_PUBLIC = {
 WEB_PROTECTED = {
     "/org/profile",
     "/org/profile/logo",
+    "/org/profile/publish",
     "/org/home",
     # 31g: the post-auth landing blade
     "/dashboard",
@@ -140,6 +144,9 @@ WEB_PROTECTED = {
     "/org/vessel-types/search",
     # 31j: 'Sign out all trusted devices' (account surface action)
     "/account/trusted-devices/revoke-all",
+    # 32b: Account → Change password (form POST proxied to identity's
+    # /api/auth/change-password; the current web session survives)
+    "/account/password",
     # 32a: client directory pages (client.view / client.create gated)
     "/org/clients",
     "/org/clients/new",

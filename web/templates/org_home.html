@@ -32,6 +32,43 @@
   </div>
 </section>
 
+{#- 32b FEATURE 3: Account → Change password. The reauthentication is the
+    signed-in session + the current password — no OTP, no email. A change
+    signs out every other session and trusted device; this browser stays
+    signed in. -#}
+<section class="sv-section-card" id="change-password">
+  <div class="sv-section-head">
+    <h2>Change password</h2>
+    <p>Your other sessions and trusted devices will be signed out.</p>
+  </div>
+  <div class="sv-section-body">
+    {% if password_changed %}
+    <p class="notice success" role="status">Password changed — your other
+       sessions and trusted devices were signed out.</p>
+    {% endif %}
+    {% if password_error %}<p class="sv-field-error" role="alert">{{ password_error }}</p>{% endif %}
+    <form method="post" action="/account/password" class="sv-form">
+      <div class="sv-field">
+        <label for="current_password">Current password</label>
+        <input id="current_password" name="current_password" type="password"
+               required autocomplete="current-password">
+      </div>
+      <div class="sv-field">
+        <label for="new_password">New password</label>
+        <input id="new_password" name="new_password" type="password"
+               required minlength="6" autocomplete="new-password">
+        <small>At least 6 characters, same rule as sign-up.</small>
+      </div>
+      <div class="sv-field">
+        <label for="confirm_password">Confirm new password</label>
+        <input id="confirm_password" name="confirm_password" type="password"
+               required minlength="6" autocomplete="new-password">
+      </div>
+      <button type="submit">Change password</button>
+    </form>
+  </div>
+</section>
+
 {#- 31j: trusted-device panel. Logout keeps trust, so a shared machine
     stays convenient; revoke-all is the one-click undo for every browser
     remembered at sign-in. -#}

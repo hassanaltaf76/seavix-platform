@@ -9,6 +9,13 @@
   {% if mode == "view" and can_edit %}
   <a class="button" href="/org/profile?view=edit">Edit</a>
   {% endif %}
+  {% if mode == "view" and can_publish and org %}
+    {% if org.profile_status == 'live' %}
+  <a class="button secondary" href="/org/profile/publish">Take offline</a>
+    {% else %}
+  <a class="button" href="/org/profile/publish">Publish / Go live</a>
+    {% endif %}
+  {% endif %}
   {% if mode == "edit" %}
   {#- §9 documented back-link #1: the view↔edit flow — the editor returns
       to its WYSIWYG preview. -#}
@@ -27,6 +34,10 @@
     state. -#}
 
 {% if saved %}<p class="notice success" role="status">Saved.</p>{% endif %}
+{% if published %}<p class="notice success" role="status">Your page is live —
+   <a href="/org/{{ org.slug }}">seavix.ai/org/{{ org.slug }}</a> is public now.</p>{% endif %}
+{% if unpublished %}<p class="notice success" role="status">Your page is back to
+   draft — seavix.ai/org/{{ org.slug }} shows visitors a not-found page again.</p>{% endif %}
 
 {% if mode == "view" %}
 {#- 31f: WYSIWYG preview — the SAME content partial the public page at

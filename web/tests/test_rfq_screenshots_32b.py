@@ -1,8 +1,9 @@
 """32b: the owner-review screenshot set — six shots covering both
-channels end to end:
+channels end to end (updated by the 24 Oct entry-time gate decision):
 
-1. the public RFQ form (new field set: vessel, port, reference)
-2. the register interstitial (?next= funnel, ship-operator preselect)
+1. the register interstitial — the anonymous entry now 303s straight to
+   ?next= /register, so this IS what a visitor sees on Raise an RFQ
+2. the authenticated RFQ form (new field set: vessel, port, reference)
 3. the client rail (RFQs section only, own request with status badge)
 4. the tenant RFQ list (public + manual rows, channel/status badges)
 5. the manual Raise form (channel radios + client picker)
@@ -74,22 +75,30 @@ def test_rfq_screenshot_set_32b(arun, id_asgi, tmp_path):
                 assert raised.status_code == 303, raised.text[:400]
                 manual_url = raised.headers["location"]
 
-            # 1+2 render signed-OUT chrome — a logged-in browser bounces
-            # /register to the dashboard (31c signed-out-only rule)
+            # 1+2 render signed-OUT / signed-IN chrome — the entry-time
+            # gate 303s an anonymous Raise click to ?next=/register; the
+            # form itself renders for the signed-in client.
             async with _web() as anon:
-                # 1. the public RFQ form
-                public = await anon.get(f"/org/{slug}/rfq")
-                assert public.status_code == 200
-                assert 'name="vessel_name"' in public.text
-                _shot(public.text, tmp_path, "rfq-form", 1280, 1400,
-                      prefix="32b")
+                gate = await anon.get(f"/org/{slug}/rfq",
+                                      follow_redirects=False)
+                assert gate.status_code == 303
+                assert gate.headers["location"] == f"/register?next=/org/{slug}/rfq"
 
-                # 2. the register interstitial
-                interstitial = await anon.get(f"/register?next=/org/{slug}/rfq")
+                # 1. the register interstitial
+                interstitial = await anon.get(gate.headers["location"])
                 assert interstitial.status_code == 200
                 assert 'value="client" selected' in interstitial.text
                 _shot(interstitial.text, tmp_path, "register-interstitial",
                       1280, 1000, prefix="32b")
+
+            async with _web() as wf:
+                await _register_client_org(idc, wf, u, "shotform")
+                # 2. the RFQ form, signed in
+                public = await wf.get(f"/org/{slug}/rfq")
+                assert public.status_code == 200
+                assert 'name="vessel_name"' in public.text
+                _shot(public.text, tmp_path, "rfq-form", 1280, 1400,
+                      prefix="32b")
 
             # client submits through the public funnel
             async with _web() as wc:

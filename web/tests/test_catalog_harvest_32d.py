@@ -95,16 +95,13 @@ def test_custom_entry_harvest_end_to_end(arun, id_asgi):
                 assert "Thank you" in rfq.text
 
             # the public page renders the custom chip for org A; the RFQ
-            # form picker stays anonymous and catalog-backed
+            # form picker is catalog-backed (the entry-time gate means the
+            # form itself needs any signed-in user; search/create stay
+            # public)
             async with _web() as wpub:
                 pub = await wpub.get(f"/org/{slug_a}")
                 assert pub.status_code == 200
                 assert label in pub.text
-
-                form = await wpub.get(f"/org/{slug_a}/rfq")
-                assert form.status_code == 200
-                assert 'id="survey-type-search"' in form.text
-                assert "sv-chip-picker" in form.text
 
                 search = await wpub.get("/org/rfq/survey-types/search",
                                         params={"q": "condition"})
@@ -112,8 +109,16 @@ def test_custom_entry_harvest_end_to_end(arun, id_asgi):
                 assert any(e["code"] == "condition"
                            for e in search.json()["survey_types"])
 
-                created = await wpub.post("/org/rfq/survey-types/create",
-                                          json={"label": f"Drone inspection {u}"})
+            async with _web() as wform:
+                await _register_and_login(idc, wform, f"harv-f-{u}@example.com",
+                                          f"harvest-f-{u}")
+                form = await wform.get(f"/org/{slug_a}/rfq")
+                assert form.status_code == 200
+                assert 'id="survey-type-search"' in form.text
+                assert "sv-chip-picker" in form.text
+
+                created = await wform.post("/org/rfq/survey-types/create",
+                                           json={"label": f"Drone inspection {u}"})
                 assert created.status_code in (200, 201), created.text
                 assert created.json()["code"] == custom_st  # duplicate selects
 

@@ -278,16 +278,25 @@ async def rfq_form_org(request: Request, slug: str,
             {"request": request, "slug": slug, "reason": reason},
             status_code=404,
         )
-    # 32b: the funnel returns here after verify+login (?ready=1) — the
-    # form re-renders with the success flash for the signed-in user.
-    submitter = await _rfq_submitter(request) if ready == "1" else None
+    # Owner decision 24 Oct: registration happens BEFORE the form is
+    # shown — the ENTRY-TIME gate. Anonymous visitors go straight to
+    # register with the local `next` pointing back here (the standard
+    # verify → password login → OTP chain returns them with ?ready=1);
+    # only a live profile reaches this point, so draft/suspended/missing
+    # keep the 404 above instead of redirecting.
+    submitter = await _rfq_submitter(request)
+    if submitter is None:
+        return RedirectResponse(f"/register?next=/org/{slug}/rfq",
+                                status_code=303)
+    # The funnel returns here after verify+login (?ready=1) — the form
+    # re-renders with the success flash for the signed-in user.
     return templates.TemplateResponse(request, "rfq_form.html", {
             "request": request,
             "slug": slug,
             "org_name": org["name"],
             "location_types": LOCATION_TYPES,
             "error": None,
-            "ready_flash": submitter is not None,
+            "ready_flash": ready == "1",
         },
     )
 
@@ -325,9 +334,9 @@ async def rfq_submit_org(
     if org is None:
         raise HTTPException(status_code=404, detail="organization not available")
 
-    # 32b SUBMIT GUARD: anonymous submitters register first — the standard
-    # flow (email+password, verification link, OTP, trust device) returns
-    # them here via `next` afterwards.
+    # Entry-time gate (owner 24 Oct) backstop: an anonymous POST — a
+    # crafted request reaching past the GET redirect — registers first;
+    # nothing has been persisted at this point and nothing will be.
     submitter = await _rfq_submitter(request)
     if submitter is None:
         return RedirectResponse(f"/register?next=/org/{slug}/rfq",

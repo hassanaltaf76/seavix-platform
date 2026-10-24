@@ -126,16 +126,28 @@ def test_public_funnel_end_to_end(arun, id_asgi):
                 _, slug = await _live_tenant(idc, wt, u)
 
             async with _web() as w:
-                # anonymous: the form renders, the submit guards to register
-                form = await w.get(f"/org/{slug}/rfq")
-                assert form.status_code == 200
-                assert 'name="vessel_name"' in form.text
-                assert 'name="port_name"' in form.text
-                assert 'name="reference_no"' in form.text
+                # owner 24 Oct — ENTRY-TIME gate: anonymous GET never
+                # renders the form; it goes straight to register with the
+                # local next pointing back here. A crafted anonymous POST
+                # redirects identically and persists nothing.
+                gate = await w.get(f"/org/{slug}/rfq", follow_redirects=False)
+                assert gate.status_code == 303
+                assert gate.headers["location"] == f"/register?next=/org/{slug}/rfq"
+                from sqlalchemy import text as _sql
+                from work.db import SessionLocal as _Wl
+                async with _Wl() as _s:
+                    before = (await _s.execute(_sql(
+                        "SELECT count(*) FROM rfq WHERE reference_no = :r"),
+                        {"r": f"PMS-QT-38-{u}"})).scalar_one()
                 guard = await w.post(f"/org/{slug}/rfq", data=_form(u),
                                      follow_redirects=False)
                 assert guard.status_code == 303
                 assert guard.headers["location"] == f"/register?next=/org/{slug}/rfq"
+                async with _Wl() as _s:
+                    after = (await _s.execute(_sql(
+                        "SELECT count(*) FROM rfq WHERE reference_no = :r"),
+                        {"r": f"PMS-QT-38-{u}"})).scalar_one()
+                assert before == after == 0
 
                 # register: the funnel preselects the ship-operator type and
                 # threads `next` through every step

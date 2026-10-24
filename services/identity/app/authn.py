@@ -8,10 +8,11 @@ Bearer tokens via security.current_user.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from sqlalchemy import text
 
 from seavix_ports import (AuthenticatedUser, FirebaseAuthProvider,
@@ -59,9 +60,12 @@ def _web_link(path: str, **params: str) -> str:
 
 
 async def _publish(request: Request, event_type: str, aggregate: str,
-                   aggregate_id: str, payload: dict) -> None:
+                   aggregate_id: str, payload: dict,
+                   visibility: str = "activity") -> None:
     await request.app.state.event_bus.publish(
-        event_type, domain_event(event_type, aggregate, aggregate_id, payload)
+        event_type,
+        domain_event(event_type, aggregate, aggregate_id, payload,
+                     visibility=visibility),
     )
 
 
@@ -457,6 +461,94 @@ async def reset_finish(payload: ResetFinish) -> dict:
             if user is not None:
                 await trusted_devices.revoke_all(session, str(user["id"]))
     return {"reset": True}
+
+
+# ------------------------------------------------- change password (32b)
+
+class ChangePassword(BaseModel):
+    """32b (owner decision 24 Oct): signed-in change password. The active
+    opaque session PLUS the current password is the reauthentication — NO
+    OTP, NO email in this flow. Registration's password policy applies
+    verbatim to the new password."""
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=6, max_length=128)  # /api/register policy
+    confirm_password: str = Field(min_length=6, max_length=128)
+
+    @model_validator(mode="after")
+    def new_password_valid(self) -> "ChangePassword":
+        if self.new_password != self.confirm_password:
+            raise ValueError("passwords do not match")
+        if self.new_password == self.current_password:
+            raise ValueError("new password must differ from your current password")
+        return self
+
+
+@router.post("/api/auth/change-password")
+async def change_password(payload: ChangePassword, request: Request) -> dict:
+    """FEATURE 3: Account → Change password for the SIGNED-IN user.
+
+    The caller is resolved from the X-Seavix-Session opaque session header
+    ONLY — a bearer-only request never reaches the mutation (401). The
+    current password is verified against Firebase BEFORE any mutation;
+    every failure below leaves the account exactly as it was.
+
+    Order: verify current password → update the EXISTING Firebase user's
+    password → revoke Firebase refresh tokens (best-effort) → ONE DB
+    transaction revoking every OTHER session and every trusted device →
+    commit → event. Firebase calls cannot join the PG transaction, so
+    they run first; anything failing before the commit means no DB
+    mutation happened. The CURRENT session deliberately survives."""
+    sid = _session_id(request)
+    async with SessionLocal() as session:
+        ctx = await sessions.load_session(session, sid)
+
+    fb = await _firebase_post(
+        "/accounts:signInWithPassword",
+        {"email": ctx["email"], "password": payload.current_password,
+         "returnSecureToken": True},
+    )
+    if fb["status"] != 200:
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "current_password",
+                    "message": "current password is incorrect"},
+        )
+
+    _ensure_firebase()
+    from firebase_admin import auth
+
+    auth.update_user(ctx["firebase_uid"], password=payload.new_password)
+    try:
+        auth.revoke_refresh_tokens(ctx["firebase_uid"])
+    except Exception:
+        # Tolerated: the Auth emulator ignores refresh-token revocation
+        # (older builds even error out) and a prod hiccup here must not
+        # roll back an otherwise-good change. The caller's own session is
+        # identity's opaque table, unaffected by Firebase token state.
+        pass
+
+    now = datetime.now(timezone.utc)
+    async with SessionLocal() as session:
+        await session.execute(
+            text(
+                "UPDATE auth_session SET revoked_at = :now "
+                "WHERE user_id = :uid AND id != :current AND revoked_at IS NULL"
+            ),
+            {"now": now, "uid": ctx["user_id"], "current": sid},
+        )
+        await session.execute(
+            text(
+                "UPDATE trusted_device SET revoked_at = :now "
+                "WHERE user_id = :uid AND revoked_at IS NULL"
+            ),
+            {"now": now, "uid": ctx["user_id"]},
+        )
+        await session.commit()
+
+    # activity + audit streams, payload carries NO secret, NO token, NO OTP
+    await _publish(request, "auth.password_changed", "app_user", ctx["user_id"],
+                   {"user_id": ctx["user_id"]}, visibility="both")
+    return {"changed": True}
 
 
 # --------------------------------------------------------- trusted devices

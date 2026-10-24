@@ -27,7 +27,8 @@ AUTH_TEMPLATES = ("login", "register", "forgot_password", "reset_password",
                   "verify_email_done", "verify_gate")
 PUBLIC_TEMPLATES = ("landing", "profile", "profile_unavailable",
                     "rfq_form", "rfq_thanks")
-PAGE_TEMPLATES = ("org_home", "org_profile", "org_not_found", "dashboard",
+PAGE_TEMPLATES = ("org_home", "org_profile", "org_profile_publish",
+                  "org_not_found", "dashboard",
                   "org_clients", "org_client_new", "org_client_detail",
                   "org_rfqs", "org_rfq_new", "org_rfq_detail",
                   "org_quotes", "org_quote_form", "org_quote_detail",

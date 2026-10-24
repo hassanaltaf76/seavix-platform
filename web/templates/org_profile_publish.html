@@ -1,0 +1,51 @@
+{% extends "base.html" %}{% block title %}Publish your page — SeaVix{% endblock %}
+{% set active = "profile" %}
+{% block page_title %}<h1>Publish your page</h1>{% endblock %}
+{% block page_desc %}<p class="sv-page-desc">Going live makes
+   seavix.ai/org/{{ org.slug }} visible to anyone. You can take it offline
+   again at any time.</p>{% endblock %}
+{% block page_actions %}
+  <a class="button secondary" href="/org/profile">← Back to preview</a>
+{% endblock %}
+{% block content %}
+  {% if error %}<p class="notice danger" role="alert">{{ error }}</p>{% endif %}
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>Current state</h2>
+      <p>What visitors see right now.</p>
+    </div>
+    <div class="sv-section-body">
+      {% if org.profile_status == 'live' %}
+      <p>Your page is <strong>live</strong> —
+         <a href="/org/{{ org.slug }}">seavix.ai/org/{{ org.slug }}</a>
+         is reachable for visitors.</p>
+      {% else %}
+      <p>Your page is a <strong>{{ org.profile_status }}</strong> —
+         seavix.ai/org/{{ org.slug }} shows visitors a not-found page
+         until you go live.</p>
+      {% endif %}
+    </div>
+  </section>
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>{% if org.profile_status == 'live' %}Take offline{% else %}Go live{% endif %}</h2>
+      <p>{% if org.profile_status == 'live' %}Return the page to draft.{% else %}Confirm with a click — this is a deliberate action, not part of Save.{% endif %}</p>
+    </div>
+    <div class="sv-section-body">
+      <form method="post" action="/org/profile/publish">
+        <input type="hidden" name="action"
+               value="{% if org.profile_status == 'live' %}draft{% else %}live{% endif %}">
+        {% if org.profile_status == 'live' %}
+        <p>Taking the page offline is immediate — public visitors and the
+           Raise-an-RFQ button will show a not-found page.</p>
+        <button type="submit" class="button secondary">Take offline</button>
+        {% else %}
+        <p>Once live, your page — description, services, vessel types, ports
+           and contact details — is visible to anyone, including search
+           engines. Your email stays private.</p>
+        <button type="submit" class="button">Publish / Go live</button>
+        {% endif %}
+      </form>
+    </div>
+  </section>
+{% endblock %}
