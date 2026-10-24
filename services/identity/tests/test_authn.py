@@ -43,9 +43,8 @@ async def _dev_code(c, email) -> str:
 
 async def _verify_email(c, email):
     """31i: login gates on a verified email. The helper marks the address
-    verified directly in the dev DB so the per-email SEND window stays
-    pristine for send-budget assertions; the real link pipeline is covered
-    by the dedicated verification tests below."""
+    verified directly in the dev DB (no mail send); the real link pipeline
+    is covered by the dedicated verification tests below."""
     from sqlalchemy import text as sql
 
     async with SessionLocal() as s:
@@ -309,36 +308,37 @@ def test_expired_code_rejected(arun, client):
     arun(scenario())
 
 
-def test_send_rate_limit_5_per_hour(arun, client):
-    """D1: at most 5 OTP sends per hour per email (6th -> 429)."""
+def test_login_otp_sends_and_resends_are_unlimited(arun, client):
+    """Owner decision 24 Oct: NO per-email send quota. Eight login/start
+    sends in a row all succeed, resends are unlimited too, no send path
+    returns 429 from historical volume, and the newest code still logs in."""
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
             email = f"rl-{u}@example.com"
 
-            slug = (await _register(c, email))["slug"]
+            await _register(c, email)
             await _verify_email(c, email)  # 31i: login requires verified
-            results = []
-            for _ in range(6):
+            for _ in range(8):
                 r = await c.post(
                     "/api/auth/login/start",
                     json={"email": email, "password": "secret-123"},
                 )
-                results.append(r.status_code)
-            assert results[:5] == [200] * 5
-            assert results[5] == 429
+                assert r.status_code == 200, r.text
+            for _ in range(3):
+                r = await c.post("/api/auth/login/resend", json={"email": email})
+                assert r.status_code == 200, r.text
+            # the burst above blocked nothing: the newest code completes login
+            code = await _dev_code(c, email)
+            assert (await _login(c, email, code)).status_code == 200
 
     arun(scenario())
 
 
-def test_verification_link_send_rate_limit(arun, client):
-    """31e: verification-link sends share the per-email 5/hour window with
-    OTP codes (the ONE send budget per email). The 6th send is 429; the
-    budget is per-email, and an exhausted window blocks the OTP pipeline
-    for that address too — and only that address.
-
-    31i: both accounts are marked verified first (login now gates on it)
-    via the DB helper, which leaves the send window untouched."""
+def test_verification_link_sends_are_unlimited_and_decoupled(arun, client):
+    """Owner decision 24 Oct: verification-link sends have no quota and no
+    shared OTP budget. Eight sends succeed for one address, the OTP pipeline
+    for that same address is unaffected, and other addresses send freely."""
     async def scenario():
         async with await client() as c:
             u = uuid.uuid4().hex[:8]
@@ -346,16 +346,19 @@ def test_verification_link_send_rate_limit(arun, client):
             await _register(c, email)
             await _verify_email(c, email)
 
-            results = []
-            for _ in range(6):
+            for _ in range(8):
                 r = await c.post(
                     "/api/register/verify/send", json={"email": email}
                 )
-                results.append(r.status_code)
-            assert results[:5] == [200] * 5
-            assert results[5] == 429
+                assert r.status_code == 200, r.text
 
-            # the window is per-email: another verified address still sends
+            # no shared budget: the OTP pipeline for the same address is fine
+            login = await c.post(
+                "/api/auth/login/start",
+                json={"email": email, "password": "secret-123"},
+            )
+            assert login.status_code == 200, login.text
+
             other = f"vo-{u}@example.com"
             await _register(c, other)
             await _verify_email(c, other)
@@ -363,20 +366,6 @@ def test_verification_link_send_rate_limit(arun, client):
                 "/api/register/verify/send", json={"email": other}
             )
             assert fresh.status_code == 200
-
-            # the shared budget: the 5 sends above consumed the hour window
-            # for `email`, so the OTP pipeline is limited for that address
-            # too (and only that address)
-            blocked = await c.post(
-                "/api/auth/login/start",
-                json={"email": email, "password": "secret-123"},
-            )
-            assert blocked.status_code == 429
-            other_login = await c.post(
-                "/api/auth/login/start",
-                json={"email": other, "password": "secret-123"},
-            )
-            assert other_login.status_code == 200
 
     arun(scenario())
 

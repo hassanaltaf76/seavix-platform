@@ -60,10 +60,6 @@ def otp_pepper() -> str:
     return os.environ.get("SEAVIX_OTP_PEPPER", "dev-otp-pepper")
 
 
-def otp_send_limit_per_hour() -> int:
-    return int(os.environ.get("SEAVIX_OTP_SEND_LIMIT", "5"))
-
-
 def otp_attempt_limit() -> int:
     return int(os.environ.get("SEAVIX_OTP_ATTEMPT_LIMIT", "5"))
 

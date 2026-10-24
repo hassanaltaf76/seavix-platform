@@ -74,8 +74,8 @@ async def login_submit(
     if resp.status_code == 403:
         # 31i: correct password, unverified email — the identity side sends
         # NO OTP and issues no challenge. The ONLY verification UI is this
-        # pre-login gate: deliver a fresh link now, offer a rate-limited
-        # resend, and never advance toward a session.
+        # pre-login gate: deliver a fresh link now, offer an
+        # unlimited resend, and never advance toward a session.
         detail = resp.json().get("detail", {})
         if isinstance(detail, dict) and detail.get("code") == "email_unverified":
             sent = await identity_request(
@@ -130,7 +130,7 @@ async def login_verify_email_resend(
     request: Request, email: str = Form(...)
 ) -> HTMLResponse:
     """31i: the gate screen's resend — the same identity verification-link
-    pipeline (itself rate-limited per email). Re-renders the gate with the
+    pipeline (no send quota). Re-renders the gate with the
     outcome; signed-in users never see this surface."""
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
@@ -197,7 +197,7 @@ async def login_otp_submit(
 @router.post("/login/otp/resend", response_class=HTMLResponse)
 @public_route
 async def login_otp_resend(request: Request, email: str = Form(...)) -> HTMLResponse:
-    """Fresh sign-in code; the identity side paces sends per email."""
+    """Fresh sign-in code; no send quota on the identity side."""
     redirect = await authenticated_home_redirect(request)
     if redirect is not None:
         return redirect

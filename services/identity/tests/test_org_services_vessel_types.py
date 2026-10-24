@@ -67,8 +67,8 @@ async def _register(c, email):
 
 
 async def _verify_email(c, email):
-    """31i: login gates on a verified email — mark it directly so the
-    per-email SEND window stays pristine."""
+    """31i: login gates on a verified email — mark it directly in the dev
+    DB (no mail send)."""
     from sqlalchemy import text as sql
 
     from app.db import SessionLocal

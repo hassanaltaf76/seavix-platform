@@ -4,8 +4,8 @@ Invariant: an unverified email NEVER completes login. After the password
 check and BEFORE any OTP challenge, identity refuses with 403
 email_unverified — no session is created and no sign-in OTP is issued.
 The web app renders the dedicated gate screen ("Verify your email to
-continue"), delivers a fresh verification link on arrival, and offers a
-rate-limited resend plus a way back to sign-in.
+continue"), delivers a fresh verification link on arrival, and offers an
+unlimited resend plus a way back to sign-in.
 
 Consequence: a signed-in user is ALWAYS verified, so every POST-AUTH
 surface (dashboard, account page, profile blade in both modes, top
@@ -128,11 +128,10 @@ def test_unverified_correct_password_hits_gate_no_session_no_otp(arun, id_asgi):
     arun(scenario())
 
 
-def test_gate_resend_is_rate_limited(arun, id_asgi):
-    """The gate resend goes through the identity verification-link pipeline
-    (shared per-email 5/hour send window). The arrival send consumed one
-    slot; four resends succeed, the fifth is refused with the inline error
-    and no mail goes out."""
+def test_gate_resend_is_unlimited(arun, id_asgi):
+    """Owner decision 24 Oct: no per-email send quota. Every resend
+    succeeds with the inline confirmation, each one delivers a fresh link,
+    and the throttled-refusal state never appears."""
     async def scenario():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=id_asgi), base_url="http://id"
@@ -148,21 +147,14 @@ def test_gate_resend_is_rate_limited(arun, id_asgi):
                 assert "Verify your email to continue" in gate.text
                 assert len(_verify_mails(email)) == 1  # the arrival send
 
-                for i in range(4):  # sends 2-5 in the window
+                for i in range(8):  # sends 2-9 in a row, none refused
                     r = await w.post(
                         "/login/verify-email/resend", data={"email": email}
                     )
                     assert r.status_code == 200, r.text
                     assert "A new link is on its way." in r.text
-                    assert "Verify your email to continue" in r.text
+                    assert "too many requests" not in r.text
                     assert len(_verify_mails(email)) == 2 + i
-
-                refused = await w.post(
-                    "/login/verify-email/resend", data={"email": email}
-                )
-                assert refused.status_code == 200
-                assert "too many requests" in refused.text
-                assert len(_verify_mails(email)) == 5  # nothing more sent
 
     arun(scenario())
 

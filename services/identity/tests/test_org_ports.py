@@ -38,8 +38,7 @@ async def _register(c, email):
 
 async def _verify_email(c, email):
     """31i: login gates on a verified email. The helper marks the address
-    verified directly in the dev DB so the per-email SEND window stays
-    pristine for send-budget assertions."""
+    verified directly in the dev DB (no mail send)."""
     from sqlalchemy import text as sql
 
     from app.db import SessionLocal

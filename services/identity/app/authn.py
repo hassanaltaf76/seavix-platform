@@ -292,9 +292,10 @@ async def login_resend(payload: OtpResend, request: Request) -> dict:
     """Send a fresh sign-in code for an in-progress OTP challenge.
 
     The response is constant regardless of account existence
-    (anti-enumeration, same posture as reset/start). Send pacing is enforced
-    by the per-email OTP send window; over-limit resends are swallowed so the
-    endpoint stays enum-free. Posture note: mailbox access already implies
+    (anti-enumeration, same posture as reset/start). No send quota (owner
+    decision 24 Oct): every resend issues a fresh code, and the constant
+    response keeps the endpoint enum-free. Posture note: mailbox access
+    already implies
     full account access via the password-reset flow, so an email-only resend
     does not weaken the model.
 
@@ -311,11 +312,7 @@ async def login_resend(payload: OtpResend, request: Request) -> dict:
             )
         ).first()
         if known is not None and known[0]:
-            try:
-                await otp.send_code(session, email, "login")
-            except HTTPException as exc:
-                if exc.status_code != 429:
-                    raise
+            await otp.send_code(session, email, "login")
     return {"email": email, "sent": True}
 
 
@@ -327,9 +324,8 @@ async def register_verify_send(payload: ResetStart, request: Request) -> dict:
     """Admin SDK verification link, delivered through the SeaVix mail
     pipeline (our template — no Firebase Trigger Email extension).
 
-    31e: resending is rate-limited like every other send — the link shares
-    the per-email 5/hour window with the OTP codes (over-limit -> 429, the
-    same posture as /api/auth/login/start)."""
+    31e: no send quota (owner decision 24 Oct) — resends are unlimited and
+    write nothing to the OTP ledger."""
     email = payload.email.lower()
     async with SessionLocal() as session:
         user = (
@@ -341,8 +337,6 @@ async def register_verify_send(payload: ResetStart, request: Request) -> dict:
         if user is None:
             # Same anti-enumeration posture as login.
             raise HTTPException(status_code=404, detail="unknown email")
-        await otp.enforce_send_window(session, email)
-        await otp.log_verification_link_send(session, email)
     _ensure_firebase()
     from firebase_admin import auth
 

@@ -139,7 +139,7 @@ async def _register_and_login(c, email):
     )
     assert r.status_code == 201, r.text
     # 31i: login gates on a verified email — mark it directly in the dev DB
-    # so the per-email SEND window stays pristine for send-budget assertions.
+    # (no mail send).
     from sqlalchemy import text as sql
 
     from app.db import SessionLocal
