@@ -242,7 +242,18 @@ window.addEventListener('load', () => {
   const tick = (ms) => new Promise((res) => setTimeout(res, ms || 60));
   const results = {};
   (async () => {
-    await tick(150);  // Alpine initializes on DOMContentLoaded
+    // 32d: the page carries more x-if templates now — wait for Alpine's
+    // INITIAL walk to finish before interacting (typing mid-walk lets x-if
+    // templates initialize nested trees inside the active walk, which can
+    // corrupt Alpine 3.14's walker and leave later elements like the save
+    // bar uninitialized). alpine:initialized fires when start() completes.
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      document.addEventListener("alpine:initialized", finish, { once: true });
+      setTimeout(finish, 3000);
+    });
+    await tick(100);
     const q = (sel) => document.querySelector(sel);
     const box = {
       country: document.getElementById('country_code'),
@@ -252,6 +263,17 @@ window.addEventListener('load', () => {
     const hidden = (name) => q('input[name="' + name + '"]').value;
     const bar = q('.sv-save-bar');
     const barVisible = () => bar && getComputedStyle(bar).display !== 'none';
+    // 32d: poll a condition — Alpine's reactive flush can land a tick
+    // after the DOM read under headless virtual time
+    const waitFor = async (fn, ms) => {
+      const t0 = Date.now();
+      while (Date.now() - t0 < (ms || 2000)) {
+        const v = fn();
+        if (v) return v;
+        await tick(50);
+      }
+      return null;
+    };
     const list = (id) => {
       const ul = document.getElementById(id);
       return {
@@ -298,7 +320,10 @@ window.addEventListener('load', () => {
     await tick(80);
     results.phoneValueAfterEnter = hidden('phone_cc');
     results.phoneLabelAfterEnter = box.phone.value;
-    results.barVisibleAfterPick = barVisible();
+    // the bar's x-show flush can land a tick after the hidden input under
+    // headless virtual time — poll instead of a single read
+    results.barVisibleAfterPick = await waitFor(
+        () => barVisible() ? true : null, 5000);
 
     // "44" matches +44 exactly AND as a substring (+244, +1441);
     // clicking the exact +44 entry picks it

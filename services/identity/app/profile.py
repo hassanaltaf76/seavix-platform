@@ -104,6 +104,10 @@ class ProfileUpdate(BaseModel):
     # vessel.taxonomy. None = leave untouched.
     services: list[str] | None = None
     vessel_types: list[str] | None = None
+    # 32d: survey types — the NEW identity-owned catalog (migration 0015,
+    # seeded 4 + harvested custom entries). Same full-replace Save; codes
+    # against the survey_type catalog, validated in the endpoint.
+    survey_types: list[str] | None = None
 
     @field_validator(
         "about", "website", "phone", "address", "contact_email",
@@ -188,7 +192,7 @@ class ProfileUpdate(BaseModel):
                 out.append(code)
         return out
 
-    @field_validator("services", "vessel_types")
+    @field_validator("services", "vessel_types", "survey_types")
     @classmethod
     def catalog_codes(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
@@ -368,6 +372,7 @@ async def update_profile(
                     [{"id": org_id, "code": c} for c in payload.ports],
                 )
         # 31q: services + vessel types ride the same full-replace Save.
+        # 32d: survey types join the same tuple (survey_type catalog).
         # Existence is checked against IDENTITY's own catalog BEFORE any
         # write (the org_* rows reference catalog codes, and identity owns
         # both sides here) — a 422 names the field exactly like a pydantic
@@ -376,6 +381,8 @@ async def update_profile(
             ("services", "service", "service_code", "org_service", "service"),
             ("vessel_types", "vessel_type", "ship_type",
              "org_vessel_type", "vessel type"),
+            ("survey_types", "survey_type", "survey_type_code",
+             "org_survey_type", "survey type"),
         ):
             codes = getattr(payload, field)
             if codes is None:

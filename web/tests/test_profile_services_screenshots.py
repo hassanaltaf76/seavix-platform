@@ -54,12 +54,12 @@ def test_profile_services_screenshot_set_31q(arun, id_asgi, tmp_path):
                 # set the org LIVE in-script — the public page must answer
                 await _verify_email_and_go_live(idc, email, sid)
 
-                # 1. editor: full-width form, three pickers with chips,
-                #    NO preview aside
+                # 1. editor: full-width form, four pickers with chips,
+                #    NO preview aside (32d: + survey types)
                 editor = await w.get("/org/profile?view=edit")
                 assert editor.status_code == 200
-                assert editor.text.count('class="sv-chip-picker"') == 3
-                assert editor.text.count('class="sv-chip"') == 3
+                assert editor.text.count('class="sv-chip-picker"') == 4
+                assert editor.text.count('class="sv-chip"') == 4
                 assert "sv-editor-preview" not in editor.text
                 _shot(editor.text, tmp_path, "editor", 1440, 1500, prefix="31q")
 

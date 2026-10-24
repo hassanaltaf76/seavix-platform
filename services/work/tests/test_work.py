@@ -81,7 +81,7 @@ def test_full_rfq_quote_job_flow(client):
             client.state["org_id"] = CLIENT_ORG
             r = await c.post("/api/rfqs", json={
                 "target_org_id": SURVEY_ORG, "vessel_imo": "1024948",
-                "survey_type": "condition", "location_type": "anchorage",
+                "survey_types": ["condition"], "location_type": "anchorage",
                 "preferred_date": "2026-11-01", "scope_notes": "Annual survey",
             })
             assert r.status_code == 201
@@ -163,7 +163,7 @@ def test_decline_path(client):
         async with client as c:
             client.state["org_id"] = CLIENT_ORG
             rfq_id = (await c.post("/api/rfqs", json={
-                "target_org_id": SURVEY_ORG, "survey_type": "bunker",
+                "target_org_id": SURVEY_ORG, "survey_types": ["bunker"],
                 "location_type": "terminal"})).json()["id"]
             client.state["org_id"] = SURVEY_ORG
             q = (await c.post(f"/api/rfqs/{rfq_id}/quotes",
@@ -188,7 +188,7 @@ def test_public_intake(client):
         async with client as c:
             ok = await c.post("/api/public/rfqs", json={
                 "org_slug": "live-surveyor", "contact_email": " buyer@example.com ",
-                "survey_type": "pre-purchase", "location_type": "STS",
+                "survey_types": ["pre_purchase"], "location_type": "STS",
                 "vessel_imo": "9404572", "scope_notes": "Pre-purchase survey",
             })
             assert ok.status_code == 201
@@ -203,12 +203,12 @@ def test_public_intake(client):
             # non-live org rejected
             bad = await c.post("/api/public/rfqs", json={
                 "org_slug": "draft-surveyor", "contact_email": "b@example.com",
-                "survey_type": "condition", "location_type": "OPL"})
+                "survey_types": ["condition"], "location_type": "OPL"})
             assert bad.status_code == 400
             # unknown org rejected
             missing = await c.post("/api/public/rfqs", json={
                 "org_slug": "nope", "contact_email": "b@example.com",
-                "survey_type": "condition", "location_type": "OPL"})
+                "survey_types": ["condition"], "location_type": "OPL"})
             assert missing.status_code == 404
 
             # anonymous RFQ cannot be accepted yet (requester conversion later)
@@ -229,12 +229,12 @@ def test_auth_required(client):
             client.state["enforce_auth"] = True
             client.state["org_id"] = CLIENT_ORG
             r = await c.post("/api/rfqs", json={
-                "target_org_id": SURVEY_ORG, "survey_type": "condition",
+                "target_org_id": SURVEY_ORG, "survey_types": ["condition"],
                 "location_type": "terminal"},
                 headers={"Authorization": "Bearer test"})
             assert r.status_code == 201
             noauth = await c.post("/api/rfqs", json={
-                "target_org_id": SURVEY_ORG, "survey_type": "condition",
+                "target_org_id": SURVEY_ORG, "survey_types": ["condition"],
                 "location_type": "terminal"})
             assert noauth.status_code == 401
 

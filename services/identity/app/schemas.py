@@ -35,9 +35,12 @@ class RegisterResponse(BaseModel):
 
 class CatalogEntry(BaseModel):
     """31q: one row of a system catalog (service / vessel type) — the code
-    is the stored vocabulary, the label is the humanized render text."""
+    is the stored vocabulary, the label is the humanized render text.
+    32d: `origin` marks system vs harvested custom entries (custom rows
+    carry a badge in picker dropdowns only, never on chips/public)."""
     code: str
     label: str
+    origin: str = "system"
 
 
 class PublicOrgResponse(BaseModel):
@@ -62,6 +65,8 @@ class PublicOrgResponse(BaseModel):
     # vessel-type codes are the same vocabulary registry uses)
     services: list[CatalogEntry] = []
     vessel_types: list[CatalogEntry] = []
+    # 32d: survey types offered, resolved [{code, label}] rows
+    survey_types: list[CatalogEntry] = []
     # 31t: structured public address + country dial codes. The legacy
     # free-text `address` stays (deprecated): when ANY structured field
     # is set, structured wins at render and the legacy text is hidden;

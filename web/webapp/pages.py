@@ -6,24 +6,51 @@ from pathlib import Path
 import httpx
 from seavix_ports import public_route
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .auth import authenticated_home_redirect
-from .config import blob_root, work_base_url
+from .config import blob_root
 from .filters import install as install_template_filters
 from .identity_client import identity_request
 from .ratelimit import RateLimiter
 from .registry_client import resolve_ports
+from .work_client import work_request
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 install_template_filters(templates.env)
 limiter = RateLimiter(limit=5, window_seconds=3600)
 
-SURVEY_TYPES = ("pre-purchase", "condition", "bunker", "loading-discharging")
 LOCATION_TYPES = ("terminal", "STS", "anchorage", "OPL", "repair-berth", "dry-dock")
 ORG_TYPES = ("agent", "management", "survey_company")
+
+
+# ------------------------------------------------------------------ 32d
+# Public survey-type catalog proxies for the RFQ form's chip picker. The
+# form is anonymous, so these ride identity's PUBLIC catalog endpoints
+# (reference data; custom entries created here carry NULL provenance).
+@router.get("/org/rfq/survey-types/search")
+@public_route
+async def rfq_survey_types_search(q: str = "") -> dict:
+    resp = await identity_request(
+        "GET", "/api/public/catalog/survey-types/search", params={"q": q}
+    )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="identity unavailable")
+    return resp.json()
+
+
+@router.post("/org/rfq/survey-types/create")
+@public_route
+async def rfq_survey_type_create(request: Request) -> dict:
+    body = await request.json()
+    resp = await identity_request(
+        "POST", "/api/public/catalog/survey-types", json=body
+    )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail="identity unavailable")
+    return JSONResponse(resp.json(), status_code=resp.status_code)
 
 
 async def _identity_get(path: str) -> httpx.Response:
@@ -31,10 +58,8 @@ async def _identity_get(path: str) -> httpx.Response:
 
 
 async def _post_public_rfq(payload: dict) -> httpx.Response:
-    """RFQ intake lives in the work service (spine). Scaffold-grade direct
-    HTTP call; a service-mesh/queue belongs to a later slice."""
-    async with httpx.AsyncClient(base_url=work_base_url(), timeout=10.0) as c:
-        return await c.post("/api/public/rfqs", json=payload)
+    """RFQ intake lives in the work service (spine)."""
+    return await work_request("POST", "/api/public/rfqs", json=payload)
 
 
 # ---------------------------------------------------------------- landing
@@ -196,7 +221,6 @@ async def rfq_form_org(request: Request, slug: str) -> HTMLResponse:
             "request": request,
             "slug": slug,
             "org_name": org["name"],
-            "survey_types": SURVEY_TYPES,
             "location_types": LOCATION_TYPES,
             "error": None,
         },
@@ -209,7 +233,7 @@ async def rfq_submit_org(
     request: Request,
     slug: str,
     vessel_imo: str = Form(...),
-    survey_type: str = Form(...),
+    survey_types: list[str] = Form([]),  # 32d: catalog chip picker (multi)
     location_type: str = Form(...),
     contact_email: str = Form(""),  # validated below for a clean form error
     preferred_date: str = Form(""),
@@ -236,9 +260,20 @@ async def rfq_submit_org(
                 "request": request,
                 "slug": slug,
                 "org_name": org["name"],
-                "survey_types": SURVEY_TYPES,
                 "location_types": LOCATION_TYPES,
                 "error": "contact email is required",
+            },
+            status_code=400,
+        )
+
+    codes = [s.strip() for s in survey_types if s.strip()]
+    if not codes:
+        return templates.TemplateResponse(request, "rfq_form.html", {
+                "request": request,
+                "slug": slug,
+                "org_name": org["name"],
+                "location_types": LOCATION_TYPES,
+                "error": "pick at least one survey type",
             },
             status_code=400,
         )
@@ -247,7 +282,7 @@ async def rfq_submit_org(
         "org_slug": slug,
         "contact_email": contact_email.strip(),
         "vessel_imo": vessel_imo.strip() or None,
-        "survey_type": survey_type,
+        "survey_types": codes,
         "location_type": location_type,
         "preferred_date": preferred_date or None,
         "scope_notes": scope or None,
@@ -260,7 +295,6 @@ async def rfq_submit_org(
                 "request": request,
                 "slug": slug,
                 "org_name": org["name"],
-                "survey_types": SURVEY_TYPES,
                 "location_types": LOCATION_TYPES,
                 "error": str(error),
             },

@@ -33,8 +33,9 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from seavix_ports import AuthContext, MembershipContext, require_auth
 
 from .auth import (
@@ -267,9 +268,10 @@ async def org_ports_search(request: Request, q: str = "",
     return resp.json()
 
 
-# 31q: the services + vessel-type pickers proxy IDENTITY's own catalogs
-# (migration 0011) — same reference-data rule as the port picker. Identity
-# requires a session, so the caller's session header rides along.
+# 32d: the services + vessel-type + survey-type pickers proxy IDENTITY's own
+# catalogs (migration 0011/0015) — same reference-data rule as the port
+# picker. Identity requires a session, so the caller's session header rides
+# along.
 @router.get("/org/services/search")
 async def org_services_search(request: Request, q: str = "",
                               ctx: AuthContext = Depends(require_auth)):
@@ -296,6 +298,69 @@ async def org_vessel_types_search(request: Request, q: str = "",
     return resp.json()
 
 
+@router.get("/org/survey-types/search")
+async def org_survey_types_search(request: Request, q: str = "",
+                                  ctx: AuthContext = Depends(require_auth)):
+    sid = session_id_from(request)
+    resp = await identity_request(
+        "GET", "/api/catalog/survey-types/search", params={"q": q},
+        headers={SESSION_HEADER: sid} if sid else {},
+    )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="identity unavailable")
+    return resp.json()
+
+
+# 32d: picker "Create …" proxies — POST the query as a new custom catalog
+# entry (identity: origin='custom' + created_by_org_id; duplicate label
+# returns the existing entry). The chip is added client-side from the
+# response; the profile Save persists the org join.
+class _CatalogLabelIn(BaseModel):
+    label: str
+
+
+@router.post("/org/services/create")
+async def org_service_create(payload: _CatalogLabelIn,
+                             request: Request,
+                             ctx: AuthContext = Depends(require_auth)):
+    sid = session_id_from(request)
+    resp = await identity_request(
+        "POST", "/api/catalog/services", json=payload.model_dump(),
+        headers={SESSION_HEADER: sid} if sid else {},
+    )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail="identity unavailable")
+    return JSONResponse(resp.json(), status_code=resp.status_code)
+
+
+@router.post("/org/vessel-types/create")
+async def org_vessel_type_create(payload: _CatalogLabelIn,
+                                 request: Request,
+                                 ctx: AuthContext = Depends(require_auth)):
+    sid = session_id_from(request)
+    resp = await identity_request(
+        "POST", "/api/catalog/vessel-types", json=payload.model_dump(),
+        headers={SESSION_HEADER: sid} if sid else {},
+    )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail="identity unavailable")
+    return JSONResponse(resp.json(), status_code=resp.status_code)
+
+
+@router.post("/org/survey-types/create")
+async def org_survey_type_create(payload: _CatalogLabelIn,
+                                 request: Request,
+                                 ctx: AuthContext = Depends(require_auth)):
+    sid = session_id_from(request)
+    resp = await identity_request(
+        "POST", "/api/catalog/survey-types", json=payload.model_dump(),
+        headers={SESSION_HEADER: sid} if sid else {},
+    )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail="identity unavailable")
+    return JSONResponse(resp.json(), status_code=resp.status_code)
+
+
 @router.post("/org/profile")
 async def org_profile_update(
     request: Request,
@@ -308,6 +373,7 @@ async def org_profile_update(
     ports: list[str] = Form([]),
     services: list[str] = Form([]),
     vessel_types: list[str] = Form([]),
+    survey_types: list[str] = Form([]),
     address_line1: str = Form(""),
     address_line2: str = Form(""),
     city: str = Form(""),
@@ -339,6 +405,7 @@ async def org_profile_update(
     codes = [p.strip().upper() for p in ports if p.strip()]
     svc_codes = [s.strip() for s in services if s.strip()]
     vt_codes = [v.strip() for v in vessel_types if v.strip()]
+    st_codes = [s.strip() for s in survey_types if s.strip()]
     org = await _org_with_ports(await _org_summary(membership.slug))
     resolved = await resolve_ports(codes)
     known = {p["code"] for p in resolved}
@@ -374,7 +441,8 @@ async def org_profile_update(
     resp = await identity_request(
         "PUT", "/api/orgs/me/profile",
         json={"slug": slug.strip(), **submitted, "ports": codes,
-              "services": svc_codes, "vessel_types": vt_codes},
+              "services": svc_codes, "vessel_types": vt_codes,
+              "survey_types": st_codes},
         headers={SESSION_HEADER: sid} if sid else {},
     )
     if resp.status_code == 200:

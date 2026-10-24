@@ -10,16 +10,22 @@ State rules (enforced here, tested in tests/test_work.py):
   (sent/draft) → superseded; RFQ → accepted; job row inserted. Emits
   quote.accepted and job.created.
 - Decline: sent → declined.
+
+32d: survey_types is a catalog-backed MULTI-select (identity owns the
+survey_type catalog; selections are org-independent — any catalog code).
+The legacy rfq.survey_type column keeps the FIRST selected code so
+existing readers keep working; rfq_survey_type is authoritative.
 """
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import text
 
 from seavix_ports import domain_event
@@ -29,7 +35,6 @@ from .db import SessionLocal
 
 router = APIRouter()
 
-SURVEY_TYPES = ("pre-purchase", "condition", "bunker", "loading-discharging")
 LOCATION_TYPES = ("terminal", "STS", "anchorage", "OPL", "repair-berth", "dry-dock")
 
 RFQ_COLS = (
@@ -42,22 +47,45 @@ RFQ_COLS = (
 class RfqIn(BaseModel):
     target_org_id: str
     vessel_imo: str | None = None
-    survey_type: Literal[*SURVEY_TYPES]
+    # 32d: catalog-backed multi-select (survey_type catalog codes —
+    # system seeds or harvested custom entries; format-checked here,
+    # existence lives in identity)
+    survey_types: list[str] = Field(min_length=1, max_length=10)
     location_type: Literal[*LOCATION_TYPES]
     preferred_date: date | None = None
     scope_notes: str | None = None
     contact_email: EmailStr | None = None
     billing_org_id: str | None = None
 
+    @field_validator("survey_types")
+    @classmethod
+    def survey_type_codes(cls, v: list[str]) -> list[str]:
+        out: list[str] = []
+        for raw in v:
+            code = raw.strip()
+            if not re.fullmatch(r"[a-z0-9_]{1,64}", code):
+                raise ValueError(
+                    f"survey type code {raw!r} must be 1-64 lowercase "
+                    "letters, digits and underscores"
+                )
+            if code not in out:
+                out.append(code)
+        return out
+
 
 class PublicRfqIn(BaseModel):
     org_slug: str = Field(min_length=2, max_length=64)
     contact_email: EmailStr
     vessel_imo: str | None = None
-    survey_type: Literal[*SURVEY_TYPES]
+    survey_types: list[str] = Field(min_length=1, max_length=10)
     location_type: Literal[*LOCATION_TYPES]
     preferred_date: date | None = None
     scope_notes: str | None = None
+
+    @field_validator("survey_types")
+    @classmethod
+    def survey_type_codes(cls, v: list[str]) -> list[str]:
+        return RfqIn.survey_type_codes(v)
 
 
 class QuoteIn(BaseModel):
@@ -115,16 +143,25 @@ async def create_rfq(payload: RfqIn, request: Request) -> dict:
                 "target": payload.target_org_id,
                 "contact": payload.contact_email,
                 "imo": payload.vessel_imo,
-                "stype": payload.survey_type,
+                # 32d: legacy column keeps the FIRST code; the join below
+                # is the authoritative multi-select storage
+                "stype": payload.survey_types[0],
                 "ltype": payload.location_type,
                 "pdate": payload.preferred_date,
                 "scope": payload.scope_notes,
             },
         )
+        await session.execute(
+            text(
+                "INSERT INTO rfq_survey_type (rfq_id, survey_type) "
+                "VALUES (:id, :code) ON CONFLICT DO NOTHING"
+            ),
+            [{"id": rfq_id, "code": c} for c in payload.survey_types],
+        )
         await session.commit()
     await _publish(request, "rfq.created", "rfq", rfq_id,
                    {"target_org_id": payload.target_org_id,
-                    "survey_type": payload.survey_type})
+                    "survey_types": payload.survey_types})
     return {"id": rfq_id, "status": "open"}
 
 
@@ -144,16 +181,23 @@ async def create_public_rfq(payload: PublicRfqIn, request: Request) -> dict:
                 "target": org["org_id"],
                 "contact": payload.contact_email,
                 "imo": payload.vessel_imo,
-                "stype": payload.survey_type,
+                "stype": payload.survey_types[0],
                 "ltype": payload.location_type,
                 "pdate": payload.preferred_date,
                 "scope": payload.scope_notes,
             },
         )
+        await session.execute(
+            text(
+                "INSERT INTO rfq_survey_type (rfq_id, survey_type) "
+                "VALUES (:id, :code) ON CONFLICT DO NOTHING"
+            ),
+            [{"id": rfq_id, "code": c} for c in payload.survey_types],
+        )
         await session.commit()
     await _publish(request, "rfq.created", "rfq", rfq_id,
                    {"target_slug": payload.org_slug,
-                    "survey_type": payload.survey_type})
+                    "survey_types": payload.survey_types})
     return {"id": rfq_id, "status": "open"}
 
 
@@ -198,7 +242,19 @@ async def get_rfq(request: Request, rfq_id: str) -> dict:
                 {"id": rfq_id},
             )
         ).mappings().all()
-    return {**_row(row), "quotes": [_quote_row(q) for q in quotes]}
+        # 32d: authoritative multi-select survey types (legacy column
+        # carries the first code)
+        survey_types = (
+            await session.execute(
+                text(
+                    "SELECT survey_type FROM rfq_survey_type WHERE rfq_id = :id "
+                    "ORDER BY survey_type"
+                ),
+                {"id": rfq_id},
+            )
+        ).scalars().all()
+    return {**_row(row), "quotes": [_quote_row(q) for q in quotes],
+            "survey_types": list(survey_types)}
 
 
 @router.get("/api/jobs/{job_id}")

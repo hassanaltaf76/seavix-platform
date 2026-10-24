@@ -1,7 +1,12 @@
-"""Auth plumbing: bearer token → caller org via the identity service.
+"""Auth plumbing: bearer token / session → caller org via the identity
+service.
 
 Work never verifies Firebase tokens itself and never reads the identity DB —
-it delegates to identity's /api/internal/whoami over HTTP.
+it delegates to identity's /api/internal/* over HTTP.
+
+Test seam (same pattern as webapp.identity_client): pytest swaps the
+transport for an in-process ASGI transport; None in production = real HTTP
+to identity_base_url().
 """
 from __future__ import annotations
 
@@ -14,12 +19,25 @@ from .config import identity_base_url
 # app's session cookie maps to it, so it is forwarded alongside the bearer.
 SESSION_HEADER = "X-Seavix-Session"
 
+_identity_transport: httpx.AsyncBaseTransport | None = None
+
+
+def set_identity_transport(transport: httpx.AsyncBaseTransport | None) -> None:
+    global _identity_transport
+    _identity_transport = transport
+
+
+def identity_transport() -> httpx.AsyncBaseTransport | None:
+    return _identity_transport
+
 
 async def caller_org(request: Request) -> dict:
     header = request.headers.get("authorization", "")
     if not header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
-    async with httpx.AsyncClient(base_url=identity_base_url(), timeout=10.0) as c:
+    async with httpx.AsyncClient(
+        base_url=identity_base_url(), timeout=10.0, transport=_identity_transport
+    ) as c:
         resp = await c.get("/api/internal/whoami",
                            headers={"Authorization": header})
     if resp.status_code == 401:
@@ -44,7 +62,9 @@ async def caller_member(request: Request) -> dict:
         headers[SESSION_HEADER] = sid
     if not headers:
         raise HTTPException(status_code=401, detail="missing credentials")
-    async with httpx.AsyncClient(base_url=identity_base_url(), timeout=10.0) as c:
+    async with httpx.AsyncClient(
+        base_url=identity_base_url(), timeout=10.0, transport=_identity_transport
+    ) as c:
         resp = await c.get("/api/internal/auth-context", headers=headers)
     if resp.status_code == 401:
         raise HTTPException(status_code=401, detail="invalid credentials")
@@ -67,7 +87,9 @@ async def require_permission(request: Request, permission: str) -> dict:
 
 async def resolve_public_org(org_slug: str) -> dict:
     """Identity internal org lookup — used to validate public RFQ intake."""
-    async with httpx.AsyncClient(base_url=identity_base_url(), timeout=10.0) as c:
+    async with httpx.AsyncClient(
+        base_url=identity_base_url(), timeout=10.0, transport=_identity_transport
+    ) as c:
         resp = await c.get(f"/api/internal/orgs/{org_slug}")
     if resp.status_code != 200:
         raise HTTPException(status_code=404, detail="organization not found")

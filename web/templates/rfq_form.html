@@ -3,15 +3,84 @@
 <div class="sv-container sv-org-wrap">
 <h1>Request a quotation from <span class="sv-ugc">{{ org_name }}</span></h1>
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-<form method="post" action="/org/{{ slug }}/rfq" class="form">
+<form method="post" action="/org/{{ slug }}/rfq" class="form"
+      x-data='{ stSelected: [],
+                stQ: "", stResults: [], stOpen: false, stCreating: false,
+                get stCanCreate() {
+                  const q = this.stQ.trim();
+                  return q.length > 0 && q.length <= 60 &&
+                    !this.stResults.some((r) => r.label.toLowerCase() === q.toLowerCase());
+                },
+                async searchSurveyTypes() {
+                  const frag = this.stQ.trim();
+                  if (!frag) { this.stResults = []; this.stOpen = false; return; }
+                  const resp = await fetch("/org/rfq/survey-types/search?q=" + encodeURIComponent(frag));
+                  if (resp.ok) {
+                    this.stResults = (await resp.json()).survey_types;
+                    this.stOpen = true;
+                  }
+                },
+                addSurveyType(st) {
+                  if (!this.stSelected.some(s => s.code === st.code)) { this.stSelected.push(st); }
+                  this.stQ = ""; this.stResults = []; this.stOpen = false;
+                },
+                removeSurveyType(code) { this.stSelected = this.stSelected.filter(s => s.code !== code); },
+                async createSurveyType() {
+                  const q = this.stQ.trim();
+                  if (!q || this.stCreating) return;
+                  this.stCreating = true;
+                  try {
+                    const resp = await fetch("/org/rfq/survey-types/create", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ label: q }) });
+                    if (resp.ok) this.addSurveyType(await resp.json());
+                  } finally { this.stCreating = false; }
+                } }'>
   <label for="vessel_imo">Vessel IMO number</label>
   <input id="vessel_imo" name="vessel_imo" type="text" required
          pattern="[0-9]{7}" title="7-digit IMO number">
 
-  <label for="survey_type">Survey type</label>
-  <select id="survey_type" name="survey_type" required>
-    {% for t in survey_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-  </select>
+  {#- 32d: survey type is the catalog-backed chip picker (multi-select) —
+      system seeds + harvested custom entries, via the public catalog
+      endpoints. Chips ride one hidden "survey_types" field per selection. -#}
+  <div class="sv-chip-picker">
+    <label for="survey-type-search">Survey type — pick every survey you
+           need</label>
+    <input id="survey-type-search" x-model="stQ"
+           @input.debounce.300ms="searchSurveyTypes()"
+           @focus="searchSurveyTypes()" @keydown.escape="stOpen = false"
+           autocomplete="off"
+           placeholder="e.g. pre-purchase, condition, bunker"
+           role="combobox" aria-expanded="stOpen"
+           aria-controls="survey-type-results">
+    <ul id="survey-type-results" class="sv-picker-results" x-show="stOpen"
+        @click.outside="stOpen = false" role="listbox">
+      <template x-for="st in stResults" :key="st.code">
+        <li><button type="button" role="option" @click="addSurveyType(st)">
+          <span x-text="st.label"></span><span class="sv-origin-badge"
+                x-show="st.origin === &quot;custom&quot;">custom</span>
+        </button></li>
+      </template>
+      <li x-show="stCanCreate" x-cloak><button type="button" role="option"
+              class="sv-picker-create" @click="createSurveyType()"
+              :disabled="stCreating">Create &quot;<span
+              x-text="stQ.trim()"></span>&quot;</button></li>
+    </ul>
+    <div class="sv-chips">
+      <template x-for="st in stSelected" :key="st.code">
+        <span class="sv-chip"><span x-text="st.label"></span>
+          <button type="button" class="sv-chip-x" @click="removeSurveyType(st.code)"
+                  :aria-label="&quot;Remove &quot; + st.label">×</button>
+        </span>
+      </template>
+      <template x-for="st in stSelected" :key="'hidden-' + st.code">
+        <input type="hidden" name="survey_types" :value="st.code">
+      </template>
+    </div>
+    <small>Can't find your survey? Type its name and pick
+           <strong>Create</strong> — it joins the shared catalog.</small>
+  </div>
 
   <label for="location_type">Location type</label>
   <select id="location_type" name="location_type" required>

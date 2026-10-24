@@ -53,10 +53,66 @@
           @sv-dirty="dirty = true"
           x-data='{ selected: {{ org.ports | tojson }}, q: "", results: [], open: false,
                   svcSelected: {{ org.services | tojson }},
-                  svcQ: "", svcResults: [], svcOpen: false,
+                  svcQ: "", svcResults: [], svcOpen: false, svcCreating: false,
                   vtSelected: {{ org.vessel_types | tojson }},
-                  vtQ: "", vtResults: [], vtOpen: false,
+                  vtQ: "", vtResults: [], vtOpen: false, vtCreating: false,
+                  stSelected: {{ org.survey_types | tojson }},
+                  stQ: "", stResults: [], stOpen: false, stCreating: false,
                   dirty: false, valid: true,
+                  // 32d: a Create row shows when the debounced query has no
+                  // exact label match (case-insensitive) and is a sane
+                  // length; creating adds a chip, which marks dirty (31q).
+                  get svcCanCreate() {
+                    const q = this.svcQ.trim();
+                    return q.length > 0 && q.length <= 60 &&
+                      !this.svcResults.some((r) => r.label.toLowerCase() === q.toLowerCase());
+                  },
+                  get vtCanCreate() {
+                    const q = this.vtQ.trim();
+                    return q.length > 0 && q.length <= 60 &&
+                      !this.vtResults.some((r) => r.label.toLowerCase() === q.toLowerCase());
+                  },
+                  get stCanCreate() {
+                    const q = this.stQ.trim();
+                    return q.length > 0 && q.length <= 60 &&
+                      !this.stResults.some((r) => r.label.toLowerCase() === q.toLowerCase());
+                  },
+                  async createService() {
+                    const q = this.svcQ.trim();
+                    if (!q || this.svcCreating) return;
+                    this.svcCreating = true;
+                    try {
+                      const resp = await fetch("/org/services/create", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ label: q }) });
+                      if (resp.ok) this.addService(await resp.json());
+                    } finally { this.svcCreating = false; }
+                  },
+                  async createVesselType() {
+                    const q = this.vtQ.trim();
+                    if (!q || this.vtCreating) return;
+                    this.vtCreating = true;
+                    try {
+                      const resp = await fetch("/org/vessel-types/create", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ label: q }) });
+                      if (resp.ok) this.addVesselType(await resp.json());
+                    } finally { this.vtCreating = false; }
+                  },
+                  async createSurveyType() {
+                    const q = this.stQ.trim();
+                    if (!q || this.stCreating) return;
+                    this.stCreating = true;
+                    try {
+                      const resp = await fetch("/org/survey-types/create", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ label: q }) });
+                      if (resp.ok) this.addSurveyType(await resp.json());
+                    } finally { this.stCreating = false; }
+                  },
                   async search() {
                     const frag = this.q.trim();
                     if (!frag) { this.results = []; this.open = false; return; }
@@ -98,7 +154,21 @@
                     if (!this.vtSelected.some(v => v.code === vt.code)) { this.vtSelected.push(vt); this.dirty = true; }
                     this.vtQ = ""; this.vtResults = []; this.vtOpen = false;
                   },
-                  removeVesselType(code) { this.vtSelected = this.vtSelected.filter(v => v.code !== code); this.dirty = true; } }'>
+                  removeVesselType(code) { this.vtSelected = this.vtSelected.filter(v => v.code !== code); this.dirty = true; },
+                  async searchSurveyTypes() {
+                    const frag = this.stQ.trim();
+                    if (!frag) { this.stResults = []; this.stOpen = false; return; }
+                    const resp = await fetch("/org/survey-types/search?q=" + encodeURIComponent(frag));
+                    if (resp.ok) {
+                      this.stResults = (await resp.json()).survey_types;
+                      this.stOpen = true;
+                    }
+                  },
+                  addSurveyType(st) {
+                    if (!this.stSelected.some(s => s.code === st.code)) { this.stSelected.push(st); this.dirty = true; }
+                    this.stQ = ""; this.stResults = []; this.stOpen = false;
+                  },
+                  removeSurveyType(code) { this.stSelected = this.stSelected.filter(s => s.code !== code); this.dirty = true; } }'>
 
       <section class="sv-section-card">
         <div class="sv-section-head">
@@ -173,9 +243,18 @@
             <ul id="service-results" class="sv-picker-results" x-show="svcOpen"
                 @click.outside="svcOpen = false" role="listbox">
               <template x-for="svc in svcResults" :key="svc.code">
-                <li><button type="button" role="option" @click="addService(svc)"
-                      x-text="svc.label"></button></li>
+                <li><button type="button" role="option" @click="addService(svc)">
+                  <span x-text="svc.label"></span><span class="sv-origin-badge"
+                        x-show="svc.origin === &quot;custom&quot;">custom</span>
+                </button></li>
               </template>
+              {#- 32d: Create row — visible only when the query has no exact
+                  label match; identity dedups by label and returns the
+                  existing entry if another org already harvested it. -#}
+              <li x-show="svcCanCreate" x-cloak><button type="button" role="option"
+                      class="sv-picker-create" @click="createService()"
+                      :disabled="svcCreating">Create &quot;<span
+                      x-text="svcQ.trim()"></span>&quot;</button></li>
             </ul>
             <div class="sv-chips">
               <template x-for="svc in svcSelected" :key="svc.code">
@@ -209,9 +288,15 @@
             <ul id="vessel-type-results" class="sv-picker-results" x-show="vtOpen"
                 @click.outside="vtOpen = false" role="listbox">
               <template x-for="vt in vtResults" :key="vt.code">
-                <li><button type="button" role="option" @click="addVesselType(vt)"
-                      x-text="vt.label"></button></li>
+                <li><button type="button" role="option" @click="addVesselType(vt)">
+                  <span x-text="vt.label"></span><span class="sv-origin-badge"
+                        x-show="vt.origin === &quot;custom&quot;">custom</span>
+                </button></li>
               </template>
+              <li x-show="vtCanCreate" x-cloak><button type="button" role="option"
+                      class="sv-picker-create" @click="createVesselType()"
+                      :disabled="vtCreating">Create &quot;<span
+                      x-text="vtQ.trim()"></span>&quot;</button></li>
             </ul>
             <div class="sv-chips">
               <template x-for="vt in vtSelected" :key="vt.code">
@@ -227,6 +312,52 @@
             {% if field_errors.get("vessel_types") %}<p class="sv-field-error" role="alert">{{ field_errors.get("vessel_types") }}</p>{% endif %}
             <small>They appear as "Vessel types we serve" chips on your
                    public page.</small>
+          </div>
+
+          {#- 32d: survey types picker — the survey_type catalog (seeded 4
+              + harvested custom entries), same chips contract, with the
+              Create row. These are the surveys the org OFFERS on its
+              profile; the RFQ form's picker is separate (org-independent,
+              work.rfq_survey_type). -#}
+          <div class="sv-chip-picker">
+            <label for="survey-type-search">Survey types — the kinds of
+                   surveys you offer</label>
+            <input id="survey-type-search" x-model="stQ"
+                   @input.debounce.300ms="searchSurveyTypes()"
+                   @focus="searchSurveyTypes()" @keydown.escape="stOpen = false"
+                   autocomplete="off"
+                   placeholder="e.g. pre-purchase, condition, bunker"
+                   role="combobox" aria-expanded="stOpen"
+                   aria-controls="survey-type-results">
+            <ul id="survey-type-results" class="sv-picker-results" x-show="stOpen"
+                @click.outside="stOpen = false" role="listbox">
+              <template x-for="st in stResults" :key="st.code">
+                <li><button type="button" role="option" @click="addSurveyType(st)">
+                  <span x-text="st.label"></span><span class="sv-origin-badge"
+                        x-show="st.origin === &quot;custom&quot;">custom</span>
+                </button></li>
+              </template>
+              <li x-show="stCanCreate" x-cloak><button type="button" role="option"
+                      class="sv-picker-create" @click="createSurveyType()"
+                      :disabled="stCreating">Create &quot;<span
+                      x-text="stQ.trim()"></span>&quot;</button></li>
+            </ul>
+            <div class="sv-chips">
+              <template x-for="st in stSelected" :key="st.code">
+                <span class="sv-chip"><span x-text="st.label"></span>
+                  <button type="button" class="sv-chip-x" @click="removeSurveyType(st.code)"
+                          :aria-label="&quot;Remove &quot; + st.label">×</button>
+                </span>
+              </template>
+              <template x-for="st in stSelected" :key="'hidden-' + st.code">
+                <input type="hidden" name="survey_types" :value="st.code">
+              </template>
+            </div>
+            {% if field_errors.get("survey_types") %}<p class="sv-field-error" role="alert">{{ field_errors.get("survey_types") }}</p>{% endif %}
+            <small>They appear as "Survey types" chips on your public page.
+                   Can't find a survey? Type its name and pick
+                   <strong>Create</strong> — it is added to the shared
+                   catalog for every organization.</small>
           </div>
 
           <div class="sv-chip-picker">

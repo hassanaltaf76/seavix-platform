@@ -167,7 +167,7 @@ def test_view_mode_is_wysiwyg_and_ports_round_trip(arun, id_asgi):
                 assert editor.text.count(
                     '<template x-for="port in selected" :key="port.code">') == 1
                 assert editor.text.count('name="ports"') == 1  # hidden-input template
-                assert editor.text.count('class="sv-chip"') == 3  # 31q: one chip template per picker (ports/services/vessel types); no preview aside adding rendered chips
+                assert editor.text.count('class="sv-chip"') == 4  # 32d: one chip template per picker (ports/services/vessel/survey types); no preview aside adding rendered chips
                 assert "<article" not in editor.text  # no preview aside in edit mode
                 for name in ("Al Fujayrah", "Singapore", "Rotterdam"):
                     assert f'"name": "{name}"' in editor.text

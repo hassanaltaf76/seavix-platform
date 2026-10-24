@@ -70,6 +70,18 @@ async def get_public_org(slug: str) -> PublicOrgResponse:
                 {"id": row["id"]},
             )
         ).mappings().all()
+        # 32d: survey types ride the same resolution (survey_type catalog)
+        survey_types = (
+            await session.execute(
+                text(
+                    "SELECT st.survey_type_code AS code, st.label FROM "
+                    "org_survey_type ost JOIN survey_type st "
+                    "ON st.survey_type_code = ost.survey_type_code "
+                    "WHERE ost.org_id = :id ORDER BY st.sort_order"
+                ),
+                {"id": row["id"]},
+            )
+        ).mappings().all()
     return PublicOrgResponse(
         slug=slug,
         name=row["name"],
@@ -85,6 +97,7 @@ async def get_public_org(slug: str) -> PublicOrgResponse:
         ports=list(ports),
         services=[dict(r) for r in services],
         vessel_types=[dict(r) for r in vessel_types],
+        survey_types=[dict(r) for r in survey_types],
         address_line1=row["address_line1"],
         address_line2=row["address_line2"],
         city=row["city"],

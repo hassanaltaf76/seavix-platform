@@ -112,10 +112,10 @@ def test_services_vessel_types_round_trip_and_preview(arun, id_asgi):
                 # ... while VIEW mode keeps the WYSIWYG preview untouched
                 assert 'class="card sv-preview"' in view.text
                 assert "<article" in view.text
-                # three pickers, three chip templates
-                assert editor.text.count('class="sv-chip-picker"') == 3
-                assert editor.text.count('class="sv-chip"') == 3
-                assert editor.text.count('class="sv-chips"') == 3
+                # four pickers, four chip templates (32d: + survey types)
+                assert editor.text.count('class="sv-chip-picker"') == 4
+                assert editor.text.count('class="sv-chip"') == 4
+                assert editor.text.count('class="sv-chips"') == 4
                 for code in SERVICES:
                     assert f'"code": "{code}"' in editor.text
                 for code in VESSEL_TYPES:
@@ -128,12 +128,13 @@ def test_services_vessel_types_round_trip_and_preview(arun, id_asgi):
                 assert editor.text.count('name="ports"') == 1
 
                 # combobox backends (label substring + code substring)
+                # 32d: entries carry origin for the dropdown badge
                 by_label = await w.get("/org/services/search?q=draft")
-                assert {"code": "draft_survey", "label": "Draft survey"} in \
-                    by_label.json()["services"]
+                assert {"code": "draft_survey", "label": "Draft survey",
+                        "origin": "system"} in by_label.json()["services"]
                 by_code = await w.get("/org/vessel-types/search?q=BULK")
-                assert {"code": "bulk_carrier", "label": "Bulk carrier"} in \
-                    by_code.json()["vessel_types"]
+                assert {"code": "bulk_carrier", "label": "Bulk carrier",
+                        "origin": "system"} in by_code.json()["vessel_types"]
 
                 # chip removal round-trips: re-Save WITHOUT bulk_carrier
                 saved2 = await w.post(
@@ -238,7 +239,8 @@ def test_unknown_service_code_rejected_inline(arun, id_asgi):
                 assert 'name="services"' in bad.text  # edit mode re-render
                 pub = await idc.get(f"/api/orgs/{slug}")
                 assert pub.json()["services"] == [
-                    {"code": "draft_survey", "label": "Draft survey"}
+                    {"code": "draft_survey", "label": "Draft survey",
+                     "origin": "system"}
                 ]
 
                 # mixed known + unknown on vessel types: whole save 422s
@@ -309,23 +311,33 @@ def test_edit_mode_full_width_no_preview_aside(arun, id_asgi):
     arun(scenario())
 
 
-def test_dirty_tracking_counts_all_three_pickers():
-    """All three pickers' add()/remove() mark the form dirty; the
+def test_dirty_tracking_counts_all_pickers():
+    """All four pickers' add()/remove() mark the form dirty; the
     debounced search functions never touch dirty (search alone is
-    clean — the sticky Save bar must not appear)."""
+    clean — the sticky Save bar must not appear). 32d: creating an
+    entry adds a chip via the same addX(), so it is dirty too."""
     from pathlib import Path
 
     text = (Path(__file__).resolve().parents[1]
             / "templates" / "org_profile.html").read_text()
-    assert text.count("this.dirty = true") == 6  # 3 pickers x (add, remove)
-    for fn in ("search()", "searchServices()", "searchVesselTypes()"):
+    assert text.count("this.dirty = true") == 8  # 4 pickers x (add, remove)
+    for fn in ("search()", "searchServices()", "searchVesselTypes()",
+               "searchSurveyTypes()"):
         body = re.search(
             rf"async {re.escape(fn)} \{{(.*?)\n                  \}},", text,
             re.S,
         )
         assert body, fn
         assert "dirty" not in body.group(1), fn
-    assert text.count("@input.debounce.300ms") == 3
+    assert text.count("@input.debounce.300ms") == 4
+    # 32d: the Create row exists on the three CATALOG pickers only —
+    # ports are registry-owned UN/LOCODE reference data and never offer
+    # creation (contract): sv-picker-create appears exactly 3 times and
+    # never inside the ports picker block.
+    assert text.count("sv-picker-create") == 3
+    ports_block = text[text.index('id="port-search"'):]
+    ports_block = ports_block[:ports_block.index("</div>", ports_block.index("sv-chips"))]
+    assert "sv-picker-create" not in ports_block
 
 
 def test_catalog_labels_render_escaped(arun, id_asgi):

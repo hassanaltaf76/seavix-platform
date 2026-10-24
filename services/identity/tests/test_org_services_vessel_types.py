@@ -179,13 +179,17 @@ def test_services_and_vessel_types_round_trip_replace_clear(arun):
             pub = await c.get(f"/api/orgs/{slug}")
             body = pub.json()
             # resolved to [{code, label}] rows in catalog sort order
+            # (32d: rows also carry origin — 'system' for catalog seeds)
             assert body["services"] == [
-                {"code": "condition_survey", "label": "Condition survey"},
-                {"code": "draft_survey", "label": "Draft survey"},
+                {"code": "condition_survey", "label": "Condition survey",
+                 "origin": "system"},
+                {"code": "draft_survey", "label": "Draft survey",
+                 "origin": "system"},
             ]
             assert body["vessel_types"] == [
-                {"code": "oil_tanker", "label": "Oil tanker"},
-                {"code": "tug", "label": "Tug"},
+                {"code": "oil_tanker", "label": "Oil tanker",
+                 "origin": "system"},
+                {"code": "tug", "label": "Tug", "origin": "system"},
             ]
 
             # replace: the Save button submits the complete chip list
@@ -198,10 +202,11 @@ def test_services_and_vessel_types_round_trip_replace_clear(arun):
             pub = await c.get(f"/api/orgs/{slug}")
             assert pub.json()["services"] == [
                 {"code": "bunker_quantity_survey",
-                 "label": "Bunker quantity survey"},
+                 "label": "Bunker quantity survey", "origin": "system"},
             ]
             assert pub.json()["vessel_types"] == [
-                {"code": "gas_carrier", "label": "Gas carrier"},
+                {"code": "gas_carrier", "label": "Gas carrier",
+                 "origin": "system"},
             ]
 
             # clear with empty lists; absent fields leave the rows alone
@@ -281,7 +286,8 @@ def test_unknown_catalog_codes_rejected_atomically(arun):
 
             pub = await c.get(f"/api/orgs/{slug}")
             assert pub.json()["services"] == [
-                {"code": "draft_survey", "label": "Draft survey"}
+                {"code": "draft_survey", "label": "Draft survey",
+                 "origin": "system"}
             ]
             assert pub.json()["vessel_types"] == []
 
@@ -308,8 +314,9 @@ def test_catalog_search_requires_only_a_session(arun):
                 "/api/catalog/services/search?q=draft", headers=auth
             )
             assert by_label.status_code == 200
-            assert {"code": "draft_survey", "label": "Draft survey"} in \
-                by_label.json()["services"]
+            # 32d: entries carry origin (system seeds; custom when harvested)
+            assert {"code": "draft_survey", "label": "Draft survey",
+                    "origin": "system"} in by_label.json()["services"]
             # catalog sort order, not alphabetical
             all_svcs = (
                 await c.get("/api/catalog/services/search?q=survey", headers=auth)
@@ -331,7 +338,8 @@ def test_catalog_search_requires_only_a_session(arun):
                 "/api/catalog/vessel-types/search?q=offshore", headers=auth
             )
             assert vt.json()["vessel_types"] == [
-                {"code": "offshore_supply", "label": "Offshore supply"}
+                {"code": "offshore_supply", "label": "Offshore supply",
+                 "origin": "system"}
             ]
 
     arun(scenario())

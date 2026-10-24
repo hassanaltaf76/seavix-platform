@@ -24,21 +24,16 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from .auth import require_permission
+from .auth import identity_transport, require_permission, set_identity_transport
 from .config import identity_base_url
 from .db import SessionLocal
 
 router = APIRouter()
 
-# Test seam (same pattern as webapp.identity_client): web-app tests run the
-# work service in-process but identity behind an ASGI transport; None in
-# production = real HTTP to identity_base_url().
-_identity_transport: httpx.AsyncBaseTransport | None = None
-
-
-def set_identity_transport(transport: httpx.AsyncBaseTransport | None) -> None:
-    global _identity_transport
-    _identity_transport = transport
+# The identity transport seam lives in auth.py (one override for every
+# work → identity call); re-exported here for the test wiring that
+# 32a established at this module path.
+__all__ = ["router", "set_identity_transport"]
 
 RELATIONSHIP_TYPES = ("management", "surveyor_subcontract", "port_agent")
 
@@ -73,7 +68,7 @@ async def create_identity_org(payload: dict) -> dict:
     (the 31t contact-field rules, owned and validated by identity) is
     propagated verbatim so the web app can render inline field errors."""
     async with httpx.AsyncClient(
-        base_url=identity_base_url(), timeout=10.0, transport=_identity_transport
+        base_url=identity_base_url(), timeout=10.0, transport=identity_transport()
     ) as c:
         resp = await c.post("/api/internal/orgs", json=payload)
     if resp.status_code == 422:
@@ -87,7 +82,7 @@ async def create_identity_org(payload: dict) -> dict:
 async def get_identity_org(org_id: str) -> dict:
     """Directory-field read of one org from identity (enriches edges)."""
     async with httpx.AsyncClient(
-        base_url=identity_base_url(), timeout=10.0, transport=_identity_transport
+        base_url=identity_base_url(), timeout=10.0, transport=identity_transport()
     ) as c:
         resp = await c.get(f"/api/internal/orgs/id/{org_id}")
     if resp.status_code != 200:

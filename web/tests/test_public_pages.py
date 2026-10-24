@@ -72,7 +72,7 @@ def _run(coro):
 def _rfq_data():
     return {
         "vessel_imo": "9074729",
-        "survey_type": "condition",
+        "survey_types": ["condition"],
         "location_type": "anchorage",
         "contact_email": "charterer@example.com",
         "preferred_date": "2026-11-01",
@@ -224,7 +224,7 @@ def test_rfq_forwards_to_work_service(web):
     (payload,) = web["posted"]
     assert payload["org_slug"] == LIVE_ORG["slug"]
     assert payload["contact_email"] == "charterer@example.com"
-    assert payload["survey_type"] == "condition"
+    assert payload["survey_types"] == ["condition"]
     assert payload["vessel_imo"] == "9074729"
 
 

@@ -155,8 +155,10 @@ def test_yacht_boat_round_trip_through_profile(arun):
             assert r.status_code == 200, r.text
             pub = await c.get(f"/api/orgs/{slug}")
             assert pub.json()["vessel_types"] == [
-                {"code": "yacht_large", "label": "Yacht — large"},
-                {"code": "boat_small", "label": "Boat — small"},
+                {"code": "yacht_large", "label": "Yacht — large",
+                 "origin": "system"},
+                {"code": "boat_small", "label": "Boat — small",
+                 "origin": "system"},
             ]
 
             # replaced by a clear, like every other field

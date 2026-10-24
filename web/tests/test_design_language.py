@@ -811,10 +811,12 @@ def test_edit_mode_full_width_no_preview_aside_31q():
     assert "sv-editor-layout" not in blade
     assert ".sv-editor-layout" not in style
     assert ".sv-editor-preview" not in style
-    # the three chip pickers share the generalized picker component
-    assert blade.count('class="sv-chip-picker"') == 3
+    # the four chip pickers share the generalized picker component
+    # (32d: services / vessel types / survey types + registry-owned ports)
+    assert blade.count('class="sv-chip-picker"') == 4
     assert 'id="service-search"' in blade
     assert 'id="vessel-type-search"' in blade
+    assert 'id="survey-type-search"' in blade
     assert 'id="port-search"' in blade
     assert ".sv-chip-picker" in style
     assert ".sv-picker-results" in style

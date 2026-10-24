@@ -51,6 +51,11 @@
     {% for v in org.vessel_types %}<span class="sv-chip">{{ v.label }}</span>{% if not loop.last %}<span class="sv-port-sep" aria-hidden="true"> </span>{% endif %}{% endfor %}
   </p>
   {% endif %}
+  {% if org.survey_types %}
+  <p class="sv-org-survey-types"><strong>Survey types:</strong>
+    {% for s in org.survey_types %}<span class="sv-chip">{{ s.label }}</span>{% if not loop.last %}<span class="sv-port-sep" aria-hidden="true"> </span>{% endif %}{% endfor %}
+  </p>
+  {% endif %}
   {% if org.ports %}
   <p class="sv-org-ports"><strong>Ports we serve:</strong>
     {% for p in org.ports %}<span class="sv-chip" title="{{ p.code }} — {{ p.country }}">{{ p.name }}</span>{% if not loop.last %}<span class="sv-port-sep" aria-hidden="true"> </span>{% endif %}{% endfor %}

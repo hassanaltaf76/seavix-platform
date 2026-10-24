@@ -43,6 +43,7 @@ def test_yacht_boat_picker_search_by_label(arun, id_asgi):
                 ]
                 assert yachts.json()["vessel_types"][0] == {
                     "code": "yacht_small", "label": "Yacht — small",
+                    "origin": "system",
                 }
 
                 boats = await w.get("/org/vessel-types/search?q=boat")

@@ -48,6 +48,10 @@ IDENTITY_PUBLIC = {
     # documented service-auth gap as the slug lookup above
     "/api/internal/orgs",
     "/api/internal/orgs/id/{org_id}",
+    # 32d: anonymous survey-type catalog search/create for the public RFQ
+    # intake picker (reference data; creates carry NULL provenance)
+    "/api/public/catalog/survey-types/search",
+    "/api/public/catalog/survey-types",
     # invite acceptance (the invitee has no credentials yet); guarded by the
     # single-use hashed token, not by the wall
     "/api/public/invites/accept",
@@ -81,6 +85,10 @@ IDENTITY_PROTECTED = {
     # reference data, the wall only
     "/api/catalog/services/search",
     "/api/catalog/vessel-types/search",
+    # 32d: survey-type catalog search + the three picker create endpoints
+    # (catalog rows are reference data; the wall only)
+    "/api/catalog/survey-types/search",
+    "/api/catalog/{kind}",
     "/api/internal/whoami",
     "/api/internal/auth-context",
 }
@@ -111,6 +119,10 @@ WEB_PUBLIC = {
     "/register/verify/resend",
     # no-op without a valid cookie (identity 401 -> {"ok": false})
     "/session/refresh",
+    # 32d: anonymous survey-type catalog search/create backing the public
+    # RFQ form's chip picker
+    "/org/rfq/survey-types/search",
+    "/org/rfq/survey-types/create",
 }
 
 WEB_PROTECTED = {
@@ -130,6 +142,12 @@ WEB_PROTECTED = {
     "/org/clients",
     "/org/clients/new",
     "/org/clients/{client_id}",
+    # 32d: survey-type picker proxy + the three picker create proxies
+    # (identity catalog reference data, session forwarded)
+    "/org/survey-types/search",
+    "/org/services/create",
+    "/org/vessel-types/create",
+    "/org/survey-types/create",
 }
 
 

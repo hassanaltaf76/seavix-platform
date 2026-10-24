@@ -543,6 +543,19 @@ button:disabled, button:disabled:hover {
 }
 .sv-picker-results button:hover { background: var(--bg); color: var(--ink); }
 
+/* 32d: harvested custom entries carry a small "custom" badge in picker
+   dropdowns only (never on chips/public rendering)… */
+.sv-picker-results .sv-origin-badge {
+  margin-left: 0.4rem; padding: 0 6px; border-radius: 999px;
+  border: 1px solid var(--border-strong); color: var(--text-2);
+  font-size: 10px; line-height: 14px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+/* …and the Create row reads Create "<query>" — accent text, full width */
+.sv-picker-results .sv-picker-create { color: var(--accent-dark); font-weight: 600; }
+.sv-picker-results .sv-picker-create:hover { background: var(--accent-tint); color: var(--accent-dark); }
+.sv-picker-results .sv-picker-create[disabled] { opacity: 0.55; }
+
 /* 31u: the single-select searchable country/dial-code combobox (chip
    picker's cousin) — the results list overlays like a <select> dropdown;
    the × clear sits inside the input box */
