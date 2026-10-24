@@ -40,6 +40,18 @@ def digits(text: Any) -> str:
     return re.sub(r"\D", "", str(text or ""))
 
 
+def sv_money(value: Any) -> str:
+    """32c: a money amount (string/number/None from a service response)
+    as thousands-separated 2dp ("1,950.00"); None/empty -> "0.00"."""
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        amount = Decimal(str(value if value not in (None, "") else 0))
+    except (InvalidOperation, ValueError):
+        amount = Decimal(0)
+    return f"{amount.quantize(Decimal('0.01')):,}"
+
+
 def strip_trunk(text: Any) -> str:
     """31u: national digits with ONE leading trunk 0 dropped (E.164 trunk
     prefix). Only the cc-set branch of the tel:/wa.me hrefs applies this —
@@ -111,6 +123,8 @@ def install(env: Any) -> None:
     # its default ensure_ascii=True contract (31r pins the escaped
     # form inside x-data).
     env.filters["tojson_u"] = tojson_u
+    # 32c: thousands-separated 2dp money rendering (quote totals, amounts)
+    env.filters["sv_money"] = sv_money
     # 31t: the shared public partial resolves the ISO alpha-2 country
     # code to its display name at render time (vendored countries.py),
     # and builds the structured address lines (empties skipped)

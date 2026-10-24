@@ -18,7 +18,9 @@ from .pages import (
 )
 from .auth_pages import router as auth_pages_router
 from .org_clients import router as org_clients_router
+from .org_commercial import router as org_commercial_router
 from .org_pages import router as org_pages_router
+from .org_quotes import router as org_quotes_router
 from .org_rfqs import router as org_rfqs_router
 
 WEB_ROOT = Path(__file__).resolve().parent.parent
@@ -47,6 +49,10 @@ def create_app() -> FastAPI:
 
     app.include_router(pages_router)
     app.include_router(auth_pages_router)
+    # 32c: /org/quotes + /org/commercial BEFORE the org_pages/profile
+    # routers (and /org/<slug> further down) so the concrete paths win
+    app.include_router(org_quotes_router)
+    app.include_router(org_commercial_router)
     app.include_router(org_pages_router)
     app.include_router(org_clients_router)
     app.include_router(org_rfqs_router)

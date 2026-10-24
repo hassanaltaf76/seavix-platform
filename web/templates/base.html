@@ -69,6 +69,8 @@
               and 'rfq.create' in membership0.permissions %}
       {% set can_view_own_rfqs = is_client_org and membership0 is not none
               and 'rfq.view' in membership0.permissions %}
+      {% set can_view_quotes = membership0 is not none and not is_client_org
+              and 'quote.view' in membership0.permissions %}
       {% if can_view_profile or is_client_org %}
       <div class="sv-rail-tenant">
         <a href="{{ '/org/rfqs' if is_client_org else '/org/profile' }}">
@@ -108,7 +110,7 @@
         </ul>
       </div>
 
-      {% if can_view_profile or can_view_clients or can_manage_rfqs %}
+      {% if can_view_profile or can_view_clients or can_manage_rfqs or can_view_quotes %}
       <div class="sv-rail-section">
         <h2>Company</h2>
         <ul>
@@ -128,6 +130,15 @@
               <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
             </span>
             <span class="sv-rail-label">RFQs</span>
+          </a></li>
+          {% endif %}
+          {% if can_view_quotes %}
+          <li><a class="sv-rail-item" href="/org/quotes"
+                 {% if active == "quotes" %}aria-current="page"{% endif %}>
+            <span class="sv-glyph" aria-hidden="true">
+              <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 10.5v5M9.75 12h4.5M9.75 14.25h4.5"/></svg>
+            </span>
+            <span class="sv-rail-label">Quotes</span>
           </a></li>
           {% endif %}
           {% if can_view_clients %}

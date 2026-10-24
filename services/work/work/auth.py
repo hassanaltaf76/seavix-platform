@@ -35,7 +35,9 @@ async def caller_org(request: Request) -> dict:
     """The caller's org — via identity's auth-context so BOTH credential
     kinds work: machine clients present a Firebase bearer, the web app's
     session cookie rides X-Seavix-Session. (32b: the RFQ spine is now
-    reachable from the browser, not only from bearer-token API clients.)"""
+    reachable from the browser, not only from bearer-token API clients.)
+    The returned dict also carries the top-level uid/email when identity
+    includes them (32c: quote documents stamp the caller)."""
     headers: dict[str, str] = {}
     auth = request.headers.get("authorization", "")
     if auth:
@@ -53,11 +55,17 @@ async def caller_org(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="invalid credentials")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="identity service error")
-    memberships = resp.json().get("memberships") or []
+    ctx = resp.json()
+    memberships = ctx.get("memberships") or []
     if not memberships:
         raise HTTPException(status_code=401, detail="no org membership")
     m = memberships[0]
-    return {"org_id": m["org_id"], "slug": m["slug"], "type": m["org_type"]}
+    out = {"org_id": m["org_id"], "slug": m["slug"], "type": m["org_type"]}
+    if ctx.get("uid") is not None:
+        out["uid"] = ctx["uid"]
+    if ctx.get("email") is not None:
+        out["email"] = ctx["email"]
+    return out
 
 
 async def caller_member(request: Request) -> dict:
@@ -65,7 +73,11 @@ async def caller_member(request: Request) -> dict:
     identity's auth-context endpoint. Both credential headers ride along:
     the Firebase bearer (machines/tests) and the session header (the web
     app's cookie). Every client-directory query is then scoped to
-    member["org_id"] — org-scoping IS the authorization boundary."""
+    member["org_id"] — org-scoping IS the authorization boundary.
+    32c: the membership dict also carries the auth-context's TOP-LEVEL
+    uid/email when present (quote documents stamp prepared_by/approved_by);
+    absent from the identity payload means absent here — callers must use
+    member.get("uid")."""
     headers: dict[str, str] = {}
     auth = request.headers.get("authorization", "")
     if auth:
@@ -83,10 +95,16 @@ async def caller_member(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="invalid credentials")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="identity service error")
-    memberships = resp.json().get("memberships") or []
+    ctx = resp.json()
+    memberships = ctx.get("memberships") or []
     if not memberships:
         raise HTTPException(status_code=401, detail="no org membership")
-    return memberships[0]
+    member = dict(memberships[0])
+    if ctx.get("uid") is not None:
+        member["uid"] = ctx["uid"]
+    if ctx.get("email") is not None:
+        member["email"] = ctx["email"]
+    return member
 
 
 async def require_permission(request: Request, permission: str) -> dict:

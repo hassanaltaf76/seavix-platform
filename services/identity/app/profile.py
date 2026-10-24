@@ -4,9 +4,13 @@
 - PUT  /api/orgs/me/profile        org.profile.edit
 - POST /api/orgs/me/logo           org.logo.upload
 - POST /api/orgs/me/profile-status org.profile.publish (+ verified email)
+- GET/PUT /api/orgs/me/commercial  org.profile.view / org.profile.edit
+                                   (32c: quotation defaults — quote prefix,
+                                   default terms, payment details)
 """
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from typing import Literal
@@ -299,6 +303,105 @@ class StatusUpdate(BaseModel):
     status: str
 
 
+# ------------------------------------------------------- commercial (task 32c)
+
+# The 9 Pak Marine default quote terms (master doc). Canonical copy — the
+# alembic 0017 backfill mirrors this list verbatim into pre-migration rows
+# whose default_terms IS NULL.
+DEFAULT_TERMS = [
+    "Our offer is valid for 30 days from the date of this quotation.",
+    "Condition report will be submitted within 36 hours of survey completion.",
+    "Pre-purchase report will be submitted within 72 hours of survey completion.",
+    "Payment is due within 07 days of invoice date.",
+    "Travel expenses will be charged at actuals plus traveling days.",
+    "Anchorage surcharge applies as applicable.",
+    "Gate pass arrangements are on client's account.",
+    "50% advance payment is required before mobilization.",
+    "Bank charges are on client's account.",
+]
+
+_QUOTE_PREFIX_RE = re.compile(r"[A-Z0-9-]{2,12}")
+_MAX_TERMS_LINES = 50
+_MAX_TERM_CHARS = 500
+# 32c: the payment block is a FIXED key set (a bank wire has no other
+# fields worth storing); unknown keys are rejected so the web form's field
+# additions are deliberate, never silently dropped.
+PAYMENT_DETAIL_KEYS = frozenset({
+    "bank_name", "branch", "account_name", "account_number", "iban", "swift",
+})
+_MAX_PAYMENT_CHARS = 200
+
+
+class CommercialUpdate(BaseModel):
+    """32c: org-level quotation defaults. All fields optional; None = leave
+    untouched — this endpoint NEVER clears by omission (payment_details
+    values may be null to clear an individual key)."""
+
+    quote_prefix: str | None = None
+    default_terms: list[str] | None = None
+    payment_details: dict | None = None
+
+    @field_validator("quote_prefix")
+    @classmethod
+    def quote_prefix_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip().upper()
+        if not _QUOTE_PREFIX_RE.fullmatch(v):
+            raise ValueError(
+                "quote prefix must be 2-12 chars of A-Z, 0-9 and dashes"
+            )
+        return v
+
+    @field_validator("default_terms", mode="before")
+    @classmethod
+    def terms_lines(cls, v: object) -> list[str] | None:
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            raise ValueError("default_terms must be a list of strings")
+        out: list[str] = []
+        for raw in v:
+            if not isinstance(raw, str):
+                raise ValueError("each terms line must be a string")
+            line = raw.strip()
+            if not line:
+                continue  # blank lines are dropped, never stored
+            if len(line) > _MAX_TERM_CHARS:
+                raise ValueError(
+                    f"terms lines are capped at {_MAX_TERM_CHARS} chars"
+                )
+            out.append(line)
+        if len(out) > _MAX_TERMS_LINES:
+            raise ValueError(
+                f"terms are capped at {_MAX_TERMS_LINES} lines "
+                f"({len(out)} given)"
+            )
+        return out
+
+    @field_validator("payment_details")
+    @classmethod
+    def payment_shape(cls, v: dict | None) -> dict | None:
+        if v is None:
+            return None
+        unknown = sorted(set(v) - PAYMENT_DETAIL_KEYS)
+        if unknown:
+            raise ValueError(
+                f"unknown payment detail key: {unknown[0]}"
+            )
+        for key, val in v.items():
+            if val is None:
+                continue  # null clears that key
+            if not isinstance(val, str):
+                raise ValueError(f"payment detail {key!r} must be a string")
+            if len(val) > _MAX_PAYMENT_CHARS:
+                raise ValueError(
+                    f"payment detail {key!r} is capped at "
+                    f"{_MAX_PAYMENT_CHARS} chars"
+                )
+        return v
+
+
 async def _publish(request: Request, event_type: str, org_id: str, payload: dict) -> None:
     await request.app.state.event_bus.publish(
         event_type, domain_event(event_type, "organization", org_id, payload)
@@ -515,3 +618,86 @@ async def set_profile_status(
             request, "org.profile_published", org_id, {"slug": org["slug"]}
         )
     return {"org_id": org_id, "slug": org["slug"], "profile_status": payload.status}
+
+
+_COMMERCIAL_SELECT = (
+    "SELECT quote_prefix, default_terms, payment_details "
+    "FROM organization WHERE id = :id"
+)
+
+
+@router.get("/api/orgs/me/commercial")
+async def get_commercial(
+    ctx: AuthContext = Depends(require_auth),
+) -> dict:
+    """32c: the org's quotation defaults (quote prefill source). Org-account
+    settings, NOT public profile — PublicOrgResponse stays commercial-free."""
+    membership = require_permission(ctx, Permission.ORG_PROFILE_VIEW.value)
+    org_id = membership.org_id
+    async with SessionLocal() as session:
+        row = (
+            await session.execute(text(_COMMERCIAL_SELECT), {"id": org_id})
+        ).mappings().one()
+    return {"org_id": org_id, **dict(row)}
+
+
+@router.put("/api/orgs/me/commercial")
+async def update_commercial(
+    payload: CommercialUpdate,
+    ctx: AuthContext = Depends(require_auth),
+) -> dict:
+    """32c: save quotation defaults. None = leave untouched; an omitted
+    field never clears. payment_details merges per key (a null value clears
+    that key only). default_terms is a full replace when given."""
+    membership = require_permission(ctx, Permission.ORG_PROFILE_EDIT.value)
+    org_id = membership.org_id
+    async with SessionLocal() as session:
+        payment_details = None
+        if payload.payment_details is not None:
+            current = (
+                await session.execute(
+                    text("SELECT payment_details FROM organization "
+                         "WHERE id = :id"),
+                    {"id": org_id},
+                )
+            ).scalar_one() or {}
+            merged = dict(current)
+            for key, val in payload.payment_details.items():
+                if val is None:
+                    merged.pop(key, None)
+                else:
+                    merged[key] = val
+            payment_details = merged
+        # JSONB params are serialized to text and CAST in SQL: a typed
+        # JSONB bindparam turns Python None into jsonb 'null' (which
+        # COALESCE treats as a value), while a text NULL casts to SQL NULL
+        # and COALESCE falls through to the existing column.
+        stmt = text(
+            "UPDATE organization SET "
+            "quote_prefix = COALESCE(:quote_prefix, quote_prefix), "
+            "default_terms = COALESCE(CAST(:default_terms AS jsonb), "
+            "default_terms), "
+            "payment_details = COALESCE(CAST(:payment_details AS jsonb), "
+            "payment_details) "
+            "WHERE id = :id"
+        )
+        await session.execute(
+            stmt,
+            {
+                "quote_prefix": payload.quote_prefix,
+                "default_terms": (
+                    json.dumps(payload.default_terms)
+                    if payload.default_terms is not None else None
+                ),
+                "payment_details": (
+                    json.dumps(payment_details)
+                    if payment_details is not None else None
+                ),
+                "id": org_id,
+            },
+        )
+        await session.commit()
+        row = (
+            await session.execute(text(_COMMERCIAL_SELECT), {"id": org_id})
+        ).mappings().one()
+    return {"org_id": org_id, **dict(row)}

@@ -22,6 +22,10 @@ from work.main import app  # noqa: E402
 
 CLIENT_ORG = str(uuid.uuid4())
 SURVEY_ORG = str(uuid.uuid4())
+OPS_UID = str(uuid.uuid4())
+OPS_PERMS = {"quote.create", "quote.view", "quote.send", "quote.accept",
+             "rfq.create", "rfq.view", "client.view", "client.create",
+             "client.edit", "job.view", "job.assign"}
 
 
 async def fake_get_identity_org(org_id: str) -> dict:
@@ -38,6 +42,13 @@ def client(arun, monkeypatch):
             raise HTTPException(status_code=401, detail="missing bearer token")
         return {"org_id": state["org_id"], "slug": "stub", "type": "stub"}
 
+    async def fake_caller_member(request):
+        # 32c: quote endpoints gate on quote.create/quote.view — the stub
+        # carries the fixed caller uid/email the quote document stamps.
+        return {"org_id": state["org_id"], "slug": "stub", "type": "stub",
+                "uid": OPS_UID, "email": "ops@example.com",
+                "permissions": set(OPS_PERMS)}
+
     async def fake_resolve(slug: str):
         if slug == "live-surveyor":
             return {"org_id": SURVEY_ORG, "slug": slug, "type": "survey_company",
@@ -48,6 +59,7 @@ def client(arun, monkeypatch):
         raise HTTPException(status_code=404, detail="organization not found")
 
     monkeypatch.setattr(spine, "caller_org", fake_caller_org)
+    monkeypatch.setattr(spine, "caller_member", fake_caller_member)
     monkeypatch.setattr(spine, "resolve_public_org", fake_resolve)
     monkeypatch.setattr(spine, "get_identity_org",
                         fake_get_identity_org)

@@ -1,0 +1,300 @@
+{% extends "base.html" %}{% block title %}{% if quote %}Edit quote{% else %}Raise quote{% endif %} — SeaVix{% endblock %}
+{% set active = "quotes" %}
+{% block page_title %}
+  <h1>{% if quote %}Edit quote <span class="sv-mono sv-ugc">{{ quote.quote_no }}</span>
+      {% else %}Raise quote{% endif %}</h1>
+{% endblock %}
+{% block page_desc %}
+  {% if quote %}
+  <p class="sv-page-desc">Drafts are editable; once issued a quote is
+     read-only and changes go through a new revision.</p>
+  {% else %}
+  <p class="sv-page-desc">Price an RFQ from your pipeline — the draft sits
+     on the RFQ until you approve and issue it.</p>
+  {% endif %}
+{% endblock %}
+{% block page_actions %}
+  {#- §9 documented back-link: the form returns to the document/list. -#}
+  {% if quote %}
+  <a class="button secondary" href="/org/quotes/{{ quote.id }}">← Back to quote</a>
+  {% else %}
+  <a class="button secondary" href="/org/quotes">← Back to Quotes</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+{% if quote is none and rfq is none %}
+<script>
+// 32c: the RFQ picker — a .sv-search-select over the RFQs the caller may
+// quote (awaiting_quote/quoted, targeted at this org). Picking an RFQ
+// loads the raise form bound to it (same pattern as the 32b client
+// picker; the value rides a hidden rfq_id input until the redirect).
+function quoteRfqPicker() {
+  return {
+    items: [], loaded: false, loading: false,
+    value: "", label: "", q: "", needle: "", open: false, active: -1,
+    async load() {
+      if (this.loaded || this.loading) return;
+      this.loading = true;
+      try {
+        const resp = await fetch("/org/quotes/rfq-options.json");
+        if (resp.ok) { this.items = (await resp.json()).rfqs; this.loaded = true; }
+      } finally { this.loading = false; }
+    },
+    fmt(c) {
+      const st = {awaiting_quote: "Awaiting quote", quoted: "Quoted"};
+      return (c.reference_no || "—") + " · " + (c.vessel_name || "—")
+        + " · " + (st[c.status] || c.status);
+    },
+    filtered() {
+      const q = this.needle.toLowerCase();
+      if (!q) return this.items;
+      return this.items.filter((c) => this.fmt(c).toLowerCase().includes(q));
+    },
+    show() { this.open = true; this.active = -1; },
+    hide() { this.open = false; this.q = ""; this.needle = ""; this.active = -1; },
+    pick(c) {
+      this.value = c.id;
+      window.location.assign("/org/quotes/raise?rfq_id=" + c.id);
+    },
+    clear() {
+      this.value = ""; this.label = ""; this.q = ""; this.needle = "";
+      this.open = false; this.active = -1;
+      this.$dispatch("sv-dirty");
+    },
+    move(step) {
+      const r = this.filtered();
+      if (!r.length) return;
+      this.active = this.active < 0
+        ? (step > 0 ? 0 : r.length - 1)
+        : (this.active + step + r.length) % r.length;
+      this.$nextTick(() => {
+        const list = this.$refs.list;
+        const el = list && list.querySelector(".sv-search-select-option.is-active");
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+      });
+    },
+    onKey(e) {
+      if (e.key === "ArrowDown") { e.preventDefault(); this.open = true; this.move(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); this.open = true; this.move(-1); }
+      else if (e.key === "Enter" && this.open && (this.active >= 0 || this.needle)) {
+        const r = this.filtered();
+        const c = r[this.active >= 0 ? this.active : 0];
+        if (c) { e.preventDefault(); this.pick(c); }
+      }
+    },
+  };
+}
+</script>
+{% endif %}
+
+{% if created %}<p class="notice success" role="status">Quote saved as draft.</p>{% endif %}
+{% if form_error %}<p class="notice error" role="alert">{{ form_error }}</p>{% endif %}
+
+<form method="post"
+      {% if quote %}action="/org/quotes/{{ quote.id }}/edit"
+      {% else %}action="/org/quotes/raise"{% endif %}
+      class="sv-form"
+      @input="valid = $el.checkValidity()"
+      @sv-dirty="dirty = true"
+      x-data='{ dirty: false, valid: true }'>
+
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>RFQ</h2>
+      <p>The request this quote answers.</p>
+    </div>
+    <div class="sv-section-body">
+      {% if quote is not none %}
+      <input type="hidden" name="rfq_id" value="{{ values.rfq_id }}">
+      <dl class="sv-dl">
+        <div><dt>Client</dt><dd class="sv-ugc">{{ quote.client_name or "—" }}</dd></div>
+        <div><dt>Vessel</dt><dd class="sv-ugc">{{ quote.vessel_name or "—" }}
+            {% if quote.vessel_imo %}<span class="sv-mono">IMO {{ quote.vessel_imo }}</span>{% endif %}</dd></div>
+        <div><dt>RFQ reference</dt><dd class="sv-ugc sv-mono">{{ quote.reference_no or "—" }}</dd></div>
+        <div><dt>Survey types</dt><dd>{% for c in quote.survey_types %}
+            <span class="sv-chip">{{ labels.get(c, c) }}</span>{% if not loop.last %} {% endif %}
+            {% else %}—{% endfor %}</dd></div>
+        <div><dt>Location</dt><dd class="sv-ugc">{{ quote.location_type or "—" }}
+            {% if quote.port_name %} — {{ quote.port_name }}{% endif %}</dd></div>
+      </dl>
+      {% elif rfq is not none %}
+      <input type="hidden" name="rfq_id" value="{{ values.rfq_id }}">
+      <dl class="sv-dl">
+        <div><dt>Client</dt><dd class="sv-ugc">{{ client_label or "—" }}</dd></div>
+        <div><dt>Vessel</dt><dd class="sv-ugc">{{ rfq.vessel_name or "—" }}
+            {% if rfq.vessel_imo %}<span class="sv-mono">IMO {{ rfq.vessel_imo }}</span>{% endif %}</dd></div>
+        <div><dt>RFQ reference</dt><dd class="sv-ugc sv-mono">{{ rfq.reference_no or "—" }}</dd></div>
+        <div><dt>Survey types</dt><dd>{% for c in survey_chips %}
+            <span class="sv-chip">{{ c.label }}</span>{% if not loop.last %} {% endif %}
+            {% else %}—{% endfor %}</dd></div>
+        <div><dt>Location</dt><dd class="sv-ugc">{{ rfq.location_type or "—" }}
+            {% if rfq.port_name %} — {{ rfq.port_name }}{% endif %}</dd></div>
+      </dl>
+      {% else %}
+      <div class="sv-search-select" x-data="quoteRfqPicker()" @click.outside="hide()">
+        <input type="hidden" name="rfq_id" :value="value" value="">
+        <div class="sv-search-select-box">
+          <input id="rfq-search" type="text" autocomplete="off"
+                 role="combobox" :aria-expanded="open" aria-controls="rfq-results"
+                 placeholder="Search RFQs awaiting a quote…" :value="q || label"
+                 @input="q = $event.target.value"
+                 @input.debounce.150ms="needle = q.trim(); open = true; active = -1"
+                 @focus="load(); show()" @keydown="onKey($event)"
+                 @keydown.escape="hide()">
+          <button type="button" class="sv-search-select-x" x-show="value"
+                  x-cloak @click="clear()" aria-label="Clear RFQ">×</button>
+        </div>
+        <ul id="rfq-results" x-ref="list" class="sv-picker-results"
+            x-show="open" role="listbox">
+          <template x-for="(c, idx) in filtered()" :key="c.id">
+            <li><button type="button" role="option"
+                  class="sv-search-select-option"
+                  :class="idx === active ? 'is-active' : ''"
+                  @click="pick(c)" x-text="fmt(c)"></button></li>
+          </template>
+          <li x-show="loaded && !filtered().length" x-cloak>
+            <em>No matching RFQ.</em></li>
+        </ul>
+      </div>
+      {% if field_errors.get("rfq_id") %}<p class="sv-field-error" role="alert">{{ field_errors.get("rfq_id") }}</p>{% endif %}
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>Details</h2>
+      <p>Dating and the currency of this quotation.</p>
+    </div>
+    <div class="sv-section-body">
+      <div class="sv-form-grid">
+        <div>
+          <label for="quote_date">Quote date</label>
+          <input id="quote_date" name="quote_date" type="date"
+                 value="{{ values.quote_date }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="valid_until">Valid until</label>
+          <input id="valid_until" name="valid_until" type="date"
+                 value="{{ values.valid_until }}" @input="dirty = true">
+        </div>
+      </div>
+      <label for="currency">Currency</label>
+      <input id="currency" name="currency" type="text" maxlength="3"
+             pattern="[A-Za-z]{3}" title="3-letter code, e.g. USD"
+             value="{{ values.currency }}" @input="dirty = true">
+      {% if field_errors.get("currency") %}<p class="sv-field-error" role="alert">{{ field_errors.get("currency") }}</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>Line items</h2>
+      <p>Attendance, travel, report fees — the priced scope of the work.</p>
+    </div>
+    <div class="sv-section-body">
+      <div class="sv-rows"
+           x-data='{ rows: {{ (values.line_items or [{"description": "", "amount": ""}]) | tojson_u }} }'>
+        <template x-for="(row, i) in rows" :key="i">
+          <div class="sv-row">
+            <input type="text" name="li_desc" x-model="row.description"
+                   placeholder="e.g. On-hire condition survey attendance"
+                   @input="$dispatch('sv-dirty')">
+            <input type="number" class="sv-row-amt" name="li_amt"
+                   x-model="row.amount" min="0" step="0.01" placeholder="0.00"
+                   @input="$dispatch('sv-dirty')">
+            <button type="button" class="sv-row-x"
+                    @click="rows.splice(i, 1); $dispatch('sv-dirty')"
+                    aria-label="Remove line">×</button>
+          </div>
+        </template>
+        <button type="button" class="button secondary sv-rows-add"
+                @click="rows.push({description: '', amount: ''})">Add line</button>
+      </div>
+      {% if field_errors.get("line_items") %}<p class="sv-field-error" role="alert">{{ field_errors.get("line_items") }}</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>Terms</h2>
+      <p>The conditions printed on the quotation.</p>
+    </div>
+    <div class="sv-section-body">
+      <div class="sv-rows"
+           x-data='{ terms: {{ (values.terms or [""]) | tojson_u }} }'>
+        <template x-for="(t, i) in terms" :key="i">
+          <div class="sv-row">
+            <input type="text" name="terms" x-model="terms[i]"
+                   placeholder="e.g. Payment is due within 07 days of invoice date."
+                   @input="$dispatch('sv-dirty')">
+            <button type="button" class="sv-row-x"
+                    @click="terms.splice(i, 1); $dispatch('sv-dirty')"
+                    aria-label="Remove term">×</button>
+          </div>
+        </template>
+        <button type="button" class="button secondary sv-rows-add"
+                @click="terms.push('')">Add term</button>
+      </div>
+      <small>Defaults come from <a href="/org/commercial">Commercial
+             defaults</a>; an empty editor falls back to the standard
+             terms when the quote is created.</small>
+    </div>
+  </section>
+
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>Bank details</h2>
+      <p>The payment block printed on the quotation.</p>
+    </div>
+    <div class="sv-section-body">
+      <div class="sv-form-grid">
+        <div>
+          <label for="bank_name">Bank name</label>
+          <input id="bank_name" name="bank_name" type="text" maxlength="200"
+                 class="sv-ugc" value="{{ values.bank.bank_name }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="branch">Branch</label>
+          <input id="branch" name="branch" type="text" maxlength="200"
+                 class="sv-ugc" value="{{ values.bank.branch }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="account_name">Account name</label>
+          <input id="account_name" name="account_name" type="text" maxlength="200"
+                 class="sv-ugc" value="{{ values.bank.account_name }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="account_number">Account number</label>
+          <input id="account_number" name="account_number" type="text" maxlength="100"
+                 class="sv-ugc" value="{{ values.bank.account_number }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="iban">IBAN</label>
+          <input id="iban" name="iban" type="text" maxlength="64"
+                 class="sv-ugc" value="{{ values.bank.iban }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="swift">SWIFT</label>
+          <input id="swift" name="swift" type="text" maxlength="16"
+                 class="sv-ugc" value="{{ values.bank.swift }}" @input="dirty = true">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {#- v4 §4/§9: the sticky save bar appears when the form is dirty —
+      Cancel left, Save right, Save disabled until dirty AND valid. -#}
+  <div class="sv-save-bar" x-show="dirty" x-cloak>
+    {% if quote %}
+    <a class="button secondary" href="/org/quotes/{{ quote.id }}">Cancel</a>
+    <button type="submit" :disabled="!(dirty && valid)">Save changes</button>
+    {% else %}
+    <a class="button secondary" href="/org/quotes">Cancel</a>
+    <button type="submit" :disabled="!(dirty && valid)">Save draft</button>
+    {% endif %}
+  </div>
+</form>
+
+{{ keepalive | safe }}{% endblock %}

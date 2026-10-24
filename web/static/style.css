@@ -384,6 +384,12 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
 .sv-status--accepted { background: var(--success-bg); color: var(--success-ink); }
 .sv-status--declined,
 .sv-status--expired { background: var(--danger-bg); color: var(--danger-ink); }
+/* 32c: quote lifecycle — a draft is neutral work-in-progress, a sent quote
+   reads "Issued" (info), a superseded revision fades to a gray tint */
+.sv-status--draft { background: var(--bg); color: var(--text-2);
+  border: 1px solid var(--border); }
+.sv-status--sent { background: var(--info-bg); color: var(--info-ink); }
+.sv-status--superseded { background: var(--bg); color: var(--text-2); }
 .sv-status--channel { background: var(--bg); color: var(--text-2);
   border: 1px solid var(--border); }
 .sv-status-gap { margin-left: 6px; }
@@ -927,6 +933,107 @@ button:disabled, button:disabled:hover {
   border: 1px solid var(--border);
   border-radius: var(--r-card);
   box-shadow: var(--e1);
+}
+
+/* 32c: dynamic editor rows (quote line items / default terms) — one
+   input line + a remove ×; the Add button sits below the rows */
+.sv-rows { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.25rem 0 0.6rem; }
+.sv-row { display: flex; gap: 0.5rem; align-items: center; }
+.sv-row > input { flex: 1; min-width: 0; }
+.sv-row .sv-row-amt { flex: 0 0 9rem; }
+.sv-row-x {
+  flex: none; min-height: auto; padding: 0.2rem 0.55rem;
+  background: none; border: 0; color: var(--text-2);
+  font-size: 1.1rem; line-height: 1; cursor: pointer; border-radius: 50%;
+}
+.sv-row-x:hover { background: var(--bg); color: var(--danger); border: 0; box-shadow: none; }
+.sv-rows-add { min-height: 34px; font-size: 13px; }
+
+/* 32c: the quotation document — a white e1 card laid out like a
+   professional quotation (Pak Marine quote-doc spec). Print-friendly. */
+.sv-doc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--e1);
+  padding: 2rem 2.25rem;
+  max-width: 840px;
+}
+.sv-doc-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 1.5rem; padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.sv-doc-org { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; }
+.sv-doc-orgaddr { margin: 0.2rem 0 0; font-size: 13px; line-height: 20px; color: var(--text-2); }
+.sv-doc-title { text-align: right; flex: none; }
+.sv-doc-title h2 {
+  margin: 0; font-size: 20px; line-height: 28px; font-weight: 700;
+  letter-spacing: 0.14em; color: var(--ink);
+}
+.sv-doc-title p { margin: 0.15rem 0 0; font-size: 12px; color: var(--text-2); }
+.sv-doc-meta {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem 1rem; padding: 0.9rem 0;
+  border-bottom: 1px solid var(--border); margin-bottom: 1.25rem;
+}
+.sv-doc-meta dt {
+  font-size: 11px; line-height: 16px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-2);
+}
+.sv-doc-meta dd { margin: 0.1rem 0 0; font-size: 14px; color: var(--ink); }
+.sv-doc-addressee { margin-bottom: 1.25rem; }
+.sv-doc-addressee p { margin: 0 0 0.15rem; font-size: 14px; line-height: 22px; }
+.sv-doc-addressee .sv-doc-to { color: var(--text-2); font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem; }
+.sv-doc-block { margin: 0 0 1.25rem; }
+.sv-doc-block > h3 {
+  margin: 0 0 0.5rem; font-size: 12px; line-height: 16px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-2);
+}
+.sv-doc-items { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sv-doc-items th, .sv-doc-items td {
+  padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border);
+  text-align: left; vertical-align: top;
+}
+.sv-doc-items th {
+  font-size: 12px; font-weight: 500; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.sv-doc-items .sv-doc-amt, .sv-doc-items th.sv-doc-amt {
+  text-align: right; white-space: nowrap;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+}
+.sv-doc-total td {
+  border-bottom: 0; border-top: 2px solid var(--ink);
+  font-weight: 700; color: var(--ink);
+}
+.sv-doc-terms { margin: 0; padding-left: 1.4rem; }
+.sv-doc-terms li { margin: 0.25rem 0; font-size: 13px; line-height: 20px; }
+.sv-doc-bank {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1.5rem;
+  font-size: 13px; line-height: 20px;
+}
+.sv-doc-bank dt { color: var(--text-2); }
+.sv-doc-bank dd { margin: 0; font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums; }
+.sv-doc-sign { margin-top: 2rem; font-size: 13px; line-height: 20px; }
+.sv-doc-sign p { margin: 0 0 0.15rem; }
+.sv-doc-approved {
+  margin-top: 1.25rem; padding: 0.7rem 0.95rem;
+  background: var(--success-bg); color: var(--success-ink);
+  border-radius: var(--r-btn); font-size: 13px; line-height: 20px;
+}
+@media (max-width: 720px) {
+  .sv-doc { padding: 1.25rem 1rem; }
+  .sv-doc-meta { grid-template-columns: 1fr 1fr; }
+  .sv-doc-bank { grid-template-columns: 1fr; }
+}
+@media print {
+  .sv-topbar, .sv-rail, .sv-page-header, .sv-save-bar, .site-footer,
+  .sv-toast { display: none !important; }
+  .sv-page { padding: 0; background: var(--surface); }
+  .sv-doc { border: 0; box-shadow: none; max-width: none; }
 }
 
 /* trusted-device checkbox (31j) */

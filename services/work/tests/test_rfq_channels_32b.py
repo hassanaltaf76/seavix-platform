@@ -48,6 +48,16 @@ def client(arun, monkeypatch):
     orgs = {"tenant": str(uuid.uuid4()), "client": str(uuid.uuid4()),
             "other": str(uuid.uuid4())}
     state["org_id"] = orgs["tenant"]
+    # 32c: quote endpoints gate on permissions — the default member carries
+    # them (plus the fixed uid/email the quote document stamps).
+    state["member"] = {
+        "org_id": orgs["tenant"], "slug": "stub", "type": "stub",
+        "uid": str(uuid.uuid4()), "email": "ops@example.com",
+        "permissions": {"quote.create", "quote.view", "quote.send",
+                        "quote.accept", "rfq.create", "rfq.view",
+                        "client.view", "client.create", "client.edit",
+                        "job.view", "job.assign"},
+    }
 
     async def fake_caller_org(request):
         return {"org_id": state["org_id"], "slug": "stub", "type": "stub"}

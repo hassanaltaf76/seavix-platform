@@ -1,0 +1,114 @@
+{% extends "base.html" %}{% block title %}Commercial defaults — SeaVix{% endblock %}
+{% set active = "quotes" %}
+{% block page_title %}<h1>Commercial defaults</h1>{% endblock %}
+{% block page_desc %}
+<p class="sv-page-desc">What your quotations start from — numbering, the
+   default terms, and the bank block. Editable here, prefilled on every
+   new quote.</p>
+{% endblock %}
+{% block page_actions %}
+  <a class="button secondary" href="/org/quotes">← Back to Quotes</a>
+{% endblock %}
+
+{% block content %}
+{% if saved %}<p class="notice success" role="status">Commercial defaults saved.</p>{% endif %}
+{% if form_error %}<p class="notice error" role="alert">{{ form_error }}</p>{% endif %}
+
+<form method="post" action="/org/commercial" class="sv-form"
+      @input="valid = $el.checkValidity()"
+      @sv-dirty="dirty = true"
+      x-data='{ dirty: false, valid: true }'>
+
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>Quote numbering</h2>
+      <p>The letters at the front of every quote number.</p>
+    </div>
+    <div class="sv-section-body">
+      <label for="quote_prefix">Quote prefix</label>
+      <input id="quote_prefix" name="quote_prefix" type="text" maxlength="12"
+             value="{{ values.quote_prefix }}" placeholder="e.g. PMS"
+             @input="dirty = true">
+      <small>Letters, digits and dashes. Leave blank to derive from your
+             public-page address.</small>
+      {% if field_errors.get("quote_prefix") %}<p class="sv-field-error" role="alert">{{ field_errors.get("quote_prefix") }}</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>Default quotation terms</h2>
+      <p>The conditions every new quote starts with.</p>
+    </div>
+    <div class="sv-section-body">
+      <div class="sv-rows"
+           x-data='{ terms: {{ (values.terms or [""]) | tojson_u }} }'>
+        <template x-for="(t, i) in terms" :key="i">
+          <div class="sv-row">
+            <input type="text" name="terms" x-model="terms[i]"
+                   placeholder="e.g. Payment is due within 07 days of invoice date."
+                   @input="$dispatch('sv-dirty')">
+            <button type="button" class="sv-row-x"
+                    @click="terms.splice(i, 1); $dispatch('sv-dirty')"
+                    aria-label="Remove term">×</button>
+          </div>
+        </template>
+        <button type="button" class="button secondary sv-rows-add"
+                @click="terms.push('')">Add term</button>
+      </div>
+      <small>Clear every line and save to fall back to the standard terms
+             on new quotes.</small>
+      {% if field_errors.get("default_terms") %}<p class="sv-field-error" role="alert">{{ field_errors.get("default_terms") }}</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="sv-section-card">
+    <div class="sv-section-head">
+      <h2>Bank / payment details</h2>
+      <p>The payment block printed on your quotations.</p>
+    </div>
+    <div class="sv-section-body">
+      <div class="sv-form-grid">
+        <div>
+          <label for="bank_name">Bank name</label>
+          <input id="bank_name" name="bank_name" type="text" maxlength="200"
+                 class="sv-ugc" value="{{ values.bank.bank_name }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="branch">Branch</label>
+          <input id="branch" name="branch" type="text" maxlength="200"
+                 class="sv-ugc" value="{{ values.bank.branch }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="account_name">Account name</label>
+          <input id="account_name" name="account_name" type="text" maxlength="200"
+                 class="sv-ugc" value="{{ values.bank.account_name }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="account_number">Account number</label>
+          <input id="account_number" name="account_number" type="text" maxlength="100"
+                 class="sv-ugc" value="{{ values.bank.account_number }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="iban">IBAN</label>
+          <input id="iban" name="iban" type="text" maxlength="64"
+                 class="sv-ugc" value="{{ values.bank.iban }}" @input="dirty = true">
+        </div>
+        <div>
+          <label for="swift">SWIFT</label>
+          <input id="swift" name="swift" type="text" maxlength="16"
+                 class="sv-ugc" value="{{ values.bank.swift }}" @input="dirty = true">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {#- v4 §4/§9: the sticky save bar appears when the form is dirty —
+      Cancel left, Save right, Save disabled until dirty AND valid. -#}
+  <div class="sv-save-bar" x-show="dirty" x-cloak>
+    <a class="button secondary" href="/org/quotes">Cancel</a>
+    <button type="submit" :disabled="!(dirty && valid)">Save defaults</button>
+  </div>
+</form>
+
+{{ keepalive | safe }}{% endblock %}

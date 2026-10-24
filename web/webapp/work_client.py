@@ -29,6 +29,8 @@ async def work_client() -> httpx.AsyncClient:
 async def work_request(
     method: str, path: str, *, json: dict | None = None,
     headers: dict | None = None,
+    params: dict | None = None,
 ) -> httpx.Response:
     async with work_client() as c:
-        return await c.request(method, path, json=json, headers=headers)
+        return await c.request(method, path, json=json, headers=headers,
+                               params=params)

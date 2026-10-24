@@ -1,0 +1,168 @@
+{% extends "base.html" %}{% block title %}Quote {{ quote.quote_no }} — SeaVix{% endblock %}
+{% set active = "quotes" %}
+{% block page_title %}
+  <h1><span class="sv-mono sv-ugc">{{ quote.quote_no }}</span></h1>
+{% endblock %}
+{% block page_desc %}
+  <p class="sv-page-desc">
+    <span class="sv-status sv-status--{{ quote.status }}">{{
+        quote_status_labels.get(quote.status, quote.status) }}</span>
+    <span class="sv-status sv-status--channel sv-status-gap">Revision {{
+        quote.revision }}</span>
+  </p>
+{% endblock %}
+{% block page_actions %}
+  {#- 32c action header (NOT part of the document): drafts carry Edit +
+      the approve-issue gate; any issued-state document can spawn a fresh
+      draft revision. -#}
+  {% if can_manage %}
+    {% if quote.status == "draft" %}
+    <a class="button secondary" href="/org/quotes/{{ quote.id }}/edit">Edit</a>
+    <a class="button" href="/org/quotes/{{ quote.id }}/issue">Approve &amp; issue</a>
+    {% else %}
+    <form method="post" action="/org/quotes/{{ quote.id }}/revision"
+          class="sv-inline-form">
+      <button type="submit" class="button secondary">Create revision</button>
+    </form>
+    {% endif %}
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+{% if created %}<p class="notice success" role="status">Quote saved as draft.</p>{% endif %}
+{% if saved %}<p class="notice success" role="status">Quote updated.</p>{% endif %}
+{% if issued %}<p class="notice success" role="status">Quote issued — the RFQ is now quoted.</p>{% endif %}
+{% if issue_error %}<p class="notice error" role="alert">Could not issue — the quote was already issued or the RFQ moved on. Refresh to see its current state.</p>{% endif %}
+
+{#- the quotation document — a white e1 card laid out like a professional
+    quotation; every free-text render point carries .sv-ugc. -#}
+<article class="sv-doc">
+  <header class="sv-doc-head">
+    <div>
+      <p class="sv-doc-org sv-ugc">{{ rail_org.name }}</p>
+      {% set orgaddr = address_lines(org_summary) %}
+      {% if orgaddr %}
+      <p class="sv-doc-orgaddr sv-ugc">{% for line in orgaddr %}{{ line }}
+        {% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+      {% endif %}
+    </div>
+    <div class="sv-doc-title">
+      <h2>QUOTATION</h2>
+      <p>Revision {{ quote.revision }}</p>
+    </div>
+  </header>
+
+  <dl class="sv-doc-meta">
+    <div><dt>Quote no</dt><dd class="sv-mono sv-ugc">{{ quote.quote_no }}</dd></div>
+    <div><dt>Date</dt><dd class="sv-mono">{{ quote.quote_date or "—" }}</dd></div>
+    <div><dt>Valid until</dt><dd class="sv-mono">{{ quote.valid_until or "—" }}</dd></div>
+    <div><dt>Currency</dt><dd class="sv-mono">{{ quote.currency }}</dd></div>
+  </dl>
+
+  <div class="sv-doc-addressee">
+    <p class="sv-doc-to">To</p>
+    {% if quote.client_name %}<p><strong class="sv-ugc">{{ quote.client_name }}</strong></p>{% endif %}
+    {% if quote.client_contact_person %}
+    <p class="sv-ugc">{{ quote.client_contact_person }}
+      {% if quote.client_designation %} — <span class="sv-ugc">{{ quote.client_designation }}</span>{% endif %}
+    </p>
+    {% elif quote.client_designation %}<p class="sv-ugc">{{ quote.client_designation }}</p>{% endif %}
+    {% if quote.client_address %}
+    <p class="sv-ugc">{% for line in address_lines(quote.client_address) %}{{ line }}
+        {% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+    {% elif quote.client_country %}
+    <p class="sv-ugc">{{ country_name(quote.client_country) or quote.client_country }}</p>
+    {% endif %}
+    {% if quote.client_phone %}<p class="sv-mono">{{ quote.client_phone }}</p>{% endif %}
+    {% if quote.client_email %}<p class="sv-ugc">{{ quote.client_email }}</p>{% endif %}
+  </div>
+
+  <div class="sv-doc-block">
+    <h3>Reference &amp; vessel</h3>
+    <dl class="sv-dl">
+      <div><dt>Reference</dt>
+        <dd class="sv-ugc sv-mono">{{ quote.reference_no or "—" }}</dd></div>
+      <div><dt>Vessel</dt>
+        <dd class="sv-ugc">{{ quote.vessel_name or "—" }}
+          {% if quote.vessel_imo %}<span class="sv-mono">IMO {{ quote.vessel_imo }}</span>{% endif %}
+        </dd></div>
+      <div><dt>Survey types</dt>
+        <dd>{% for c in quote.survey_types %}
+          <span class="sv-chip">{{ labels.get(c, c) }}</span>{% if not loop.last %} {% endif %}
+          {% else %}—{% endfor %}</dd></div>
+      <div><dt>Location</dt>
+        <dd class="sv-ugc">{{ quote.location_type or "—" }}
+          {% if quote.port_name %} — {{ quote.port_name }}{% endif %}</dd></div>
+    </dl>
+  </div>
+
+  {% if quote.scope_notes %}
+  <div class="sv-doc-block sv-prose">
+    <h3>Scope of work</h3>
+    <div class="sv-ugc">{{ quote.scope_notes | paragraphs }}</div>
+  </div>
+  {% endif %}
+
+  <div class="sv-doc-block">
+    <h3>Charges</h3>
+    <table class="sv-doc-items">
+      <thead>
+        <tr><th scope="col">Description</th>
+            <th scope="col" class="sv-doc-amt">Amount</th></tr>
+      </thead>
+      <tbody>
+        {% for item in quote.line_items %}
+        <tr>
+          <td class="sv-ugc">{{ item.description }}</td>
+          <td class="sv-doc-amt">{{ item.amount|sv_money }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="sv-doc-total">
+          <td>Total</td>
+          <td class="sv-doc-amt">{{ quote.total|sv_money }} {{ quote.currency }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if quote.terms %}
+  <div class="sv-doc-block">
+    <h3>Terms</h3>
+    <ol class="sv-doc-terms sv-ugc">
+      {% for t in quote.terms %}<li>{{ t }}</li>{% endfor %}
+    </ol>
+  </div>
+  {% endif %}
+
+  {% if quote.bank_details %}
+  <div class="sv-doc-block">
+    <h3>Bank details</h3>
+    <dl class="sv-doc-bank">
+      {% if quote.bank_details.bank_name %}
+      <div><dt>Bank</dt><dd class="sv-ugc">{{ quote.bank_details.bank_name }}</dd></div>{% endif %}
+      {% if quote.bank_details.branch %}
+      <div><dt>Branch</dt><dd class="sv-ugc">{{ quote.bank_details.branch }}</dd></div>{% endif %}
+      {% if quote.bank_details.account_name %}
+      <div><dt>Account name</dt><dd class="sv-ugc">{{ quote.bank_details.account_name }}</dd></div>{% endif %}
+      {% if quote.bank_details.account_number %}
+      <div><dt>Account number</dt><dd>{{ quote.bank_details.account_number }}</dd></div>{% endif %}
+      {% if quote.bank_details.iban %}
+      <div><dt>IBAN</dt><dd>{{ quote.bank_details.iban }}</dd></div>{% endif %}
+      {% if quote.bank_details.swift %}
+      <div><dt>SWIFT</dt><dd>{{ quote.bank_details.swift }}</dd></div>{% endif %}
+    </dl>
+  </div>
+  {% endif %}
+
+  <div class="sv-doc-sign">
+    {% if quote.prepared_by_name %}
+    <p>Prepared by <span class="sv-ugc">{{ quote.prepared_by_name }}</span></p>
+    {% endif %}
+    {% if quote.issued_at %}
+    <p class="sv-doc-approved" role="status">Approved &amp; issued on
+       {{ quote.issued_at[:10] }}</p>
+    {% endif %}
+  </div>
+</article>
+
+{{ keepalive | safe }}{% endblock %}

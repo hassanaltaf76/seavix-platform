@@ -318,7 +318,8 @@ def test_manual_channel_linked_client(arun, id_asgi):
                 rfq_url = raised.headers["location"]
                 assert rfq_url.startswith("/org/rfqs/")
 
-                # detail: fields + badges + client contact card + Quotes hold
+                # detail: fields + badges + client contact card + Quotes
+                # section (32c: raise CTA + empty state, no rows yet)
                 page = await w.get(rfq_url)
                 assert page.status_code == 200
                 assert "PMS-QT-28-2026" in page.text
@@ -327,7 +328,9 @@ def test_manual_channel_linked_client(arun, id_asgi):
                 assert "WhatsApp" in page.text
                 assert "Capt. Amin Dar" in page.text
                 assert "Managing Director" in page.text
-                assert "task 32c" in page.text
+                assert "Pricing revisions for this RFQ." in page.text
+                assert 'href="/org/quotes/raise?rfq_id=' in page.text
+                assert "No quotes yet" in page.text
                 assert "Condition survey" in page.text
                 assert "Bunker quantity survey" in page.text
 

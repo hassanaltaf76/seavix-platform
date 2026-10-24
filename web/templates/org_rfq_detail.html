@@ -103,7 +103,61 @@
     <p>Pricing revisions for this RFQ.</p>
   </div>
   <div class="sv-section-body">
-    <p class="sv-info-callout" role="status">Quotes arrive with task 32c.</p>
+    {% if is_client %}
+    {#- 32c client view: the quote STATUS is visible (it drives their
+        pipeline) but the quotation documents are the tenant's surface —
+        read-only rows, no links, no raise action. -#}
+    {% if rfq.quotes %}
+    <table class="sv-table">
+      <thead>
+        <tr><th scope="col">Quote no</th><th scope="col">Status</th>
+            <th scope="col">Total</th></tr>
+      </thead>
+      <tbody>
+        {% for q in rfq.quotes %}
+        <tr>
+          <td class="sv-mono sv-ugc">{{ q.quote_no }}</td>
+          <td><span class="sv-status sv-status--{{ q.status }}">{{
+              quote_status_labels.get(q.status, q.status) }}</span></td>
+          <td class="sv-mono">{{ q.total|sv_money }} {{ q.currency }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="sv-page-desc">No quotes yet — the survey company will price
+       this request shortly.</p>
+    {% endif %}
+    {% else %}
+    {% if can_quote %}
+    <p><a class="button" href="/org/quotes/raise?rfq_id={{ rfq.id }}">Raise quote</a></p>
+    {% endif %}
+    {% if rfq.quotes %}
+    <table class="sv-table">
+      <thead>
+        <tr><th scope="col">Quote no</th><th scope="col">Status</th>
+            <th scope="col">Total</th><th scope="col">Valid until</th>
+            <th scope="col"></th></tr>
+      </thead>
+      <tbody>
+        {% for q in rfq.quotes %}
+        <tr>
+          <td class="sv-mono"><a href="/org/quotes/{{ q.id }}"
+              class="sv-ugc">{{ q.quote_no }}</a></td>
+          <td><span class="sv-status sv-status--{{ q.status }}">{{
+              quote_status_labels.get(q.status, q.status) }}</span></td>
+          <td class="sv-mono">{{ q.total|sv_money }} {{ q.currency }}</td>
+          <td class="sv-mono">{{ q.valid_until or "—" }}</td>
+          <td><a href="/org/quotes/{{ q.id }}">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="sv-page-desc">No quotes yet — raise one to price this
+       request.</p>
+    {% endif %}
+    {% endif %}
   </div>
 </section>
 

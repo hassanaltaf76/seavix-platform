@@ -68,6 +68,8 @@ IDENTITY_PROTECTED = {
     "/api/orgs/me/profile",
     "/api/orgs/me/logo",
     "/api/orgs/me/profile-status",
+    # 32c: org-level quotation defaults (org.profile.view / org.profile.edit)
+    "/api/orgs/me/commercial",
     "/api/orgs/me/roles",
     "/api/orgs/me/roles/{role_id}",
     "/api/orgs/me/members",
@@ -148,6 +150,18 @@ WEB_PROTECTED = {
     "/org/rfqs/new",
     "/org/rfqs/{rfq_id}",
     "/org/rfqs/clients.json",
+    # 32c: tenant quote pages — list/detail need quote.view, raise/edit/
+    # issue-confirm/revision need quote.create; the RFQ picker feed proxies
+    # work's quote-options (client orgs 404 on every one)
+    "/org/quotes",
+    "/org/quotes/rfq-options.json",
+    "/org/quotes/raise",
+    "/org/quotes/{quote_id}",
+    "/org/quotes/{quote_id}/edit",
+    "/org/quotes/{quote_id}/issue",
+    "/org/quotes/{quote_id}/revision",
+    # 32c: commercial defaults (org.profile.view / org.profile.edit)
+    "/org/commercial",
     # 32d: survey-type picker proxy + the three picker create proxies
     # (identity catalog reference data, session forwarded)
     "/org/survey-types/search",

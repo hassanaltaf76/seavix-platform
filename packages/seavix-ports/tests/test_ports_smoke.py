@@ -52,11 +52,27 @@ def test_domain_event_envelope_shape():
         "aggregate",
         "aggregate_id",
         "occurred_at",
+        "visibility",
         "payload",
     }
     assert event["type"] == "org.created"
     assert event["aggregate"] == "organization"
     assert event["aggregate_id"] == "org-42"
     assert event["payload"] == {"name": "Acme"}
+    # default visibility is the org-facing activity feed
+    assert event["visibility"] == "activity"
     # occurred_at is ISO-8601 UTC
     assert event["occurred_at"].endswith("+00:00")
+
+
+def test_domain_event_visibility_values():
+    audit = domain_event("t", "a", "1", {}, visibility="audit")
+    both = domain_event("t", "a", "1", {}, visibility="both")
+    assert audit["visibility"] == "audit"
+    assert both["visibility"] == "both"
+    try:
+        domain_event("t", "a", "1", {}, visibility="elsewhere")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid visibility must raise ValueError")

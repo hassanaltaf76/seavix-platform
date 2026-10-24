@@ -28,6 +28,20 @@ GET /api/rfqs/{id} is org-scoped: a caller whose org is not involved
 (requesting/billing/target) gets a plain 404 — org-scoping IS the
 authorization boundary (a client-role org never sees another client's
 RFQ).
+
+32c: the quote becomes a printable document (Pak Marine quote-doc
+spec). tenant_org_id scopes every quote read/write (org-scoping IS
+authz, task-23 — permission misses are a plain 404). quote_no is a
+per-tenant/year human number ("PREFIX-NN-YEAR", allocated atomically
+from quote_sequence). RFQ echo fields + a client-org SNAPSHOT land on
+the row at creation (directory edits never rewrite a document); terms
+default from the org profile (or DEFAULT_TERMS) and bank_details from
+the org's payment_details, both stored per-quote. A draft is editable
+(PUT); the ONLY way out is the human approve+issue gate
+(POST /{id}/approve-issue), which stamps approved_by/issued_by and
+flips the RFQ to 'quoted' in one transaction — a plain draft save
+never issues. POST /{id}/revision copies a quote into a fresh draft
+revision (prior 'sent' superseded; RFQ untouched).
 """
 from __future__ import annotations
 
@@ -35,6 +49,7 @@ import json
 import re
 import uuid
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -58,6 +73,20 @@ RFQ_COLS = (
     "preferred_date, reference_no, scope_notes, client_id, channel, "
     "source, status, created_at"
 )
+
+# The nine Pak Marine standard terms — the default when the org profile
+# carries no default_terms of its own (master doc §4).
+DEFAULT_TERMS = [
+    "Our offer is valid for 30 days from the date of this quotation.",
+    "Condition report will be submitted within 36 hours of survey completion.",
+    "Pre-purchase report will be submitted within 72 hours of survey completion.",
+    "Payment is due within 07 days of invoice date.",
+    "Travel expenses will be charged at actuals plus traveling days.",
+    "Anchorage surcharge applies as applicable.",
+    "Gate pass arrangements are on client's account.",
+    "50% advance payment is required before mobilization.",
+    "Bank charges are on client's account.",
+]
 
 
 def _survey_type_codes(cls, v: list[str]) -> list[str]:
@@ -162,10 +191,79 @@ class ManualRfqIn(BaseModel):
     )(_strip_or_none)
 
 
+def _currency_code(cls, v: str | None) -> str | None:
+    """32c: ISO-4217-ish — strip, uppercase, exactly three letters."""
+    if v is None:
+        return None
+    v = v.strip().upper()
+    if not re.fullmatch(r"[A-Z]{3}", v):
+        raise ValueError("currency must be a 3-letter code")
+    return v
+
+
+def _terms_list(cls, v: list[str] | None) -> list[str] | None:
+    """32c: strip, drop empties, cap 50 entries at 500 chars each."""
+    if v is None:
+        return None
+    out = [t.strip()[:500] for t in v if isinstance(t, str) and t.strip()]
+    return out[:50]
+
+
+def _bank_details(cls, v: dict | None) -> dict | None:
+    """32c: string keys, str|number|null values, at most 20 keys."""
+    if v is None:
+        return None
+    if not isinstance(v, dict):
+        raise ValueError("bank_details must be an object")
+    if len(v) > 20:
+        raise ValueError("bank_details allows at most 20 keys")
+    for k, val in v.items():
+        if not isinstance(k, str):
+            raise ValueError("bank_details keys must be strings")
+        if val is not None and not isinstance(val, (str, int, float)):
+            raise ValueError(
+                "bank_details values must be strings, numbers or null")
+    return v
+
+
 class QuoteIn(BaseModel):
-    line_items: list[dict] = Field(min_length=1)
-    currency: str = Field(min_length=3, max_length=3)
+    """32c: the quote document body — every field optional (a bare POST
+    drafts a document with org defaults). line_items are validated in the
+    endpoint via _validate_line_items so they round-trip VERBATIM."""
+
+    quote_date: date | None = None
     valid_until: date | None = None
+    currency: str | None = None
+    line_items: list[dict] | None = None
+    terms: list[str] | None = None
+    bank_details: dict | None = None
+
+    currency_code = field_validator("currency")(_currency_code)
+    terms_list = field_validator("terms")(_terms_list)
+    bank = field_validator("bank_details")(_bank_details)
+
+
+class QuoteUpdate(BaseModel):
+    """32c: draft edits — same fields as QuoteIn, all optional. None means
+    "not provided": this endpoint never clears a field by omission."""
+
+    quote_date: date | None = None
+    valid_until: date | None = None
+    currency: str | None = None
+    line_items: list[dict] | None = None
+    terms: list[str] | None = None
+    bank_details: dict | None = None
+
+    currency_code = field_validator("currency")(_currency_code)
+    terms_list = field_validator("terms")(_terms_list)
+    bank = field_validator("bank_details")(_bank_details)
+
+
+class ApproveIssueIn(BaseModel):
+    """32c: the human gate — the client confirms before the document goes
+    out. Anything but {"confirm": true} is a 422."""
+
+    confirm: bool
 
 
 def _row(r) -> dict:
@@ -186,19 +284,231 @@ def _row(r) -> dict:
     return d
 
 
-def _quote_row(r) -> dict:
-    d = _row(r)
-    if isinstance(d.get("line_items"), str):
-        d["line_items"] = json.loads(d["line_items"])
-    if d.get("valid_until") is not None:
-        d["valid_until"] = str(d["valid_until"])
+# ---------------------------------------------------------------- quote
+# document helpers (32c)
+
+_QUOTE_UUID_COLS = ("id", "rfq_id", "tenant_org_id", "prepared_by",
+                    "approved_by", "issued_by")
+_QUOTE_JSON_COLS = ("line_items", "survey_types", "client_address", "terms",
+                    "bank_details")
+_QUOTE_STR_COLS = ("quote_date", "valid_until")
+
+
+def _quote_out(r) -> dict:
+    """The full quote row as an API dict: JSONB columns parsed, ids and
+    dates stringified, plus the server-side total. Used by every quote
+    response (create/list/detail/update/issue/revision AND the embedded
+    quotes on GET /api/rfqs/{id})."""
+    d = dict(r)
+    for k in _QUOTE_JSON_COLS:
+        if isinstance(d.get(k), str):
+            d[k] = json.loads(d[k])
+    for k in _QUOTE_UUID_COLS:
+        if d.get(k) is not None:
+            d[k] = str(d[k])
+    for k in _QUOTE_STR_COLS:
+        if d.get(k) is not None:
+            d[k] = str(d[k])
+    for k in ("created_at", "updated_at", "approved_at", "issued_at"):
+        if d.get(k) is not None:
+            d[k] = d[k].isoformat()
+    d["total"] = str(_quote_total(d.get("line_items")))
     return d
 
 
+def _validate_line_items(items) -> list:
+    """32c: shape-check the line items and return them VERBATIM (same
+    dicts, extra keys untouched) — the stored document must echo exactly
+    what the user entered. Empty list is allowed on a draft."""
+    if not isinstance(items, list):
+        raise HTTPException(status_code=422,
+                            detail="line_items must be a list")
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise HTTPException(
+                status_code=422,
+                detail=f"line_items[{i}] must be an object")
+        desc = item.get("description")
+        if not isinstance(desc, str) or not desc.strip():
+            raise HTTPException(
+                status_code=422,
+                detail=f"line_items[{i}].description must be a non-empty string")
+        amount = item.get("amount")
+        if isinstance(amount, bool) or amount is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"line_items[{i}].amount must be a number")
+        try:
+            value = Decimal(str(amount))
+        except (InvalidOperation, ValueError):
+            raise HTTPException(
+                status_code=422,
+                detail=f"line_items[{i}].amount is not a valid number")
+        if not value.is_finite():
+            raise HTTPException(
+                status_code=422,
+                detail=f"line_items[{i}].amount is not a valid number")
+        if value.as_tuple().exponent < -2:
+            raise HTTPException(
+                status_code=422,
+                detail=f"line_items[{i}].amount allows at most 2 decimal places")
+        if value < 0:
+            raise HTTPException(
+                status_code=422,
+                detail=f"line_items[{i}].amount must not be negative")
+    return items
+
+
+def _quote_total(line_items) -> Decimal:
+    """Server-side sum of the (validated) amounts, quantized to 2dp."""
+    total = Decimal("0")
+    for item in line_items or []:
+        total += Decimal(str(item["amount"]))
+    return total.quantize(Decimal("0.01"))
+
+
+def _json_val(v):
+    """Raw SELECTs hand jsonb back as a string (asyncpg has no column
+    type for text() statements) — parse before re-serializing."""
+    return json.loads(v) if isinstance(v, str) else v
+
+
+NEXT_QUOTE_SEQ = (
+    "INSERT INTO quote_sequence (tenant_org_id, year, last_seq) "
+    "VALUES (:tenant, :year, 1) "
+    "ON CONFLICT (tenant_org_id, year) "
+    "DO UPDATE SET last_seq = quote_sequence.last_seq + 1 "
+    "RETURNING last_seq"
+)
+
+
+async def _next_quote_no(session, tenant_org_id, prefix: str,
+                         year: int) -> str:
+    """Atomic per-(tenant, year) number: the upsert serializes concurrent
+    creates on the sequence row, so two writers never get one number."""
+    seq = (
+        await session.execute(
+            text(NEXT_QUOTE_SEQ), {"tenant": tenant_org_id, "year": year}
+        )
+    ).scalar_one()
+    return f"{prefix}-{seq:02d}-{year}"
+
+
+def _normalize_prefix(raw: str) -> str:
+    """Uppercase, keep [A-Z0-9], collapse the rest into '-', strip and
+    truncate to 12 chars."""
+    return re.sub(r"[^A-Z0-9]+", "-", raw.upper()).strip("-")[:12]
+
+
+async def _org_commercial(tenant_org_id: str) -> dict:
+    """The tenant org's commercial profile: default_terms, payment_details
+    and the quote-number prefix. Best-effort — identity failures resolve
+    to None (callers fall back to DEFAULT_TERMS / no bank block)."""
+    out: dict = {"default_terms": None, "payment_details": None,
+                 "quote_prefix": None}
+    try:
+        org = await get_identity_org(tenant_org_id)
+    except Exception:
+        return out
+    if not isinstance(org, dict):
+        return out
+    out["default_terms"] = org.get("default_terms")
+    out["payment_details"] = org.get("payment_details")
+    prefix = org.get("quote_prefix")
+    if isinstance(prefix, str) and prefix.strip():
+        out["quote_prefix"] = prefix.strip()
+        return out
+    slug = org.get("slug")
+    if isinstance(slug, str):
+        normalized = _normalize_prefix(slug)
+        if len(normalized) >= 2:
+            out["quote_prefix"] = normalized
+            return out
+    # degenerate: "Q" + org id hex, truncated to the 12-char budget
+    out["quote_prefix"] = ("Q" + str(tenant_org_id).replace("-", "")
+                           .upper())[:12]
+    return out
+
+
+def _snapshot_from_org(org: dict) -> dict:
+    """Client-org fields -> quote snapshot columns (all best-effort)."""
+    org = org or {}
+    address = {k: org.get(k) for k in
+               ("address_line1", "address_line2", "city", "state",
+                "postal_code", "country_code")}
+    if not any(v is not None for v in address.values()):
+        address = None
+    phone = None
+    if org.get("phone") is not None:
+        cc = (org.get("phone_cc") or "").strip()
+        phone = f"{cc}{org['phone']}" if cc else str(org["phone"])
+    return {
+        "client_name": org.get("name"),
+        "client_contact_person": org.get("contact_person"),
+        "client_designation": org.get("designation"),
+        "client_address": address,
+        "client_country": org.get("country_code"),
+        "client_phone": phone,
+        "client_email": org.get("contact_email"),
+    }
+
+
+async def _client_snapshot(session, rfq) -> dict:
+    """The quote's client block, SNAPSHOT at creation: directory edge ->
+    client org fields, or the requesting org (public intake), or just the
+    RFQ's contact email. Best-effort throughout — an identity failure must
+    never 500 the quote create; the snapshot fields simply stay None."""
+    snap = {"client_name": None, "client_contact_person": None,
+            "client_designation": None, "client_address": None,
+            "client_country": None, "client_phone": None,
+            "client_email": None}
+    try:
+        if rfq.get("client_id"):
+            edge = (
+                await session.execute(
+                    text("SELECT client_org_id FROM client_directory "
+                         "WHERE id = :id"),
+                    {"id": str(rfq["client_id"])},
+                )
+            ).mappings().first()
+            if edge is not None:
+                return {**snap, **_snapshot_from_org(
+                    await get_identity_org(str(edge["client_org_id"])))}
+        elif rfq.get("requesting_org_id"):
+            return {**snap, **_snapshot_from_org(
+                await get_identity_org(str(rfq["requesting_org_id"])))}
+    except Exception:
+        return snap
+    if not rfq.get("client_id") and not rfq.get("requesting_org_id"):
+        snap["client_email"] = rfq.get("contact_email")
+    return snap
+
+
+async def require_permission(request: Request, permission: str) -> dict:
+    """404-over-403 (task-23 policy). Spine-local so the caller_member
+    seam lives in THIS module — tests patch one name (spine.caller_member)."""
+    member = await caller_member(request)
+    if permission not in member.get("permissions", []):
+        raise HTTPException(status_code=404, detail="not found")
+    return member
+
+
+async def _load_quote_row(session, quote_id: str):
+    """SELECT * FROM quote WHERE id = :id -> mapping or None."""
+    return (
+        await session.execute(
+            text("SELECT * FROM quote WHERE id = :id"), {"id": quote_id}
+        )
+    ).mappings().first()
+
+
 async def _publish(request: Request, event_type: str, aggregate: str,
-                   aggregate_id: str, payload: dict) -> None:
+                   aggregate_id: str, payload: dict,
+                   visibility: str = "activity") -> None:
     await request.app.state.event_bus.publish(
-        event_type, domain_event(event_type, aggregate, aggregate_id, payload)
+        event_type,
+        domain_event(event_type, aggregate, aggregate_id, payload,
+                     visibility=visibility),
     )
 
 
@@ -467,6 +777,46 @@ async def list_rfqs(
     return {"rfqs": out, "org_names": await _org_names(ids)}
 
 
+@router.get("/api/rfqs/quote-options")
+async def quote_options(request: Request,
+                        q: str = Query("", max_length=100)) -> dict:
+    """32c: the raise-quote search-select — RFQs the caller may quote,
+    freshest first. Only awaiting_quote/quoted rows targeted at the caller
+    qualify; q matches the reference/vessel/port and an id prefix."""
+    member = await require_permission(request, "quote.create")
+    clause = ("target_org_id = :org "
+              "AND status IN ('awaiting_quote', 'quoted')")
+    params: dict = {"org": member["org_id"]}
+    if q:
+        clause += (" AND (reference_no ILIKE :q OR vessel_name ILIKE :q OR "
+                   "port_name ILIKE :q OR id::text LIKE :prefix)")
+        params["q"] = f"%{q}%"
+        params["prefix"] = f"{q}%"
+    async with SessionLocal() as session:
+        rows = (
+            await session.execute(
+                text(f"SELECT {RFQ_COLS} FROM rfq WHERE {clause} "
+                     "ORDER BY created_at DESC LIMIT 20"),
+                params,
+            )
+        ).mappings().all()
+    names = await _org_names([r["requesting_org_id"] for r in rows])
+    out = []
+    for r in rows:
+        d = _row(r)
+        out.append({
+            "id": d["id"],
+            "reference_no": d["reference_no"],
+            "vessel_name": d["vessel_name"],
+            "vessel_imo": d["vessel_imo"],
+            "status": d["status"],
+            "channel": d["channel"],
+            "client": names.get(str(r["requesting_org_id"])),
+            "created_at": d["created_at"],
+        })
+    return {"rfqs": out}
+
+
 @router.get("/api/rfqs/{rfq_id}")
 async def get_rfq(request: Request, rfq_id: str) -> dict:
     caller = await caller_org(request)  # authenticated read
@@ -488,11 +838,8 @@ async def get_rfq(request: Request, rfq_id: str) -> dict:
             raise HTTPException(status_code=404, detail="rfq not found")
         quotes = (
             await session.execute(
-                text(
-                    "SELECT id, revision, line_items, currency, valid_until, "
-                    "status, created_at FROM quote WHERE rfq_id = :id "
-                    "ORDER BY revision"
-                ),
+                text("SELECT * FROM quote WHERE rfq_id = :id "
+                     "ORDER BY revision"),
                 {"id": rfq_id},
             )
         ).mappings().all()
@@ -507,7 +854,7 @@ async def get_rfq(request: Request, rfq_id: str) -> dict:
                 {"id": rfq_id},
             )
         ).scalars().all()
-    return {**_row(row), "quotes": [_quote_row(q) for q in quotes],
+    return {**_row(row), "quotes": [_quote_out(q) for q in quotes],
             "survey_types": list(survey_types),
             "org_names": await _org_names(
                 (row["requesting_org_id"], row["target_org_id"],
@@ -546,10 +893,9 @@ async def _load_quote(session, quote_id: str) -> dict:
     row = (
         await session.execute(
             text(
-                "SELECT q.id, q.rfq_id, q.revision, q.line_items, q.currency, "
-                "q.valid_until, q.status, q.created_at, r.target_org_id, "
-                "r.requesting_org_id, r.survey_type, r.vessel_imo, "
-                "r.billing_org_id, r.status AS rfq_status "
+                "SELECT q.*, r.target_org_id, r.requesting_org_id, "
+                "r.survey_type, r.vessel_imo, r.billing_org_id, "
+                "r.status AS rfq_status "
                 "FROM quote q JOIN rfq r ON r.id = q.rfq_id WHERE q.id = :id"
             ),
             {"id": quote_id},
@@ -560,14 +906,61 @@ async def _load_quote(session, quote_id: str) -> dict:
     return dict(row)
 
 
+INSERT_QUOTE = (
+    "INSERT INTO quote ("
+    "id, rfq_id, revision, line_items, currency, valid_until, status, "
+    "created_at, tenant_org_id, quote_no, quote_date, updated_at, "
+    "reference_no, vessel_name, vessel_imo, survey_types, location_type, "
+    "port_name, scope_notes, client_name, client_contact_person, "
+    "client_designation, client_address, client_country, client_phone, "
+    "client_email, prepared_by, prepared_by_name, prepared_by_email, "
+    "terms, bank_details"
+    ") VALUES ("
+    ":id, :rfq, :rev, CAST(:items AS jsonb), :cur, :valid, 'draft', now(), "
+    ":tenant, :qno, :qdate, now(), "
+    ":ref, :vname, :imo, CAST(:stypes AS jsonb), :ltype, :pname, :scope, "
+    ":cname, :cperson, :cdesig, CAST(:caddr AS jsonb), :ccountry, :cphone, "
+    ":cemail, :pby, :pbyname, :pbyemail, CAST(:terms AS jsonb), "
+    "CAST(:bank AS jsonb)"
+    ")"
+)
+
+
+def _author_stamp(member: dict) -> dict:
+    """32c: prepared_by = caller uid; prepared_by_name = the caller's
+    email (or "uid:<uid>"); None everywhere when identity gave no uid."""
+    uid = member.get("uid")
+    if uid is None:
+        return {"pby": None, "pbyname": None,
+                "pbyemail": member.get("email")}
+    return {"pby": str(uid),
+            "pbyname": member.get("email") or f"uid:{uid}",
+            "pbyemail": member.get("email")}
+
+
+async def _rfq_survey_types(session, rfq) -> list:
+    """Authoritative multi-select codes; the legacy column is the
+    fallback for rows that predate the join."""
+    codes = (
+        await session.execute(
+            text("SELECT survey_type FROM rfq_survey_type WHERE rfq_id = :id "
+                 "ORDER BY survey_type"),
+            {"id": str(rfq["id"])},
+        )
+    ).scalars().all()
+    return list(codes) if codes else [rfq["survey_type"]]
+
+
 @router.post("/api/rfqs/{rfq_id}/quotes", status_code=201)
 async def create_quote(rfq_id: str, payload: QuoteIn, request: Request) -> dict:
     caller = await caller_org(request)
     quote_id = str(uuid.uuid4())
     async with SessionLocal() as session:
+        # FOR UPDATE serializes concurrent creates on one RFQ — the
+        # MAX(revision)+1 read then cannot collide (32c uniqueness test).
         rfq = (
             await session.execute(
-                text("SELECT target_org_id, status FROM rfq WHERE id = :id"),
+                text(f"SELECT {RFQ_COLS} FROM rfq WHERE id = :id FOR UPDATE"),
                 {"id": rfq_id},
             )
         ).mappings().first()
@@ -575,6 +968,15 @@ async def create_quote(rfq_id: str, payload: QuoteIn, request: Request) -> dict:
             raise HTTPException(status_code=404, detail="rfq not found")
         if str(rfq["target_org_id"]) != caller["org_id"]:
             raise HTTPException(status_code=403, detail="only the target org quotes")
+        member = await require_permission(request, "quote.create")
+        tenant = str(rfq["target_org_id"])
+        commercial = await _org_commercial(tenant)
+        line_items = (_validate_line_items(payload.line_items)
+                      if payload.line_items is not None else [])
+        quote_date = payload.quote_date or date.today()
+        quote_no = await _next_quote_no(session, tenant,
+                                        commercial["quote_prefix"],
+                                        quote_date.year)
         next_rev = (
             await session.execute(
                 text("SELECT COALESCE(MAX(revision), 0) + 1 FROM quote WHERE rfq_id = :id"),
@@ -587,23 +989,55 @@ async def create_quote(rfq_id: str, payload: QuoteIn, request: Request) -> dict:
                  "WHERE rfq_id = :id AND status = 'sent'"),
             {"id": rfq_id},
         )
+        stamp = _author_stamp(member)
+        snapshot = await _client_snapshot(session, rfq)
+        terms = (payload.terms if payload.terms is not None
+                 else commercial["default_terms"] or DEFAULT_TERMS)
         await session.execute(
-            text(
-                "INSERT INTO quote (id, rfq_id, revision, line_items, currency, "
-                "valid_until, status, created_at) VALUES "
-                "(:id, :rfq, :rev, CAST(:items AS jsonb), :cur, :valid, 'draft', now())"
-            ),
+            text(INSERT_QUOTE),
             {
                 "id": quote_id,
                 "rfq": rfq_id,
                 "rev": next_rev,
-                "items": json.dumps(payload.line_items),
-                "cur": payload.currency.upper(),
+                "items": json.dumps(line_items),
+                "cur": payload.currency or "USD",
                 "valid": payload.valid_until,
+                "tenant": tenant,
+                "qno": quote_no,
+                "qdate": quote_date,
+                "ref": rfq["reference_no"],
+                "vname": rfq["vessel_name"],
+                "imo": rfq["vessel_imo"],
+                "stypes": json.dumps(await _rfq_survey_types(session, rfq)),
+                "ltype": rfq["location_type"],
+                "pname": rfq["port_name"],
+                "scope": rfq["scope_notes"],
+                "cname": snapshot["client_name"],
+                "cperson": snapshot["client_contact_person"],
+                "cdesig": snapshot["client_designation"],
+                "caddr": (json.dumps(snapshot["client_address"])
+                          if snapshot["client_address"] is not None else None),
+                "ccountry": snapshot["client_country"],
+                "cphone": snapshot["client_phone"],
+                "cemail": snapshot["client_email"],
+                "pby": stamp["pby"],
+                "pbyname": stamp["pbyname"],
+                "pbyemail": stamp["pbyemail"],
+                "terms": json.dumps(terms),
+                "bank": (json.dumps(payload.bank_details)
+                         if payload.bank_details is not None
+                         else (json.dumps(commercial["payment_details"])
+                               if commercial["payment_details"] is not None
+                               else None)),
             },
         )
         await session.commit()
-    return {"id": quote_id, "rfq_id": rfq_id, "revision": next_rev, "status": "draft"}
+        row = await _load_quote_row(session, quote_id)
+    await _publish(request, "quote.created", "quote", quote_id,
+                   {"quote_id": quote_id, "rfq_id": rfq_id,
+                    "revision": next_rev, "quote_no": quote_no,
+                    "tenant_org_id": tenant})
+    return _quote_out(row)
 
 
 @router.post("/api/quotes/{quote_id}/send")
@@ -615,8 +1049,11 @@ async def send_quote(quote_id: str, request: Request) -> dict:
             raise HTTPException(status_code=403, detail="only the target org sends")
         if q["status"] != "draft":
             raise HTTPException(status_code=409, detail=f"cannot send from {q['status']}")
+        # 32c: the legacy send path also stamps the issue gate fields
         await session.execute(
-            text("UPDATE quote SET status = 'sent' WHERE id = :id"), {"id": quote_id}
+            text("UPDATE quote SET status = 'sent', issued_by = :uid, "
+                 "issued_at = now(), updated_at = now() WHERE id = :id"),
+            {"id": quote_id, "uid": caller.get("uid")},
         )
         await session.execute(
             text("UPDATE rfq SET status = 'quoted' WHERE id = :id AND "
@@ -625,8 +1062,230 @@ async def send_quote(quote_id: str, request: Request) -> dict:
         )
         await session.commit()
     await _publish(request, "quote.sent", "quote", quote_id,
-                   {"rfq_id": str(q["rfq_id"]), "revision": q["revision"]})
+                   {"quote_id": quote_id, "rfq_id": str(q["rfq_id"]),
+                    "revision": q["revision"], "quote_no": q["quote_no"]},
+                   visibility="both")
     return {"id": quote_id, "status": "sent"}
+
+
+# ---------------------------------------------------------------- quotes
+# document API (32c): list / detail / edit / approve+issue / revision.
+# (Declared AFTER the literal sub-paths above; GET /api/quotes/{quote_id}
+# cannot shadow anything — no other GET route shares that prefix.)
+
+@router.get("/api/quotes")
+async def list_quotes(request: Request,
+                      status: str = Query("", max_length=20),
+                      q: str = Query("", max_length=100)) -> dict:
+    member = await require_permission(request, "quote.view")
+    clause = "tenant_org_id = :org"
+    params: dict = {"org": member["org_id"]}
+    if status:
+        clause += " AND status = :status"
+        params["status"] = status
+    if q:
+        clause += (" AND (quote_no ILIKE :q OR client_name ILIKE :q OR "
+                   "vessel_name ILIKE :q OR reference_no ILIKE :q)")
+        params["q"] = f"%{q}%"
+    async with SessionLocal() as session:
+        rows = (
+            await session.execute(
+                text(f"SELECT * FROM quote WHERE {clause} "
+                     "ORDER BY created_at DESC LIMIT 200"),
+                params,
+            )
+        ).mappings().all()
+    return {"quotes": [_quote_out(r) for r in rows]}
+
+
+@router.get("/api/quotes/{quote_id}")
+async def get_quote(request: Request, quote_id: str) -> dict:
+    member = await require_permission(request, "quote.view")
+    async with SessionLocal() as session:
+        row = await _load_quote_row(session, quote_id)
+    if row is None or str(row["tenant_org_id"]) != member["org_id"]:
+        raise HTTPException(status_code=404, detail="quote not found")
+    return _quote_out(row)
+
+
+@router.put("/api/quotes/{quote_id}")
+async def update_quote(quote_id: str, payload: QuoteUpdate,
+                       request: Request) -> dict:
+    member = await require_permission(request, "quote.create")
+    async with SessionLocal() as session:
+        row = await _load_quote_row(session, quote_id)
+        if row is None or str(row["tenant_org_id"]) != member["org_id"]:
+            raise HTTPException(status_code=404, detail="quote not found")
+        if row["status"] != "draft":
+            raise HTTPException(status_code=409,
+                                detail=f"cannot update from {row['status']}")
+        sets = ["updated_at = now()"]
+        params: dict = {"id": quote_id}
+        if payload.line_items is not None:
+            sets.append("line_items = CAST(:items AS jsonb)")
+            params["items"] = json.dumps(
+                _validate_line_items(payload.line_items))
+        if payload.currency is not None:
+            sets.append("currency = :cur")
+            params["cur"] = payload.currency
+        if payload.valid_until is not None:
+            sets.append("valid_until = :valid")
+            params["valid"] = payload.valid_until
+        if payload.quote_date is not None:
+            sets.append("quote_date = :qdate")
+            params["qdate"] = payload.quote_date
+        if payload.terms is not None:
+            sets.append("terms = CAST(:terms AS jsonb)")
+            params["terms"] = json.dumps(payload.terms)
+        if payload.bank_details is not None:
+            sets.append("bank_details = CAST(:bank AS jsonb)")
+            params["bank"] = json.dumps(payload.bank_details)
+        await session.execute(
+            text(f"UPDATE quote SET {', '.join(sets)} WHERE id = :id"), params
+        )
+        await session.commit()
+        row = await _load_quote_row(session, quote_id)
+    return _quote_out(row)
+
+
+@router.post("/api/quotes/{quote_id}/approve-issue")
+async def approve_issue(quote_id: str, payload: ApproveIssueIn,
+                        request: Request) -> dict:
+    member = await require_permission(request, "quote.create")
+    async with SessionLocal() as session:
+        row = await _load_quote_row(session, quote_id)
+        if row is None or str(row["tenant_org_id"]) != member["org_id"]:
+            raise HTTPException(status_code=404, detail="quote not found")
+        if payload.confirm is not True:
+            raise HTTPException(status_code=422,
+                                detail="confirm must be true")
+        if row["status"] != "draft":
+            raise HTTPException(status_code=409,
+                                detail=f"cannot issue from {row['status']}")
+        rfq_status = (
+            await session.execute(
+                text("SELECT status FROM rfq WHERE id = :id"),
+                {"id": str(row["rfq_id"])},
+            )
+        ).scalar()
+        if rfq_status not in ("awaiting_quote", "quoted"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"cannot issue while the RFQ is {rfq_status}")
+        # ONE transaction: the conditional UPDATE is the concurrent-issue
+        # guard — exactly one caller can flip draft -> sent.
+        uid = member.get("uid")
+        result = await session.execute(
+            text("UPDATE quote SET status = 'sent', approved_by = :uid, "
+                 "approved_at = now(), issued_by = :uid, issued_at = now(), "
+                 "updated_at = now() WHERE id = :id AND status = 'draft'"),
+            {"id": quote_id, "uid": str(uid) if uid is not None else None},
+        )
+        if result.rowcount != 1:
+            raise HTTPException(status_code=409,
+                                detail="quote was issued concurrently")
+        await session.execute(
+            text("UPDATE rfq SET status = 'quoted' WHERE id = :id AND "
+                 "status IN ('awaiting_quote')"),
+            {"id": str(row["rfq_id"])},
+        )
+        await session.commit()
+        row = await _load_quote_row(session, quote_id)
+    await _publish(request, "quote.approved", "quote", quote_id,
+                   {"quote_id": quote_id, "rfq_id": str(row["rfq_id"]),
+                    "revision": row["revision"], "quote_no": row["quote_no"],
+                    "approved_by": str(uid) if uid is not None else None},
+                   visibility="both")
+    await _publish(request, "quote.sent", "quote", quote_id,
+                   {"quote_id": quote_id, "rfq_id": str(row["rfq_id"]),
+                    "revision": row["revision"], "quote_no": row["quote_no"]},
+                   visibility="both")
+    return _quote_out(row)
+
+
+@router.post("/api/quotes/{quote_id}/revision", status_code=201)
+async def revise_quote(quote_id: str, request: Request) -> dict:
+    """32c: copy a quote into a fresh draft revision — same RFQ, echoes,
+    client snapshot, terms and bank block; fresh quote_no and revision;
+    prior 'sent' quotes superseded; the RFQ status is UNTOUCHED."""
+    member = await require_permission(request, "quote.create")
+    new_id = str(uuid.uuid4())
+    async with SessionLocal() as session:
+        source = await _load_quote_row(session, quote_id)
+        if source is None or str(source["tenant_org_id"]) != member["org_id"]:
+            raise HTTPException(status_code=404, detail="quote not found")
+        rfq_id = str(source["rfq_id"])
+        tenant = str(source["tenant_org_id"])
+        rfq = (
+            await session.execute(
+                text(f"SELECT {RFQ_COLS} FROM rfq WHERE id = :id FOR UPDATE"),
+                {"id": rfq_id},
+            )
+        ).mappings().first()
+        # the RFQ row cannot be missing (quote.rfq_id is an FK) — but never
+        # 500 on it either; treat as a plain not-found.
+        if rfq is None:
+            raise HTTPException(status_code=404, detail="rfq not found")
+        commercial = await _org_commercial(tenant)
+        quote_date = date.today()
+        quote_no = await _next_quote_no(session, tenant,
+                                        commercial["quote_prefix"],
+                                        quote_date.year)
+        next_rev = (
+            await session.execute(
+                text("SELECT COALESCE(MAX(revision), 0) + 1 FROM quote "
+                     "WHERE rfq_id = :id"),
+                {"id": rfq_id},
+            )
+        ).scalar_one()
+        await session.execute(
+            text("UPDATE quote SET status = 'superseded' "
+                 "WHERE rfq_id = :id AND status = 'sent'"),
+            {"id": rfq_id},
+        )
+        stamp = _author_stamp(member)
+        await session.execute(
+            text(INSERT_QUOTE),
+            {
+                "id": new_id,
+                "rfq": rfq_id,
+                "rev": next_rev,
+                "items": json.dumps(_json_val(source["line_items"])),
+                "cur": source["currency"],
+                "valid": source["valid_until"],
+                "tenant": tenant,
+                "qno": quote_no,
+                "qdate": quote_date,
+                "ref": source["reference_no"],
+                "vname": source["vessel_name"],
+                "imo": source["vessel_imo"],
+                "stypes": json.dumps(_json_val(source["survey_types"])),
+                "ltype": source["location_type"],
+                "pname": source["port_name"],
+                "scope": source["scope_notes"],
+                "cname": source["client_name"],
+                "cperson": source["client_contact_person"],
+                "cdesig": source["client_designation"],
+                "caddr": (json.dumps(_json_val(source["client_address"]))
+                          if source["client_address"] is not None else None),
+                "ccountry": source["client_country"],
+                "cphone": source["client_phone"],
+                "cemail": source["client_email"],
+                "pby": stamp["pby"],
+                "pbyname": stamp["pbyname"],
+                "pbyemail": stamp["pbyemail"],
+                "terms": json.dumps(_json_val(source["terms"])),
+                "bank": (json.dumps(_json_val(source["bank_details"]))
+                         if source["bank_details"] is not None else None),
+            },
+        )
+        await session.commit()
+        row = await _load_quote_row(session, new_id)
+    await _publish(request, "quote.created", "quote", new_id,
+                   {"quote_id": new_id, "rfq_id": rfq_id,
+                    "revision": next_rev, "quote_no": quote_no,
+                    "tenant_org_id": tenant})
+    return _quote_out(row)
 
 
 @router.post("/api/quotes/{quote_id}/accept", status_code=201)

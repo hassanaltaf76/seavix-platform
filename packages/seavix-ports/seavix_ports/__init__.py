@@ -62,8 +62,16 @@ class InMemoryEventBus:
 
 
 def domain_event(event_type: str, aggregate: str, aggregate_id: str,
-                 payload: dict) -> dict:
-    """Standard envelope — same shape dev and prod; BigQuery consumes it later."""
+                 payload: dict, visibility: str = "activity") -> dict:
+    """Standard envelope — same shape dev and prod; BigQuery consumes it later.
+
+    visibility (activity | audit | both) tells consumers which streams the
+    event belongs to: the org-facing activity feed, the audit trail, or both.
+    """
+    if visibility not in ("activity", "audit", "both"):
+        raise ValueError(
+            f"visibility must be 'activity', 'audit' or 'both', got {visibility!r}"
+        )
     return {
         "id": str(uuid.uuid4()),
         "type": event_type,
@@ -71,6 +79,7 @@ def domain_event(event_type: str, aggregate: str, aggregate_id: str,
         "aggregate_id": aggregate_id,
         "occurred_at": __import__("datetime").datetime.now(
             __import__("datetime").timezone.utc).isoformat(),
+        "visibility": visibility,
         "payload": payload,
     }
 

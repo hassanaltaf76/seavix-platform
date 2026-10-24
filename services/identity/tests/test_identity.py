@@ -67,6 +67,7 @@ def test_org_created_event_published_via_bus(arun):
         "aggregate_id",
         "occurred_at",
         "payload",
+        "visibility",
     }
     # audit hook on the port recorded it too
     assert [topic for topic, _ in bus.published] == ["org.created"]

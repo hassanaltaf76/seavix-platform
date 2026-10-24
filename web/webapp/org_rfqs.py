@@ -61,6 +61,16 @@ CHANNEL_LABELS = {
 }
 LOCATION_TYPES = ("terminal", "STS", "anchorage", "OPL", "repair-berth",
                   "dry-dock")
+# 32c: work owns the quote status codes; the surface owns the labels
+# ('sent' reads "Issued" — the document has gone out).
+QUOTE_STATUS_LABELS = {
+    "draft": "Draft",
+    "sent": "Issued",
+    "accepted": "Accepted",
+    "declined": "Declined",
+    "superseded": "Superseded",
+}
+QUOTE_CREATE = "quote.create"
 # Client-directory relationships (work owns the codes; 32a labels).
 RELATIONSHIP_LABELS = {
     "management": "Management",
@@ -118,6 +128,7 @@ def _rfq_ctx(ctx, membership, org=None, **extra) -> dict:
         "status_labels": STATUS_LABELS, "channel_labels": CHANNEL_LABELS,
         "location_types": LOCATION_TYPES,
         "relationship_labels": RELATIONSHIP_LABELS,
+        "quote_status_labels": QUOTE_STATUS_LABELS,
         **extra,
     }
 
@@ -342,5 +353,7 @@ async def rfq_detail(request: Request, rfq_id: str, created: str = "",
                  labels=await _survey_type_labels(request),
                  client=client, created=created == "1",
                  is_client=_is_client_role(membership),
-                 my_org_id=membership.org_id),
+                 my_org_id=membership.org_id,
+                 can_quote=(not _is_client_role(membership)
+                            and _has(membership, QUOTE_CREATE))),
     )

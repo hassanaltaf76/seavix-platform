@@ -29,7 +29,9 @@ PUBLIC_TEMPLATES = ("landing", "profile", "profile_unavailable",
                     "rfq_form", "rfq_thanks")
 PAGE_TEMPLATES = ("org_home", "org_profile", "org_not_found", "dashboard",
                   "org_clients", "org_client_new", "org_client_detail",
-                  "org_rfqs", "org_rfq_new", "org_rfq_detail")
+                  "org_rfqs", "org_rfq_new", "org_rfq_detail",
+                  "org_quotes", "org_quote_form", "org_quote_detail",
+                  "org_quote_issue", "org_commercial")
 
 
 def _tokens() -> dict[str, str]:
@@ -235,13 +237,15 @@ def test_rail_structure_and_active_state():
     assert logo_at < tenant_at
     # exactly one active-state marker mechanism in the shell (rail-scoped,
     # conditionally set; the page chrome carries no other). 32a added the
-    # Clients marker, 32b the RFQs slot — the tenant rail carries four
-    # items (Dashboard · Profile · RFQs · Clients) and the registered-
-    # client rail one (RFQs under Workspace), same mechanism throughout.
+    # Clients marker, 32b the RFQs slot, 32c the Quotes slot — the tenant
+    # rail carries five items (Dashboard · Profile · RFQs · Quotes ·
+    # Clients) and the registered-client rail one (RFQs under Workspace),
+    # same mechanism throughout.
     rail = BASE[BASE.index('class="sv-rail"'):BASE.index('class="sv-page"')]
-    assert rail.count('aria-current="page"') == 5
+    assert rail.count('aria-current="page"') == 6
     assert '{% if active == "clients" %}aria-current="page"' in BASE
     assert '{% if active == "rfqs" %}aria-current="page"' in BASE
+    assert '{% if active == "quotes" %}aria-current="page"' in BASE
     assert BASE.count('{% if active == "rfqs" %}aria-current="page"') == 2
 
 

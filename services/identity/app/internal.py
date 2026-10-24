@@ -154,7 +154,9 @@ async def create_client_org(payload: ClientOrgCreate, request: Request) -> dict:
 async def org_by_id(org_id: str, request: Request) -> dict:
     """32a: service-to-service read of one org's directory fields (the work
     service enriches client-directory rows with these). Loopback-only, same
-    guard as create_client_org."""
+    guard as create_client_org. 32c: the commercial defaults ride along —
+    the work service prefills new quotes with quote_prefix/default_terms/
+    payment_details (NULL until the org saves commercial settings)."""
     _require_loopback(request)
     async with SessionLocal() as session:
         row = (
@@ -163,7 +165,8 @@ async def org_by_id(org_id: str, request: Request) -> dict:
                     "SELECT id, name, type, slug, contact_email, "
                     "contact_person, designation, "
                     "phone, phone_cc, whatsapp, whatsapp_cc, address_line1, "
-                    "address_line2, city, state, postal_code, country_code "
+                    "address_line2, city, state, postal_code, country_code, "
+                    "quote_prefix, default_terms, payment_details "
                     "FROM organization WHERE id = :id"
                 ),
                 {"id": org_id},

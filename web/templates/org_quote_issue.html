@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% block title %}Issue quote {{ quote.quote_no }} — SeaVix{% endblock %}
+{% set active = "quotes" %}
+{% block page_title %}
+  <h1>Issue quote <span class="sv-mono sv-ugc">{{ quote.quote_no }}</span></h1>
+{% endblock %}
+{% block page_desc %}
+  <p class="sv-page-desc">Approve and issue this quotation to the client.</p>
+{% endblock %}
+{% block page_actions %}
+  <a class="button secondary" href="/org/quotes/{{ quote.id }}">← Back to quote</a>
+{% endblock %}
+
+{% block content %}
+<section class="sv-section-card">
+  <div class="sv-section-head">
+    <h2>Confirm issue</h2>
+    <p>What is about to go out, and what happens next.</p>
+  </div>
+  <div class="sv-section-body">
+    <dl class="sv-dl">
+      <div><dt>Quote no</dt>
+        <dd class="sv-mono sv-ugc">{{ quote.quote_no }}</dd></div>
+      <div><dt>Client</dt>
+        <dd class="sv-ugc">{{ quote.client_name or "—" }}</dd></div>
+      <div><dt>Vessel</dt>
+        <dd class="sv-ugc">{{ quote.vessel_name or "—" }}</dd></div>
+      <div><dt>Total</dt>
+        <dd class="sv-mono">{{ quote.total|sv_money }} {{ quote.currency }}</dd></div>
+      <div><dt>Valid until</dt>
+        <dd class="sv-mono">{{ quote.valid_until or "—" }}</dd></div>
+    </dl>
+    <p class="notice" role="note">Issuing is <strong>final</strong> —
+       the quotation becomes read-only and the RFQ moves to
+       <em>quoted</em>. To change an issued quote you create a new
+       revision.</p>
+    <form method="post" action="/org/quotes/{{ quote.id }}/issue">
+      <input type="hidden" name="confirm" value="true">
+      <button type="submit">Approve &amp; issue</button>
+    </form>
+  </div>
+</section>
+
+{{ keepalive | safe }}{% endblock %}

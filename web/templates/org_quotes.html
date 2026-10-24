@@ -1,0 +1,64 @@
+{% extends "base.html" %}{% block title %}Quotes — SeaVix{% endblock %}
+{% set active = "quotes" %}
+{% block page_title %}<h1>Quotes</h1>{% endblock %}
+{% block page_desc %}
+<p class="sv-page-desc">Quotations raised against your RFQs — numbered from
+   your commercial defaults, newest first.</p>
+{% endblock %}
+{% block page_actions %}
+  <a class="button secondary" href="/org/commercial">Commercial defaults</a>
+  {% if can_manage %}<a class="button" href="/org/quotes/raise">Raise quote</a>{% endif %}
+{% endblock %}
+
+{% block content %}
+<section class="sv-section-card">
+  <div class="sv-section-head">
+    <h2>All quotes</h2>
+    <p>Drafts and issued documents, by quote number.</p>
+  </div>
+  <div class="sv-section-body">
+    {% if quotes %}
+    <table class="sv-table">
+      <thead>
+        <tr>
+          <th scope="col">Quote no</th>
+          <th scope="col">Client</th>
+          <th scope="col">Vessel</th>
+          <th scope="col">RFQ reference</th>
+          <th scope="col">Date</th>
+          <th scope="col">Valid until</th>
+          <th scope="col">Total</th>
+          <th scope="col">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for q in quotes %}
+        <tr>
+          <td class="sv-mono"><a href="/org/quotes/{{ q.id }}"
+              class="sv-ugc">{{ q.quote_no }}</a></td>
+          <td class="sv-ugc">{{ q.client_name or "—" }}</td>
+          <td class="sv-ugc">{{ q.vessel_name or "—" }}</td>
+          <td class="sv-ugc sv-mono">{% if q.reference_no %}{{ q.reference_no }}
+              {% else %}—{% endif %}</td>
+          <td class="sv-mono">{{ q.quote_date or "—" }}</td>
+          <td class="sv-mono">{{ q.valid_until or "—" }}</td>
+          <td class="sv-mono">{{ q.total|sv_money }} {{ q.currency }}</td>
+          <td><span class="sv-status sv-status--{{ q.status }}">{{
+              quote_status_labels.get(q.status, q.status) }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="sv-empty">
+      <svg class="sv-ic sv-ic-40" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 10.5v5M9.75 12h4.5M9.75 14.25h4.5"/></svg>
+      <h2>No quotes yet</h2>
+      <p>Quotes you raise against RFQs land here — drafts first, issued
+         documents once they go out.</p>
+      {% if can_manage %}<a class="button" href="/org/quotes/raise">Raise quote</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{{ keepalive | safe }}{% endblock %}
