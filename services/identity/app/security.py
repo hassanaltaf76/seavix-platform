@@ -20,6 +20,7 @@ from seavix_ports import AuthzClient, AuthenticatedUser, FirebaseAuthProvider
 
 from . import sessions
 from .db import SessionLocal
+from .rbac import converge_org_roles
 
 SESSION_HEADER = "X-Seavix-Session"
 SCOPE_KEY = "seavix.auth"
@@ -174,7 +175,13 @@ class IdentityAuthLoader:
             ).mappings().all()
 
             built_memberships = []
+            converged_any = False
             for m in memberships:
+                org_id = str(m["org_id"])
+                # 32f: heal pre-catalog-extension orgs at resolution time so
+                # the caller's permissions below are the code-derived set.
+                if await converge_org_roles(session, org_id):
+                    converged_any = True
                 role_rows = (
                     await session.execute(
                         text(
@@ -183,7 +190,7 @@ class IdentityAuthLoader:
                             "WHERE mr.user_id = :uid AND mr.org_id = :org "
                             "ORDER BY r.name"
                         ),
-                        {"uid": app_user_id, "org": str(m["org_id"])},
+                        {"uid": app_user_id, "org": org_id},
                     )
                 ).mappings().all()
                 roles = tuple(r["name"] for r in role_rows)
@@ -192,13 +199,15 @@ class IdentityAuthLoader:
                     effective |= set(r["permissions"])
                 built_memberships.append(
                     MembershipContext(
-                        org_id=str(m["org_id"]),
+                        org_id=org_id,
                         slug=m["slug"],
                         org_type=m["type"],
                         roles=roles,
                         permissions=frozenset(effective),
                     )
                 )
+            if converged_any:
+                await session.commit()
 
         return AuthContext(
             user=AuthenticatedUser(uid=user.uid, email=user.email),

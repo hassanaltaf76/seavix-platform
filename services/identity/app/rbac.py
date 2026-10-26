@@ -25,9 +25,16 @@ ROLE_NAME_MAX = 64
 # ------------------------------------------------------------- seeding
 
 async def seed_default_roles(session, org_id: str) -> None:
-    """Insert the five system roles for a new org (idempotent by name).
+    """Insert OR refresh the five system roles for an org (idempotent by
+    name).
 
-    Called inside the org-creation transaction (registration). Membership
+    Called inside the org-creation transaction (registration) and at
+    authentication time for existing orgs. System roles are read-only to
+    tenants and their permission set is code-defined, so the catalog always
+    wins: an org registered before a catalog extension (e.g. quote.view)
+    converges to the current code-derived grants instead of keeping a stale
+    snapshot forever. The conflict guard skips the write when already
+    converged, so the steady state costs a read, not a write. Membership
     binding is separate: `assign_roles`.
     """
     for name, permissions in DEFAULT_ROLES.items():
@@ -35,7 +42,10 @@ async def seed_default_roles(session, org_id: str) -> None:
             text(
                 "INSERT INTO role (id, org_id, name, permissions, is_system) "
                 "VALUES (:id, :org, :name, :perms, true) "
-                "ON CONFLICT (org_id, name) DO NOTHING"
+                "ON CONFLICT (org_id, name) DO UPDATE "
+                "SET permissions = EXCLUDED.permissions "
+                "WHERE role.is_system "
+                "AND role.permissions IS DISTINCT FROM EXCLUDED.permissions"
             ),
             {
                 "id": str(uuid.uuid4()),
@@ -44,6 +54,28 @@ async def seed_default_roles(session, org_id: str) -> None:
                 "perms": sorted(permissions),
             },
         )
+
+
+# 32f: org ids this process has already converged. The permission catalog
+# is code-defined and constant per deployment, so one guarded upsert per
+# org per process is enough; a code upgrade restarts the process and
+# re-runs the (no-op when clean) upsert. Tests call reset_converged().
+_CONVERGED: set[str] = set()
+
+
+async def converge_org_roles(session, org_id: str) -> bool:
+    """One-shot-per-process refresh of an org's system roles to the
+    code-defined catalog. Returns True when convergence actually ran (the
+    caller may commit); the steady state is a cache hit, not a query."""
+    if org_id in _CONVERGED:
+        return False
+    await seed_default_roles(session, org_id)
+    _CONVERGED.add(org_id)
+    return True
+
+
+def reset_converged() -> None:
+    _CONVERGED.clear()
 
 
 async def assign_roles(session, user_id: str, org_id: str, role_ids: list[str]) -> None:

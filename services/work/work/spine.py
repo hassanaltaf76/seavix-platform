@@ -767,6 +767,7 @@ async def list_rfqs(
     port: str = Query("", max_length=120),
     vessel: str = Query("", max_length=120),
     ref: str = Query("", max_length=120),
+    survey_type: str = Query("", max_length=64),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
 ) -> dict:
@@ -777,7 +778,10 @@ async def list_rfqs(
     nothing rather than erroring. Ordering is deterministic, newest
     first. `client` is a case-insensitive partial match on the resolved
     requesting-org display name (work resolves names via identity — no
-    cross-DB reads), falling back to the contact email."""
+    cross-DB reads), falling back to the contact email. `survey_type`
+    (32f) is an exact catalog-code match against the RFQ's selected
+    types — the RFQ↔type edge lives in this database, so the EXISTS is a
+    plain local join, never a cross-service read."""
     caller = await caller_org(request)
     clause = "(requesting_org_id = :org OR target_org_id = :org)"
     params: dict = {"org": caller["org_id"]}
@@ -793,6 +797,13 @@ async def list_rfqs(
     if ref:
         clause += " AND reference_no ILIKE :ref"
         params["ref"] = f"%{ref}%"
+    if survey_type:
+        clause += (
+            " AND EXISTS (SELECT 1 FROM rfq_survey_type rst "
+            "WHERE rst.rfq_id = rfq.id "
+            "AND rst.survey_type = :stype)"
+        )
+        params["stype"] = survey_type
     reversed_dates = (date_from is not None and date_to is not None
                       and date_from > date_to)
     if not reversed_dates:

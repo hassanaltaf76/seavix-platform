@@ -1,5 +1,8 @@
 {% extends "base.html" %}{% block title %}View Quotes — SeaVix{% endblock %}
 {% set active = "quotes" %}
+{#- 32f: a data-heavy index page — full width between the rail and the
+    gutter, no 1120px cap. -#}
+{% block page_inner_class %}sv-page-inner sv-page-inner--data{% endblock %}
 {% block page_title %}<h1>View Quotes</h1>{% endblock %}
 {% block page_desc %}
 <p class="sv-page-desc">Every quotation your company has raised — drafts,
@@ -11,128 +14,129 @@
 {% endblock %}
 
 {% block content %}
-<section class="sv-section-card">
-  <div class="sv-section-head">
-    <h2>All quotes</h2>
-    <p>Drafts and issued documents across every status — filter to narrow.</p>
-  </div>
-  <div class="sv-section-body">
-    {#- 32e: the filter bar — a plain GET form so every filter state is a
-        shareable URL. Blank field = no restriction; filters compose; Clear
-        returns to the complete default-all list. -#}
-    <form method="get" action="/org/quotes" class="sv-filter-bar">
-      <div class="sv-filter-field">
-        <label for="q-client">Client</label>
-        <input type="text" id="q-client" name="client"
-               value="{{ filters.client }}" placeholder="Partial name">
-      </div>
-      <div class="sv-filter-field">
-        <label for="q-status">Status</label>
-        <select id="q-status" name="status">
-          <option value="">All</option>
-          {% for code, label in quote_status_labels.items() %}
-          <option value="{{ code }}"
-                  {% if filters.status == code %}selected{% endif %}>{{
-                  label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="sv-filter-field">
-        <label for="q-port">Port/location</label>
-        <input type="text" id="q-port" name="port"
-               value="{{ filters.port }}" placeholder="Partial port">
-      </div>
-      <div class="sv-filter-field">
-        <label for="q-vessel">Vessel</label>
-        <input type="text" id="q-vessel" name="vessel"
-               value="{{ filters.vessel }}" placeholder="Partial vessel">
-      </div>
-      <div class="sv-filter-field">
-        <label for="q-ref">RFQ reference</label>
-        <input type="text" id="q-ref" name="ref"
-               value="{{ filters.ref }}" placeholder="Partial reference">
-      </div>
-      <div class="sv-filter-field">
-        <label for="q-from">Date From</label>
-        <input type="date" id="q-from" name="date_from"
-               value="{{ filters.date_from }}">
-      </div>
-      <div class="sv-filter-field">
-        <label for="q-to">Date To</label>
-        <input type="date" id="q-to" name="date_to"
-               value="{{ filters.date_to }}">
-      </div>
-      <div class="sv-filter-actions">
-        <button type="submit" class="button">Filter</button>
-        {% if filters_active %}
-        <a class="button secondary" href="/org/quotes">Clear</a>
-        {% endif %}
-      </div>
-    </form>
-    {% if date_notice %}<p class="notice" role="status">{{ date_notice }}</p>
-    {% endif %}
-
-    {% if quotes %}
-    <div class="sv-table-wrap">
-    <table class="sv-table">
-      <thead>
-        <tr>
-          <th scope="col">Quote no</th>
-          <th scope="col">Client</th>
-          <th scope="col">Vessel</th>
-          <th scope="col">RFQ reference</th>
-          <th scope="col">Port/location</th>
-          <th scope="col">Quote date</th>
-          <th scope="col">Valid until</th>
-          <th scope="col">Total</th>
-          <th scope="col">Status</th>
-          <th scope="col">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for q in quotes %}
-        <tr>
-          <td class="sv-mono"><a href="/org/quotes/{{ q.id }}"
-              class="sv-ugc">{{ q.quote_no }}</a></td>
-          <td class="sv-ugc">{{ q.client_name or "—" }}</td>
-          <td class="sv-ugc">{{ q.vessel_name or "—" }}</td>
-          <td class="sv-ugc sv-mono">{% if q.reference_no %}{{ q.reference_no }}
-              {% else %}—{% endif %}</td>
-          <td class="sv-ugc">{{ q.port_name or "—" }}</td>
-          <td class="sv-mono">{{ q.quote_date or "—" }}</td>
-          <td class="sv-mono">{{ q.valid_until or "—" }}</td>
-          <td class="sv-mono">{{ q.total|sv_money }} {{ q.currency }}</td>
-          <td><span class="sv-status sv-status--{{ q.status }}">{{
-              quote_status_labels.get(q.status, q.status) }}</span></td>
-          <td class="sv-actions">
-            <a class="button small" href="/org/quotes/{{ q.id }}">View</a>
-            {% if can_manage and q.status == "draft" %}
-            <a class="button small secondary"
-               href="/org/quotes/{{ q.id }}/edit">Edit</a>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<section class="sv-data-card">
+  {#- 32f: the filter bar — a plain GET form on a deliberate grid. Blank
+      field = no restriction; filters compose; Clear returns to the
+      complete default-all list. Vessel and RFQ reference sit in the More
+      filters disclosure. -#}
+  <form method="get" action="/org/quotes" class="sv-filter-bar sv-filter-bar--quotes">
+    <div class="sv-filter-field sv-filter-field--client">
+      <label for="q-client">Client name</label>
+      <input type="text" id="q-client" name="client"
+             value="{{ filters.client }}" placeholder="Partial name">
     </div>
-    {% else %}
-    <div class="sv-empty">
-      <svg class="sv-ic sv-ic-40" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 10.5v5M9.75 12h4.5M9.75 14.25h4.5"/></svg>
+    <div class="sv-filter-field">
+      <label for="q-status">Status</label>
+      <select id="q-status" name="status">
+        <option value="">All</option>
+        {% for code, label in quote_status_labels.items() %}
+        <option value="{{ code }}"
+                {% if filters.status == code %}selected{% endif %}>{{
+                label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="sv-filter-field">
+      <label for="q-port">Port/location</label>
+      <input type="text" id="q-port" name="port"
+             value="{{ filters.port }}" placeholder="Partial port">
+    </div>
+    <div class="sv-filter-field">
+      <label for="q-from">Date From</label>
+      <input type="date" id="q-from" name="date_from"
+             value="{{ filters.date_from }}">
+    </div>
+    <div class="sv-filter-field">
+      <label for="q-to">Date To</label>
+      <input type="date" id="q-to" name="date_to"
+             value="{{ filters.date_to }}">
+    </div>
+    <div class="sv-filter-actions">
+      <button type="submit" class="button">Apply</button>
       {% if filters_active %}
-      <h2>No quotes match these filters</h2>
-      <p>No quotation matches every filter you set — clear them to return
-         to the complete list.</p>
-      <a class="button" href="/org/quotes">Clear filters</a>
-      {% else %}
-      <h2>No quotes yet</h2>
-      <p>Quotes you raise against RFQs land here — drafts first, issued
-         documents once they go out.</p>
-      {% if can_manage %}<a class="button" href="/org/quotes/raise">Create Quote</a>{% endif %}
+      <a class="button secondary" href="/org/quotes">Clear</a>
       {% endif %}
     </div>
+    <details class="sv-filter-more"{% if filters.vessel or filters.ref %} open{% endif %}>
+      <summary>More filters{% if filters.vessel or filters.ref %}
+        — active{% endif %}</summary>
+      <div class="sv-filter-bar sv-filter-bar--more">
+        <div class="sv-filter-field">
+          <label for="q-vessel">Vessel</label>
+          <input type="text" id="q-vessel" name="vessel"
+                 value="{{ filters.vessel }}" placeholder="Partial vessel">
+        </div>
+        <div class="sv-filter-field">
+          <label for="q-ref">RFQ reference</label>
+          <input type="text" id="q-ref" name="ref"
+                 value="{{ filters.ref }}" placeholder="Partial reference">
+        </div>
+      </div>
+    </details>
+  </form>
+  {% if date_notice %}<p class="notice" role="status">{{ date_notice }}</p>
+  {% endif %}
+
+  {% if quotes %}
+  <div class="sv-table-wrap">
+  <table class="sv-table">
+    <thead>
+      <tr>
+        <th scope="col">Quote no</th>
+        <th scope="col">Client</th>
+        <th scope="col">Vessel</th>
+        <th scope="col">RFQ reference</th>
+        <th scope="col">Port/location</th>
+        <th scope="col">Quote date</th>
+        <th scope="col">Valid until</th>
+        <th scope="col">Total</th>
+        <th scope="col">Status</th>
+        <th scope="col">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in quotes %}
+      <tr>
+        <td class="sv-mono"><a href="/org/quotes/{{ q.id }}"
+            class="sv-ugc">{{ q.quote_no }}</a></td>
+        <td class="sv-ugc">{{ q.client_name or "—" }}</td>
+        <td class="sv-ugc">{{ q.vessel_name or "—" }}</td>
+        <td class="sv-ugc sv-mono">{% if q.reference_no %}{{ q.reference_no }}
+            {% else %}—{% endif %}</td>
+        <td class="sv-ugc">{{ q.port_name or "—" }}</td>
+        <td class="sv-mono">{{ q.quote_date or "—" }}</td>
+        <td class="sv-mono">{{ q.valid_until or "—" }}</td>
+        <td class="sv-mono">{{ q.total|sv_money }} {{ q.currency }}</td>
+        <td><span class="sv-status sv-status--{{ q.status }}">{{
+            quote_status_labels.get(q.status, q.status) }}</span></td>
+        <td class="sv-actions">
+          <a class="button small" href="/org/quotes/{{ q.id }}">View</a>
+          {% if can_manage and q.status == "draft" %}
+          <a class="button small secondary"
+             href="/org/quotes/{{ q.id }}/edit">Edit</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="sv-empty">
+    <svg class="sv-ic sv-ic-40" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 10.5v5M9.75 12h4.5M9.75 14.25h4.5"/></svg>
+    {% if filters_active %}
+    <h2>No quotes match these filters</h2>
+    <p>No quotation matches every filter you set — clear them to return
+       to the complete list.</p>
+    <a class="button" href="/org/quotes">Clear filters</a>
+    {% else %}
+    <h2>No quotes yet</h2>
+    <p>Quotes you raise against RFQs land here — drafts first, issued
+       documents once they go out.</p>
+    {% if can_manage %}<a class="button" href="/org/quotes/raise">Create Quote</a>{% endif %}
     {% endif %}
   </div>
+  {% endif %}
 </section>
 
 {{ keepalive | safe }}{% endblock %}

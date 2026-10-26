@@ -20,11 +20,40 @@ from seavix_ports import (AuthenticatedUser, FirebaseAuthProvider,
 
 from . import otp, sessions, trusted_devices
 from .db import SessionLocal
+from .rbac import converge_org_roles
 from .security import _ensure_firebase, current_user
 
 router = APIRouter()
 
 SESSION_HEADER = "X-Seavix-Session"
+
+
+async def _converge_grants(user_id: str) -> None:
+    """Refresh the SYSTEM roles of every active org the user belongs to.
+
+    Seeding ran once at registration with that day's catalog; tenants can
+    never edit system roles, so the code definition is the only truth. An
+    org registered before a catalog extension otherwise keeps a stale
+    snapshot forever — this self-heals it at the moment of authentication
+    (login or session resolution), which is what makes the code-derived
+    grants (quote.view et al.) reach pre-existing orgs.
+    """
+    async with SessionLocal() as s:
+        orgs = (
+            await s.execute(
+                text(
+                    "SELECT org_id::text FROM membership "
+                    "WHERE user_id = :uid AND status = 'active'"
+                ),
+                {"uid": user_id},
+            )
+        ).scalars().all()
+        ran = False
+        for org_id in orgs:
+            if await converge_org_roles(s, org_id):
+                ran = True
+        if ran:
+            await s.commit()
 
 
 # ------------------------------------------------------------------ helpers
@@ -196,6 +225,7 @@ async def login_start(payload: EmailPassword, request: Request) -> dict:
                 status_code=403,
                 detail={"code": "email_unverified", "email": email},
             )
+        await _converge_grants(str(user["id"]))
         if payload.trusted_device:
             ok, rotated = await trusted_devices.consume(
                 session, str(user["id"]), payload.trusted_device,
@@ -263,6 +293,7 @@ async def login_verify(payload: OtpChallenge, request: Request) -> dict:
         ).first()
         if active is None:
             raise HTTPException(status_code=403, detail="account deactivated")
+        await _converge_grants(str(user["id"]))
         sid = await sessions.create_session(
             session, str(user["id"]), user["firebase_uid"]
         )
@@ -605,6 +636,10 @@ async def get_session(request: Request) -> dict:
     async with SessionLocal() as session:
         ctx = await sessions.load_session(session, _session_id(request))
         memberships = await _memberships(session, ctx["user_id"])
+    # 32f: the web app resolves the rail from this endpoint on every page,
+    # so converging here heals a pre-existing org's stale system-role grants
+    # on the owner's very next page load — no re-login, no migration.
+    await _converge_grants(ctx["user_id"])
     return {**ctx, "memberships": memberships}
 
 

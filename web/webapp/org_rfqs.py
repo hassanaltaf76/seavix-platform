@@ -2,12 +2,13 @@
 
 - TENANT (manual channel, "for record"): the rail gains a "Requests for
   Quotation" section (Create RFQ / View RFQ, 32e) under the existing
-  rfq.create management gate. The list (32e) is a proper table —
-  default-ALL across channels and statuses (newest first), with
-  composing filters (client, status, port, vessel, reference, inclusive
-  created-date range), a Clear/Reset, an explicit no-results state, and
-  a per-row Quote action on every Awaiting Quote row that opens the
-  raise-quote form with THAT RFQ preselected. The Raise form links a
+  rfq.create management gate. The list (32e, widened 32f) is a proper
+  table on the full-width data-page variant — default-ALL across
+  channels and statuses (newest first), with composing filters (client,
+  status, port, service/survey type, vessel + reference in More filters,
+  inclusive created-date range), a Clear/Reset, an explicit no-results
+  state, and a per-row Quote action on every Awaiting Quote row that
+  opens the raise-quote form with THAT RFQ preselected. The Raise form links a
   directory client via the .sv-search-select picker or quick-creates one
   inline; the detail page shows the full field set + the client contact
   card + the Quotes section.
@@ -183,20 +184,23 @@ def _parse_date(raw: str) -> date | None:
 async def rfqs_index(request: Request, created: str = "",
                      client: str = "", status: str = "",
                      port: str = "", vessel: str = "", ref: str = "",
+                     survey_type: str = "",
                      date_from: str = "", date_to: str = "",
                      ctx: AuthContext = Depends(require_auth)):
     """32e: default-ALL tenant pipeline (every channel and status, newest
     first — no query params is the complete list). The filters compose
     and forward to work, which applies org scoping BEFORE every filter;
     invalid dates are dropped and a reversed range renders the friendly
-    no-results state instead of an error."""
+    no-results state instead of an error. 32f adds the service/survey
+    type filter (exact catalog-code match against the RFQ's selections)."""
     membership = _first_membership(ctx)
     if membership is None or not _can_view_rfqs(membership):
         return _page_not_found(request, ctx)
 
     filters: dict[str, str] = {}
     for key, raw in (("client", client), ("status", status),
-                     ("port", port), ("vessel", vessel), ("ref", ref)):
+                     ("port", port), ("vessel", vessel), ("ref", ref),
+                     ("survey_type", survey_type)):
         if raw.strip():
             filters[key] = raw.strip()
     df, dt = _parse_date(date_from), _parse_date(date_to)
@@ -227,6 +231,7 @@ async def rfqs_index(request: Request, created: str = "",
                  created=created == "1",
                  filters={"client": client, "status": status, "port": port,
                           "vessel": vessel, "ref": ref,
+                          "survey_type": survey_type,
                           "date_from": date_from, "date_to": date_to},
                  filters_active=bool(filters), date_notice=date_notice),
     )

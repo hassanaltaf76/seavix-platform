@@ -197,7 +197,12 @@
 
     <main class="sv-page" aria-label="Content">
       {% block page %}
-      <div class="sv-page-inner">
+      {#- 32f: data-heavy index pages (View RFQ / View Quotes) override this
+          block with the --data variant, which lifts the 1120px §9 cap so
+          the filter bar and table use the full width between the rail and
+          the viewport gutter. Ordinary forms/settings/document pages keep
+          the capped shell untouched. -#}
+      <div class="{% block page_inner_class %}sv-page-inner{% endblock %}">
         {#- §9 page header: H1 + one-line 13px text-2 description +
             primary action top-right. No crumbs, no × — a page is not a
             dialog. -#}

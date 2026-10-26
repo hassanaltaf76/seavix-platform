@@ -94,6 +94,11 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-2); }
 /* numeric data: mono + tabular figures (IMO numbers, codes, amounts) */
 .sv-mono, .sv-table .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+/* 32f: dates, quote numbers and amounts are single values — a mid-value
+   wrap ("2026-10-" / "26") reads as two facts. Narrow screens keep the
+   whole value on one line inside the scrolling wrap. */
+.sv-table td.sv-mono { white-space: nowrap; }
+.sv-table td.sv-mono .sv-ugc { max-width: none; }
 
 /* §3 focus: 2px ring accent at 30% alpha + 1px border accent, EVERY interactive */
 :focus-visible {
@@ -270,6 +275,11 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
   padding: 1.5rem var(--gutter) 2.5rem;
 }
 .sv-page-inner { max-width: var(--page-max); margin: 0 auto; }
+/* 32f: data-heavy index pages (View RFQ / View Quotes) use the full width
+   between the rail and the viewport gutter — the §9 1120px cap stays for
+   ordinary forms/settings/document pages. min-width:0 rides the existing
+   flex/grid ancestors (.sv-page is flex:1 min-width:0). */
+.sv-page-inner--data { max-width: none; }
 
 .sv-page-header {
   display: flex; align-items: flex-start; justify-content: space-between;
@@ -368,13 +378,16 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
   border-radius: 6px;
 }
 
-/* 32e: the list filter bar — one wrapping row of labelled fields above
-   the table; the fields reuse the §4 input styling, un-carded. */
+/* 32f: the list filter bar — a deliberate CSS grid, not flex-wrap. Tracks
+   use minmax() so the primary filters share ONE aligned row at desktop
+   widths and break at intentional track boundaries, never mid-control.
+   The client name earns a wider track; the action buttons ride an
+   auto track so Apply/Clear are never squeezed. */
 .sv-filter-bar {
-  display: flex; flex-wrap: wrap; align-items: flex-end;
-  gap: 0.6rem 0.75rem; margin: 0 0 1rem;
+  display: grid; gap: 0.75rem; align-items: end;
+  margin: 0 0 1rem;
 }
-.sv-filter-field { display: flex; flex-direction: column; min-width: 130px; flex: 1 1 130px; }
+.sv-filter-field { display: flex; flex-direction: column; min-width: 0; }
 .sv-filter-field label {
   margin: 0 0 0.25rem;
   font-size: 13px; line-height: 18px; font-weight: 500; color: var(--ink);
@@ -390,9 +403,74 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
   box-shadow: 0 0 0 3px rgba(21, 112, 239, 0.3);
 }
 .sv-filter-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+/* vessel / RFQ reference sit behind an accessible disclosure; when one of
+   them is applied the disclosure opens (server-rendered `open`) and the
+   summary says so. */
+.sv-filter-more { grid-column: 1 / -1; margin: -0.25rem 0 0; }
+.sv-filter-more summary {
+  cursor: pointer; list-style: none;
+  display: inline-flex; align-items: center;
+  padding: 0.35rem 0.5rem; border-radius: 6px;
+  font-size: 13px; line-height: 18px; font-weight: 500; color: var(--text);
+  transition: background var(--dur) var(--ease);
+}
+.sv-filter-more summary::-webkit-details-marker { display: none; }
+.sv-filter-more summary:hover { background: var(--bg); color: var(--ink); }
+.sv-filter-more summary::after {
+  content: ""; width: 6px; height: 6px; margin-left: 0.45rem;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform var(--dur) var(--ease);
+}
+.sv-filter-more[open] summary::after { transform: rotate(-135deg) translateY(-1px); }
+.sv-filter-bar--more {
+  margin: 0.5rem 0 0;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 240px));
+  justify-content: start;
+}
+
+/* ≥1280px (rail expanded, data page): every primary filter + the actions
+   share one deliberate row. */
+@media (min-width: 1280px) {
+  .sv-filter-bar--rfq {
+    grid-template-columns:
+      minmax(180px, 1.4fr) repeat(5, minmax(120px, 1fr)) auto;
+  }
+  .sv-filter-bar--quotes {
+    grid-template-columns:
+      minmax(180px, 1.4fr) repeat(4, minmax(120px, 1fr)) auto;
+  }
+}
+/* 641–1279px: auto-fit minmax tracks — the wrap points are the grid tracks
+   themselves, an intentional breakpoint rather than random flex wrapping.
+   The client field takes a double track. */
+@media (max-width: 1279px) {
+  .sv-filter-bar {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+  .sv-filter-bar--more {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 240px));
+  }
+  .sv-filter-field--client { grid-column: span 2; }
+}
+/* phones: one deliberate column; the table scrolls inside its wrapper. */
 @media (max-width: 640px) {
-  .sv-filter-field { flex-basis: calc(50% - 0.4rem); min-width: 0; }
+  .sv-filter-bar { grid-template-columns: 1fr; }
+  .sv-filter-field--client { grid-column: auto; }
   .sv-filter-actions { width: 100%; }
+}
+
+/* 32f: the data-index surface — a plain full-width card holding the filter
+   bar and the table. Unlike .sv-section-card (the settings pattern with a
+   200px label column), a data page stacks its content edge to edge. */
+.sv-data-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--e1);
+  padding: 1.25rem;
+  min-width: 0;
 }
 
 .sv-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem 1rem; }
