@@ -48,6 +48,10 @@ IDENTITY_PUBLIC = {
     # documented service-auth gap as the slug lookup above
     "/api/internal/orgs",
     "/api/internal/orgs/id/{org_id}",
+    # 32e: batched org-id -> name resolution for the work service's list
+    # read models (replaces the per-id loop). Loopback-only guard inside
+    # the handler — same documented posture as the reads above
+    "/api/internal/orgs/names",
     # 32d: anonymous survey-type catalog search/create for the public RFQ
     # intake picker (reference data; creates carry NULL provenance)
     "/api/public/catalog/survey-types/search",

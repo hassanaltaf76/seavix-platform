@@ -204,7 +204,7 @@ def test_quotes_pages_rbac_matrix(arun, id_asgi):
                     if expect == 200:
                         rail = _rail(listing.text)
                         assert 'href="/org/quotes"' in rail, role
-                        assert ">Quotes</span>" in rail, role
+                        assert ">View Quotes</span>" in rail, role
                         feed = options.json()
                         assert [r["id"] for r in feed["rfqs"]] == [rfq_id]
                     else:
@@ -343,7 +343,7 @@ def test_raise_flow_end_to_end(arun, id_asgi):
                         {"id": rfq_id})).scalar_one()
                 assert status == "awaiting_quote"
                 rfq_page = await w.get(f"/org/rfqs/{rfq_id}")
-                assert "Awaiting quote" in rfq_page.text
+                assert "Awaiting Quote" in rfq_page.text
                 assert "Pricing revisions for this RFQ." in rfq_page.text
                 assert ">Draft</span>" in rfq_page.text
 
@@ -443,7 +443,7 @@ def test_approve_issue_and_revision(arun, id_asgi):
                 assert "Approved &amp; issued on" in detail.text
                 assert 'class="sv-doc-approved"' in detail.text
                 rfq_page = await w.get(f"/org/rfqs/{rfq_id}")
-                assert "Quoted" in rfq_page.text
+                assert "Quote Submitted" in rfq_page.text  # 32e label
 
                 # a second POST hits work's 409 and returns with an error
                 again = await w.post(f"/org/quotes/{quote_id}/issue",
@@ -476,7 +476,7 @@ def test_approve_issue_and_revision(arun, id_asgi):
                 rfq_page = await w.get(f"/org/rfqs/{rfq_id}")
                 assert ">Superseded</span>" in rfq_page.text
                 assert 'sv-status--superseded' in rfq_page.text
-                assert "Quoted" in rfq_page.text
+                assert "Quote Submitted" in rfq_page.text  # 32e label
                 from sqlalchemy import text as sql
 
                 from work.db import SessionLocal

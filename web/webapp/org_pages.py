@@ -176,6 +176,11 @@ def _view_context(ctx, membership, org, saved: bool,
         "can_edit": _has(membership, ORG_PROFILE_EDIT), "saved": saved,
         "published": published, "unpublished": unpublished,
         "can_publish": _has(membership, ORG_PROFILE_PUBLISH),
+        # 32e: view mode previews the member's OWN public profile — the
+        # shared content partial renders the RFQ CTA disabled (same as
+        # the live /org/<slug> page renders it for the owner), keeping
+        # the 31f preview==public byte-equality contract.
+        "own_profile": True,
     }
 
 

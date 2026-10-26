@@ -5,11 +5,13 @@ identity database directly.
 """
 from __future__ import annotations
 
+import re
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 from seavix_ports import SCOPE_KEY, context_to_dict, domain_event, public_route
-from sqlalchemy import text
+from sqlalchemy import ARRAY, Uuid, bindparam, text
 
 from .db import SessionLocal
 from .orgs import _generate_slug
@@ -24,6 +26,9 @@ router = APIRouter()
 # org_by_slug): dev is localhost-only, production must protect this with
 # service auth (mTLS or a shared secret).
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+_UUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 
 def _require_loopback(request: Request) -> None:
@@ -177,3 +182,30 @@ async def org_by_id(org_id: str, request: Request) -> dict:
     d = dict(row)
     d["id"] = str(d["id"])
     return d
+
+
+class OrgNamesIn(BaseModel):
+    """32e: the work service's list read models resolve the distinct org
+    ids on RFQ rows to display names — one batched call instead of the
+    per-id loop (which was an N+1 against this service on every list)."""
+
+    ids: list[str] = Field(default_factory=list, max_length=500)
+
+
+@router.post("/api/internal/orgs/names")
+@public_route
+async def org_names(payload: OrgNamesIn, request: Request) -> dict:
+    """Loopback-only batch name lookup: {ids: [uuid...]} ->
+    {names: {id: name|None}}. Unknown ids resolve to None (the caller's
+    existing dash fallback)."""
+    _require_loopback(request)
+    ids = [i for i in {s.strip() for s in payload.ids if s.strip()}
+           if _UUID_RE.fullmatch(i)]
+    if not ids:
+        return {"names": {}}
+    stmt = text("SELECT id, name FROM organization WHERE id = ANY(:ids)").bindparams(
+        bindparam("ids", type_=ARRAY(Uuid), expanding=False)
+    )
+    async with SessionLocal() as session:
+        rows = (await session.execute(stmt, {"ids": ids})).mappings().all()
+    return {"names": {str(r["id"]): r["name"] for r in rows}}

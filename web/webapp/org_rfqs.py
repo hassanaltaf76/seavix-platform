@@ -1,11 +1,16 @@
 """32b: the two RFQ work surfaces.
 
-- TENANT (manual channel, "for record"): the COMPANY rail gains "RFQs"
-  (rfq.create). The list is the tenant's inbound pipeline (public funnel
-  + manual intake); the Raise form links a directory client via the
-  .sv-search-select picker or quick-creates one inline; the detail page
-  shows the full field set + the client contact card + the Quotes
-  placeholder (arrives with 32c).
+- TENANT (manual channel, "for record"): the rail gains a "Requests for
+  Quotation" section (Create RFQ / View RFQ, 32e) under the existing
+  rfq.create management gate. The list (32e) is a proper table —
+  default-ALL across channels and statuses (newest first), with
+  composing filters (client, status, port, vessel, reference, inclusive
+  created-date range), a Clear/Reset, an explicit no-results state, and
+  a per-row Quote action on every Awaiting Quote row that opens the
+  raise-quote form with THAT RFQ preselected. The Raise form links a
+  directory client via the .sv-search-select picker or quick-creates one
+  inline; the detail page shows the full field set + the client contact
+  card + the Quotes section.
 - CLIENT (registered-client rail): org_type='client' + rfq.view — the
   org's RFQs ACROSS survey companies, status badges only. Work-service
   loaders org-scope every query, so a client-role org never sees another
@@ -18,6 +23,7 @@ them; the client role reaches only the list/detail of its own org.
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -47,9 +53,12 @@ RFQ_CREATE = "rfq.create"
 RFQ_VIEW = "rfq.view"
 
 # Render labels for the stored vocabularies (work owns the codes).
+# 32e: owner-facing label decisions — 'awaiting_quote' reads "Awaiting
+# Quote" and 'quoted' reads "Quote Submitted" on every surface; the
+# remaining vocabulary keeps its existing labels.
 STATUS_LABELS = {
-    "awaiting_quote": "Awaiting quote",
-    "quoted": "Quoted",
+    "awaiting_quote": "Awaiting Quote",
+    "quoted": "Quote Submitted",
     "accepted": "Accepted",
     "declined": "Declined",
     "expired": "Expired",
@@ -158,13 +167,49 @@ async def _raise_ctx(request, ctx, membership, values, field_errors,
                     client_label=client_label)
 
 
+def _parse_date(raw: str) -> date | None:
+    """32e filter hygiene: a filter date is YYYY-MM-DD or nothing.
+    Garbage (crafted URLs, bad pastes) is dropped, never a 500."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
 @router.get("/org/rfqs", response_class=HTMLResponse)
 async def rfqs_index(request: Request, created: str = "",
+                     client: str = "", status: str = "",
+                     port: str = "", vessel: str = "", ref: str = "",
+                     date_from: str = "", date_to: str = "",
                      ctx: AuthContext = Depends(require_auth)):
+    """32e: default-ALL tenant pipeline (every channel and status, newest
+    first — no query params is the complete list). The filters compose
+    and forward to work, which applies org scoping BEFORE every filter;
+    invalid dates are dropped and a reversed range renders the friendly
+    no-results state instead of an error."""
     membership = _first_membership(ctx)
     if membership is None or not _can_view_rfqs(membership):
         return _page_not_found(request, ctx)
-    resp = await work_request("GET", "/api/rfqs", headers=_sid_headers(request))
+
+    filters: dict[str, str] = {}
+    for key, raw in (("client", client), ("status", status),
+                     ("port", port), ("vessel", vessel), ("ref", ref)):
+        if raw.strip():
+            filters[key] = raw.strip()
+    df, dt = _parse_date(date_from), _parse_date(date_to)
+    date_notice = ""
+    if (date_from.strip() and df is None) or (date_to.strip() and dt is None):
+        date_notice = "An invalid date filter was ignored."
+    if df is not None:
+        filters["date_from"] = str(df)
+    if dt is not None:
+        filters["date_to"] = str(dt)
+
+    resp = await work_request("GET", "/api/rfqs", params=filters,
+                              headers=_sid_headers(request))
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="work service error")
     body = resp.json()
@@ -177,7 +222,13 @@ async def rfqs_index(request: Request, created: str = "",
                  is_client=_is_client_role(membership),
                  my_org_id=membership.org_id,
                  can_raise=_can_manage_rfqs(membership),
-                 created=created == "1"),
+                 can_quote=(not _is_client_role(membership)
+                            and _has(membership, QUOTE_CREATE)),
+                 created=created == "1",
+                 filters={"client": client, "status": status, "port": port,
+                          "vessel": vessel, "ref": ref,
+                          "date_from": date_from, "date_to": date_to},
+                 filters_active=bool(filters), date_notice=date_notice),
     )
 
 

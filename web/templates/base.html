@@ -69,6 +69,8 @@
               and 'rfq.create' in membership0.permissions %}
       {% set can_view_own_rfqs = is_client_org and membership0 is not none
               and 'rfq.view' in membership0.permissions %}
+      {% set can_manage_quotes = membership0 is not none and not is_client_org
+              and 'quote.create' in membership0.permissions %}
       {% set can_view_quotes = membership0 is not none and not is_client_org
               and 'quote.view' in membership0.permissions %}
       {% if can_view_profile or is_client_org %}
@@ -110,7 +112,7 @@
         </ul>
       </div>
 
-      {% if can_view_profile or can_view_clients or can_manage_rfqs or can_view_quotes %}
+      {% if can_view_profile or can_view_clients %}
       <div class="sv-rail-section">
         <h2>Company</h2>
         <ul>
@@ -123,13 +125,60 @@
             <span class="sv-rail-label">Profile</span>
           </a></li>
           {% endif %}
-          {% if can_manage_rfqs %}
+          {% if can_view_clients %}
+          <li><a class="sv-rail-item" href="/org/clients"
+                 {% if active == "clients" %}aria-current="page"{% endif %}>
+            <span class="sv-glyph" aria-hidden="true">
+              <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </span>
+            <span class="sv-rail-label">Clients</span>
+          </a></li>
+          {% endif %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {#- 32e: the tenant RFQ pipeline is its own nav group — section
+          headings are group labels (plain h2, never links), the two items
+          reuse the existing working routes. Gated by the existing tenant
+          management permission (rfq.create on a non-client org) — the
+          registered-client rail above keeps its own Workspace item. -#}
+      {% if can_manage_rfqs %}
+      <div class="sv-rail-section">
+        <h2>Requests for Quotation</h2>
+        <ul>
+          <li><a class="sv-rail-item" href="/org/rfqs/new"
+                 {% if active == "rfq-new" %}aria-current="page"{% endif %}>
+            <span class="sv-glyph" aria-hidden="true">
+              <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M12 5v14M5 12h14"/></svg>
+            </span>
+            <span class="sv-rail-label">Create RFQ</span>
+          </a></li>
           <li><a class="sv-rail-item" href="/org/rfqs"
                  {% if active == "rfqs" %}aria-current="page"{% endif %}>
             <span class="sv-glyph" aria-hidden="true">
               <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
             </span>
-            <span class="sv-rail-label">RFQs</span>
+            <span class="sv-rail-label">View RFQ</span>
+          </a></li>
+        </ul>
+      </div>
+      {% endif %}
+
+      {#- 32e: Quotations — Create Quote needs quote.create; View Quotes
+          needs quote.view. The registered-client role holds neither (and
+          is client-org excluded) so it never sees this section. -#}
+      {% if can_manage_quotes or can_view_quotes %}
+      <div class="sv-rail-section">
+        <h2>Quotations</h2>
+        <ul>
+          {% if can_manage_quotes %}
+          <li><a class="sv-rail-item" href="/org/quotes/raise"
+                 {% if active == "quote-new" %}aria-current="page"{% endif %}>
+            <span class="sv-glyph" aria-hidden="true">
+              <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M12 5v14M5 12h14"/></svg>
+            </span>
+            <span class="sv-rail-label">Create Quote</span>
           </a></li>
           {% endif %}
           {% if can_view_quotes %}
@@ -138,16 +187,7 @@
             <span class="sv-glyph" aria-hidden="true">
               <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 10.5v5M9.75 12h4.5M9.75 14.25h4.5"/></svg>
             </span>
-            <span class="sv-rail-label">Quotes</span>
-          </a></li>
-          {% endif %}
-          {% if can_view_clients %}
-          <li><a class="sv-rail-item" href="/org/clients"
-                 {% if active == "clients" %}aria-current="page"{% endif %}>
-            <span class="sv-glyph" aria-hidden="true">
-              <svg class="sv-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </span>
-            <span class="sv-rail-label">Clients</span>
+            <span class="sv-rail-label">View Quotes</span>
           </a></li>
           {% endif %}
         </ul>

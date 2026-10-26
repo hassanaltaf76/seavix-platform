@@ -1,6 +1,6 @@
-{% extends "base.html" %}{% block title %}Raise RFQ — SeaVix{% endblock %}
-{% set active = "rfqs" %}
-{% block page_title %}<h1>Raise RFQ</h1>{% endblock %}
+{% extends "base.html" %}{% block title %}Create RFQ — SeaVix{% endblock %}
+{% set active = "rfq-new" %}
+{% block page_title %}<h1>Create RFQ</h1>{% endblock %}
 {% block page_desc %}<p class="sv-page-desc">Record a request that arrived
    over WhatsApp or email — it joins your pipeline and can be quoted
    like any other RFQ.</p>{% endblock %}
@@ -292,7 +292,7 @@ function rfqClientPicker(initialValue, initialLabel) {
       Cancel left, Save right, Save disabled until dirty AND valid. -#}
   <div class="sv-save-bar" x-show="dirty" x-cloak>
     <a class="button secondary" href="/org/rfqs">Cancel</a>
-    <button type="submit" :disabled="!(dirty && valid)">Raise RFQ</button>
+    <button type="submit" :disabled="!(dirty && valid)">Create RFQ</button>
   </div>
 </form>
 

@@ -52,14 +52,18 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
+import httpx
+
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import bindparam, text, types
 
 from seavix_ports import domain_event
 
-from .auth import SESSION_HEADER, caller_member, caller_org, resolve_public_org
+from .auth import (SESSION_HEADER, caller_member, caller_org,
+                   identity_transport, resolve_public_org)
 from .clients import RELATIONSHIP_TYPES, create_identity_org, get_identity_org
+from .config import identity_base_url
 from .db import SessionLocal
 
 router = APIRouter()
@@ -666,10 +670,28 @@ async def _optional_member(request: Request) -> dict | None:
 async def _org_names(ids) -> dict:
     """32b read-model enrichment: resolve the distinct org ids on RFQ rows
     to display names via identity (work never reads identity's DB — this
-    is the same internal-org lookup the directory uses). Failures resolve
-    to None and the UI falls back to a dash."""
+    is the same internal-org lookup the directory uses). 32e: ONE batched
+    call replaces the per-id loop (an N+1 against identity on every
+    list); any failure falls back to the legacy loop so a hiccup never
+    kills the list. Missing names resolve to None and the UI falls back
+    to a dash."""
+    wanted = {str(i) for i in ids if i is not None}
+    if not wanted:
+        return {}
     names: dict[str, str | None] = {}
-    for oid in {str(i) for i in ids if i is not None}:
+    try:
+        async with httpx.AsyncClient(
+            base_url=identity_base_url(), timeout=10.0,
+            transport=identity_transport(),
+        ) as c:
+            resp = await c.post("/api/internal/orgs/names",
+                                json={"ids": sorted(wanted)})
+        if resp.status_code == 200:
+            found = resp.json().get("names") or {}
+            return {oid: found.get(oid) for oid in wanted}
+    except Exception:
+        pass
+    for oid in wanted:
         try:
             names[oid] = (await get_identity_org(oid)).get("name")
         except Exception:
@@ -739,19 +761,54 @@ async def create_public_rfq(payload: PublicRfqIn, request: Request) -> dict:
 
 @router.get("/api/rfqs")
 async def list_rfqs(
-    request: Request, status: str = Query("", max_length=20)
+    request: Request,
+    status: str = Query("", max_length=20),
+    client: str = Query("", max_length=120),
+    port: str = Query("", max_length=120),
+    vessel: str = Query("", max_length=120),
+    ref: str = Query("", max_length=120),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
 ) -> dict:
+    """32e: the tenant View-RFQ list. Tenant scoping (the org-is-involved
+    clause) is applied BEFORE every filter — filters only ever narrow the
+    caller's own rows. Blank/absent = no restriction; filters compose
+    (AND). Dates are created-date, inclusive; a reversed range matches
+    nothing rather than erroring. Ordering is deterministic, newest
+    first. `client` is a case-insensitive partial match on the resolved
+    requesting-org display name (work resolves names via identity — no
+    cross-DB reads), falling back to the contact email."""
     caller = await caller_org(request)
     clause = "(requesting_org_id = :org OR target_org_id = :org)"
     params: dict = {"org": caller["org_id"]}
     if status:
         clause += " AND status = :status"
         params["status"] = status
+    if port:
+        clause += " AND port_name ILIKE :port"
+        params["port"] = f"%{port}%"
+    if vessel:
+        clause += " AND vessel_name ILIKE :vessel"
+        params["vessel"] = f"%{vessel}%"
+    if ref:
+        clause += " AND reference_no ILIKE :ref"
+        params["ref"] = f"%{ref}%"
+    reversed_dates = (date_from is not None and date_to is not None
+                      and date_from > date_to)
+    if not reversed_dates:
+        if date_from is not None:
+            clause += " AND created_at::date >= :dfrom"
+            params["dfrom"] = date_from
+        if date_to is not None:
+            clause += " AND created_at::date <= :dto"
+            params["dto"] = date_to
+    else:
+        clause += " AND false"
     async with SessionLocal() as session:
         rows = (
             await session.execute(
                 text(f"SELECT {RFQ_COLS} FROM rfq WHERE {clause} "
-                     "ORDER BY created_at"),
+                     "ORDER BY created_at DESC, id DESC"),
                 params,
             )
         ).mappings().all()
@@ -767,14 +824,21 @@ async def list_rfqs(
                 await session.execute(stmt, {"ids": [r["id"] for r in rows]})
             ).mappings().all():
                 by_id[str(r["rfq_id"])].append(r["survey_type"])
+    ids = [i for r in rows for i in
+           (r["requesting_org_id"], r["target_org_id"], r["billing_org_id"])]
+    org_names = await _org_names(ids)
     out = []
+    needle = client.strip().lower()
     for r in rows:
+        if needle:
+            display = (org_names.get(str(r["requesting_org_id"]))
+                       or r["contact_email"] or "")
+            if needle not in display.lower():
+                continue
         d = _row(r)
         d["survey_types"] = by_id.get(str(r["id"]), [])
         out.append(d)
-    ids = [i for r in rows for i in
-           (r["requesting_org_id"], r["target_org_id"], r["billing_org_id"])]
-    return {"rfqs": out, "org_names": await _org_names(ids)}
+    return {"rfqs": out, "org_names": org_names}
 
 
 @router.get("/api/rfqs/quote-options")
@@ -1076,7 +1140,19 @@ async def send_quote(quote_id: str, request: Request) -> dict:
 @router.get("/api/quotes")
 async def list_quotes(request: Request,
                       status: str = Query("", max_length=20),
-                      q: str = Query("", max_length=100)) -> dict:
+                      q: str = Query("", max_length=100),
+                      client: str = Query("", max_length=120),
+                      port: str = Query("", max_length=120),
+                      vessel: str = Query("", max_length=120),
+                      ref: str = Query("", max_length=120),
+                      date_from: date | None = Query(None),
+                      date_to: date | None = Query(None)) -> dict:
+    """32e: the tenant View-Quotes list. tenant_org_id scoping is applied
+    BEFORE every filter (org-scoping IS authz); blank = no restriction and
+    filters compose (AND). Dates are quote_date, inclusive; a reversed
+    range matches nothing. Ordering is deterministic, newest first, and
+    there is deliberately NO row cap — the unfiltered list never silently
+    truncates."""
     member = await require_permission(request, "quote.view")
     clause = "tenant_org_id = :org"
     params: dict = {"org": member["org_id"]}
@@ -1087,11 +1163,34 @@ async def list_quotes(request: Request,
         clause += (" AND (quote_no ILIKE :q OR client_name ILIKE :q OR "
                    "vessel_name ILIKE :q OR reference_no ILIKE :q)")
         params["q"] = f"%{q}%"
+    if client:
+        clause += " AND client_name ILIKE :client"
+        params["client"] = f"%{client}%"
+    if port:
+        clause += " AND port_name ILIKE :port"
+        params["port"] = f"%{port}%"
+    if vessel:
+        clause += " AND vessel_name ILIKE :vessel"
+        params["vessel"] = f"%{vessel}%"
+    if ref:
+        clause += " AND reference_no ILIKE :ref"
+        params["ref"] = f"%{ref}%"
+    reversed_dates = (date_from is not None and date_to is not None
+                      and date_from > date_to)
+    if not reversed_dates:
+        if date_from is not None:
+            clause += " AND quote_date >= :dfrom"
+            params["dfrom"] = date_from
+        if date_to is not None:
+            clause += " AND quote_date <= :dto"
+            params["dto"] = date_to
+    else:
+        clause += " AND false"
     async with SessionLocal() as session:
         rows = (
             await session.execute(
                 text(f"SELECT * FROM quote WHERE {clause} "
-                     "ORDER BY created_at DESC LIMIT 200"),
+                     "ORDER BY created_at DESC, id DESC"),
                 params,
             )
         ).mappings().all()

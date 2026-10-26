@@ -37,7 +37,7 @@ from .org_pages import (
     _rail_org,
     _render,
 )
-from .org_rfqs import _survey_type_labels
+from .org_rfqs import _parse_date, _survey_type_labels
 from .work_client import work_request
 
 router = APIRouter()
@@ -196,11 +196,33 @@ def _quote_form_values(quote: dict | None, commercial: dict,
 # ------------------------------------------------------------------ list
 
 @router.get("/org/quotes", response_class=HTMLResponse)
-async def quotes_index(request: Request, ctx: AuthContext = Depends(require_auth)):
+async def quotes_index(request: Request, client: str = "", status: str = "",
+                       port: str = "", vessel: str = "", ref: str = "",
+                       date_from: str = "", date_to: str = "",
+                       ctx: AuthContext = Depends(require_auth)):
+    """32e: default-ALL tenant quotations (drafts, issued, accepted,
+    declined, superseded — deterministic newest first). The filters
+    compose and forward to work, which applies tenant_org_id scoping
+    BEFORE every filter; invalid dates are dropped and a reversed range
+    renders the friendly no-results state instead of an error."""
     membership = _first_membership(ctx)
     if membership is None or not _can_view_quotes(membership):
         return _page_not_found(request, ctx)
-    resp = await work_request("GET", "/api/quotes", headers=_sid_headers(request))
+    filters: dict[str, str] = {}
+    for key, raw in (("client", client), ("status", status),
+                     ("port", port), ("vessel", vessel), ("ref", ref)):
+        if raw.strip():
+            filters[key] = raw.strip()
+    df, dt = _parse_date(date_from), _parse_date(date_to)
+    date_notice = ""
+    if (date_from.strip() and df is None) or (date_to.strip() and dt is None):
+        date_notice = "An invalid date filter was ignored."
+    if df is not None:
+        filters["date_from"] = str(df)
+    if dt is not None:
+        filters["date_to"] = str(dt)
+    resp = await work_request("GET", "/api/quotes", params=filters,
+                              headers=_sid_headers(request))
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="work service error")
     return _render(
@@ -208,7 +230,11 @@ async def quotes_index(request: Request, ctx: AuthContext = Depends(require_auth
         _quote_ctx(ctx, membership,
                    org=await _org_summary(membership.slug),
                    quotes=resp.json()["quotes"],
-                   can_manage=_can_manage_quotes(membership)),
+                   can_manage=_can_manage_quotes(membership),
+                   filters={"client": client, "status": status, "port": port,
+                            "vessel": vessel, "ref": ref,
+                            "date_from": date_from, "date_to": date_to},
+                   filters_active=bool(filters), date_notice=date_notice),
     )
 
 

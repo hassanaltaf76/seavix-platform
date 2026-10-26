@@ -220,7 +220,7 @@ def test_public_funnel_end_to_end(arun, id_asgi):
                 mine = await w.get("/org/rfqs")
                 assert mine.status_code == 200
                 assert f"PMS-QT-38-{u}" in mine.text
-                assert "Awaiting quote" in mine.text
+                assert "Awaiting Quote" in mine.text
                 rail = mine.text.split('class="sv-rail"')[1].split('class="sv-page"')[0]
                 assert 'href="/org/rfqs"' in rail
                 assert ">Dashboard</span>" not in rail
@@ -336,7 +336,7 @@ def test_manual_channel_linked_client(arun, id_asgi):
                 assert page.status_code == 200
                 assert "PMS-QT-28-2026" in page.text
                 assert "MV Linked" in page.text
-                assert "Awaiting quote" in page.text
+                assert "Awaiting Quote" in page.text
                 assert "WhatsApp" in page.text
                 assert "Capt. Amin Dar" in page.text
                 assert "Managing Director" in page.text
@@ -351,7 +351,7 @@ def test_manual_channel_linked_client(arun, id_asgi):
                 assert "PMS-QT-28-2026" in listing.text
                 assert "Dar Shipping" in listing.text
                 assert "WhatsApp" in listing.text
-                assert "Awaiting quote" in listing.text
+                assert "Awaiting Quote" in listing.text
                 assert "Fujairah" in listing.text
 
                 # round-trip through the work read model
@@ -655,7 +655,7 @@ def test_client_role_sees_only_its_own_rfqs(arun, id_asgi):
                 assert ref_a in listing.text
                 assert ref_b in listing.text
                 assert "Public page" in listing.text
-                assert "Awaiting quote" in listing.text
+                assert "Awaiting Quote" in listing.text
 
     arun(scenario())
 

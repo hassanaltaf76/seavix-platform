@@ -230,6 +230,20 @@ async def _profile_or_unavailable(request: Request, slug: str) -> HTMLResponse:
             {"request": request, "slug": slug, "reason": reason},
             status_code=404,
         )
+    # 32e: a signed-in member viewing the LIVE public profile of their OWN
+    # organization is previewing it — the Raise-an-RFQ CTA renders as a
+    # disabled, non-navigating control with an accessible explanation (a
+    # company cannot raise an RFQ against itself). Anyone else — signed
+    # out or another org — keeps the existing live CTA and entry gate.
+    # Best-effort: an identity hiccup must never take the storefront down.
+    own_profile = False
+    try:
+        viewer = await session_context(request)
+    except Exception:
+        viewer = None
+    if viewer is not None:
+        own_profile = any(m.get("slug") == slug
+                          for m in viewer.get("memberships") or [])
     # 31f: resolve the org's UN/LOCODEs to registry names — the SAME
     # resolved `org` shape the page preview renders, so preview and
     # public page stay pixel-identical.
@@ -246,6 +260,7 @@ async def _profile_or_unavailable(request: Request, slug: str) -> HTMLResponse:
     return templates.TemplateResponse(
         request, "profile.html",
         {"request": request, "org": org,
+         "own_profile": own_profile,
          "meta_description": meta_description,
          "og_image": f"{base}{org['logo_url']}" if org.get("logo_url") else None,
          "canonical_url": f"{base}/org/{slug}"},

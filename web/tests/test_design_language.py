@@ -227,6 +227,7 @@ def test_rail_structure_and_active_state():
     # permission-driven contract is the same, the variable name evolved.
     assert "'org.profile.view' in membership0.permissions" in BASE
     assert "'rfq.create' in membership0.permissions" in BASE  # 32b rail slot
+    assert "'quote.create' in membership0.permissions" in BASE  # 32e rail slot
     assert "rail_org.logo_url" in BASE
     assert 'class="sv-rail-initials"' in BASE
     assert "rail_org.initials" in BASE
@@ -236,17 +237,38 @@ def test_rail_structure_and_active_state():
     logo_at = BASE.index('class="sv-rail-logo"')
     tenant_at = BASE.index('class="sv-rail-tenant"')
     assert logo_at < tenant_at
-    # exactly one active-state marker mechanism in the shell (rail-scoped,
-    # conditionally set; the page chrome carries no other). 32a added the
-    # Clients marker, 32b the RFQs slot, 32c the Quotes slot — the tenant
-    # rail carries five items (Dashboard · Profile · RFQs · Quotes ·
-    # Clients) and the registered-client rail one (RFQs under Workspace),
-    # same mechanism throughout.
+    # 32e: the tenant RFQ + Quote treatments become real nav GROUPS —
+    # section headings are plain h2 labels (never links) with exactly the
+    # owner-specified item labels beneath, gated by the existing
+    # permissions (Requests for Quotation -> rfq.create management;
+    # Quotations -> quote.create / quote.view).
+    assert ">Requests for Quotation</h2>" in BASE
+    assert ">Quotations</h2>" in BASE
+    assert ">Create RFQ</span>" in BASE
+    assert ">View RFQ</span>" in BASE
+    assert ">Create Quote</span>" in BASE
+    assert ">View Quotes</span>" in BASE
+    assert BASE.count('href="/org/rfqs/new"') == 1
+    assert BASE.count('href="/org/rfqs"') == 2  # tenant View RFQ + client rail
+    assert BASE.count('href="/org/quotes/raise"') == 1
+    assert BASE.count('href="/org/quotes"') == 1
     rail = BASE[BASE.index('class="sv-rail"'):BASE.index('class="sv-page"')]
-    assert rail.count('aria-current="page"') == 6
+    # section headings are group labels, never links
+    assert re.search(r"<a[^>]*>\s*<h2", rail) is None
+    assert "<h2>Requests for Quotation</h2>" in rail
+    assert "<h2>Quotations</h2>" in rail
+    # exactly one active-state marker mechanism in the shell (rail-scoped,
+    # conditionally set; the page chrome carries no other). 32e: tenant
+    # items are Dashboard · Profile · Clients · Create RFQ · View RFQ ·
+    # Create Quote · View Quotes (eight aria-current sites — View RFQ
+    # doubles as the client rail's item), the registered-client rail one
+    # (RFQs under Workspace), same mechanism throughout.
+    assert rail.count('aria-current="page"') == 8
     assert '{% if active == "clients" %}aria-current="page"' in BASE
     assert '{% if active == "rfqs" %}aria-current="page"' in BASE
     assert '{% if active == "quotes" %}aria-current="page"' in BASE
+    assert '{% if active == "rfq-new" %}aria-current="page"' in BASE
+    assert '{% if active == "quote-new" %}aria-current="page"' in BASE
     assert BASE.count('{% if active == "rfqs" %}aria-current="page"') == 2
 
 

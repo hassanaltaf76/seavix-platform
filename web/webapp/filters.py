@@ -52,6 +52,13 @@ def sv_money(value: Any) -> str:
     return f"{amount.quantize(Decimal('0.01')):,}"
 
 
+def sv_date(value: Any) -> str:
+    """32e: an ISO timestamp/date string (a service response's created_at
+    or quote_date) rendered as YYYY-MM-DD; empty input -> an em dash."""
+    raw = str(value or "").strip()
+    return raw[:10] if raw else "—"
+
+
 def strip_trunk(text: Any) -> str:
     """31u: national digits with ONE leading trunk 0 dropped (E.164 trunk
     prefix). Only the cc-set branch of the tel:/wa.me hrefs applies this —
@@ -125,6 +132,8 @@ def install(env: Any) -> None:
     env.filters["tojson_u"] = tojson_u
     # 32c: thousands-separated 2dp money rendering (quote totals, amounts)
     env.filters["sv_money"] = sv_money
+    # 32e: list tables render service timestamps as dates
+    env.filters["sv_date"] = sv_date
     # 31t: the shared public partial resolves the ISO alpha-2 country
     # code to its display name at render time (vendored countries.py),
     # and builds the structured address lines (empties skipped)

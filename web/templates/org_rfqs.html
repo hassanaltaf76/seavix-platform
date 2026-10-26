@@ -1,18 +1,18 @@
-{% extends "base.html" %}{% block title %}RFQs — SeaVix{% endblock %}
+{% extends "base.html" %}{% block title %}View RFQ — SeaVix{% endblock %}
 {% set active = "rfqs" %}
-{% block page_title %}<h1>RFQs</h1>{% endblock %}
+{% block page_title %}<h1>View RFQ</h1>{% endblock %}
 {% block page_desc %}
   {% if is_client %}
   <p class="sv-page-desc">Requests your organization has raised with survey
      companies, and where each one stands.</p>
   {% else %}
-  <p class="sv-page-desc">Requests for quotation your company has received —
+  <p class="sv-page-desc">Every request for quotation your company has received —
      from your public page and raised manually from WhatsApp or email.</p>
   {% endif %}
 {% endblock %}
 {% block page_actions %}
   {% if can_raise %}
-  <a class="button" href="/org/rfqs/new">Raise RFQ</a>
+  <a class="button" href="/org/rfqs/new">Create RFQ</a>
   {% endif %}
 {% endblock %}
 
@@ -24,23 +24,80 @@
     {% if is_client %}<h2>Your requests</h2>
     <p>Every RFQ your organization has submitted, across survey companies.</p>
     {% else %}<h2>Request pipeline</h2>
-    <p>Public-page submissions and manual intake, by status.</p>
+    <p>All channels and statuses, newest first — filter to narrow.</p>
     {% endif %}
   </div>
   <div class="sv-section-body">
+    {#- 32e: the filter bar — a plain GET form so every filter state is a
+        shareable URL. Blank field = no restriction; filters compose; Clear
+        returns to the complete default-all list. -#}
+    <form method="get" action="/org/rfqs" class="sv-filter-bar">
+      <div class="sv-filter-field">
+        <label for="f-client">Client name</label>
+        <input type="text" id="f-client" name="client"
+               value="{{ filters.client }}" placeholder="Partial name">
+      </div>
+      <div class="sv-filter-field">
+        <label for="f-status">Status</label>
+        <select id="f-status" name="status">
+          <option value="">All</option>
+          {% for code, label in status_labels.items() %}
+          <option value="{{ code }}"
+                  {% if filters.status == code %}selected{% endif %}>{{
+                  label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="sv-filter-field">
+        <label for="f-port">Port/location</label>
+        <input type="text" id="f-port" name="port"
+               value="{{ filters.port }}" placeholder="Partial port">
+      </div>
+      <div class="sv-filter-field">
+        <label for="f-vessel">Vessel</label>
+        <input type="text" id="f-vessel" name="vessel"
+               value="{{ filters.vessel }}" placeholder="Partial vessel">
+      </div>
+      <div class="sv-filter-field">
+        <label for="f-ref">RFQ reference</label>
+        <input type="text" id="f-ref" name="ref"
+               value="{{ filters.ref }}" placeholder="Partial reference">
+      </div>
+      <div class="sv-filter-field">
+        <label for="f-from">Date From</label>
+        <input type="date" id="f-from" name="date_from"
+               value="{{ filters.date_from }}">
+      </div>
+      <div class="sv-filter-field">
+        <label for="f-to">Date To</label>
+        <input type="date" id="f-to" name="date_to"
+               value="{{ filters.date_to }}">
+      </div>
+      <div class="sv-filter-actions">
+        <button type="submit" class="button">Filter</button>
+        {% if filters_active %}
+        <a class="button secondary" href="/org/rfqs">Clear</a>
+        {% endif %}
+      </div>
+    </form>
+    {% if date_notice %}<p class="notice" role="status">{{ date_notice }}</p>
+    {% endif %}
+
     {% if rfqs %}
+    <div class="sv-table-wrap">
     <table class="sv-table">
       <thead>
         <tr>
-          <th scope="col">Reference</th>
+          <th scope="col">RFQ reference</th>
           {% if is_client %}<th scope="col">Survey company</th>
           {% else %}<th scope="col">Client</th>{% endif %}
           <th scope="col">Vessel</th>
-          <th scope="col">Survey types</th>
-          <th scope="col">Location</th>
-          <th scope="col">Preferred date</th>
+          <th scope="col">Service/survey type</th>
+          <th scope="col">Port/location</th>
           {% if not is_client %}<th scope="col">Channel</th>{% endif %}
-          <th scope="col">Status</th>
+          <th scope="col">Created</th>
+          <th scope="col">RFQ Status</th>
+          <th scope="col">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -61,20 +118,37 @@
             {% if not loop.last %} {% endif %}{% endfor %}</td>
           <td class="sv-ugc">{{ r.location_type }}{% if r.port_name %} —
               {{ r.port_name }}{% endif %}</td>
-          <td class="sv-mono">{{ r.preferred_date or "—" }}</td>
           {% if not is_client %}
           <td><span class="sv-status sv-status--channel">{{
               channel_labels.get(r.channel, r.channel) }}</span></td>
           {% endif %}
+          <td class="sv-mono">{{ r.created_at | sv_date }}</td>
           <td><span class="sv-status sv-status--{{ r.status }}">{{
               status_labels.get(r.status, r.status) }}</span></td>
+          <td class="sv-actions">
+            {% if not is_client and r.status == "awaiting_quote" and can_quote %}
+            {#- 32e: the Quote action opens the raise form with THIS RFQ
+                preselected. Quote Submitted rows deliberately carry no
+                duplicate new-draft action — revisions go through the
+                existing quote flow. -#}
+            <a class="button small" href="/org/quotes/raise?rfq_id={{ r.id }}"
+               data-rfq="{{ r.id }}">Quote</a>
+            {% else %}—{% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% else %}
     <div class="sv-empty">
       <svg class="sv-ic sv-ic-40" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+      {% if filters_active %}
+      <h2>No RFQs match these filters</h2>
+      <p>No request for quotation matches every filter you set — clear them
+         to return to the complete list.</p>
+      <a class="button" href="/org/rfqs">Clear filters</a>
+      {% else %}
       <h2>No RFQs yet</h2>
       {% if is_client %}
       <p>Submit a request from a survey company's public page and track it
@@ -82,7 +156,8 @@
       {% else %}
       <p>RFQs submitted on your public page and raised manually from
          WhatsApp or email land here.</p>
-      {% if can_raise %}<a class="button" href="/org/rfqs/new">Raise RFQ</a>{% endif %}
+      {% if can_raise %}<a class="button" href="/org/rfqs/new">Create RFQ</a>{% endif %}
+      {% endif %}
       {% endif %}
     </div>
     {% endif %}

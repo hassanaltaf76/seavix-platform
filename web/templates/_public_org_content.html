@@ -133,5 +133,22 @@
     {% endif %}
   </section>
   {% endif %}
+  {#- 32e: `own_profile` (the signed-in member viewing their OWN org's
+      public content — either on the live /org/<slug> page or in the
+      profile settings preview, which is the same viewer by definition)
+      renders the CTA as a DISABLED, non-navigating control with an
+      accessible explanation: this is a preview, and a company cannot
+      raise an RFQ against itself. Everyone else — signed-out visitors
+      and external signed-in clients — keeps the live link and the
+      registration entry gate behind it. The default (undefined) is the
+      live link, so anonymous renders are never affected. -#}
+  {% if own_profile | default(false) %}
+  <p class="sv-rfq-wrap">
+    <button class="button sv-rfq-cta" type="button" disabled
+            aria-describedby="sv-rfq-preview-note">Raise an RFQ</button>
+  </p>
+  <p class="sv-rfq-preview-note" id="sv-rfq-preview-note" role="note">You are previewing your public profile — this button is disabled for you and stays live for your visitors.</p>
+  {% else %}
   <p class="sv-rfq-wrap"><a class="button sv-rfq-cta" href="/org/{{ org.slug }}/rfq">Raise an RFQ</a></p>
+  {% endif %}
 </article>

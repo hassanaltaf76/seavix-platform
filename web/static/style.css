@@ -276,6 +276,12 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
   gap: 1rem;
   margin: 0 0 1.25rem;
 }
+@media (max-width: 640px) {
+  /* 32e: on phones the header actions drop below the H1+description
+     instead of squeezing the title into a narrow column */
+  .sv-page-header { flex-direction: column; }
+  .sv-page-actions { flex-wrap: wrap; }
+}
 .sv-page-header h1 { overflow: hidden; text-overflow: ellipsis; }
 .sv-page-desc { margin: 0.25rem 0 0; font-size: 13px; line-height: 20px; color: var(--text-2); }
 .sv-page-actions { flex: none; display: flex; align-items: center; gap: 0.5rem; }
@@ -342,6 +348,52 @@ small, .sv-caption { font-size: 12px; line-height: 16px; font-weight: 500; color
   font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
 }
 .sv-table tr:hover td { background: #F9FAFB; }
+
+/* 32e: list tables — deliberate horizontal containment. The wrap scrolls
+   sideways on narrow viewports instead of ever letting the page itself
+   overflow; free text cells wrap anywhere (31l .sv-ugc). */
+.sv-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border); border-radius: var(--r-card);
+}
+.sv-table-wrap .sv-table { min-width: 720px; }
+.sv-table .sv-ugc { max-width: 220px; }
+.sv-actions { white-space: nowrap; }
+.sv-actions .button.small { margin-right: 0.35rem; }
+
+/* 32e: compact row action button (tables keep their 13px rhythm) */
+.button.small {
+  min-height: 28px; padding: 0 0.6rem;
+  font-size: 12px; font-weight: 600; line-height: 16px;
+  border-radius: 6px;
+}
+
+/* 32e: the list filter bar — one wrapping row of labelled fields above
+   the table; the fields reuse the §4 input styling, un-carded. */
+.sv-filter-bar {
+  display: flex; flex-wrap: wrap; align-items: flex-end;
+  gap: 0.6rem 0.75rem; margin: 0 0 1rem;
+}
+.sv-filter-field { display: flex; flex-direction: column; min-width: 130px; flex: 1 1 130px; }
+.sv-filter-field label {
+  margin: 0 0 0.25rem;
+  font-size: 13px; line-height: 18px; font-weight: 500; color: var(--ink);
+}
+.sv-filter-field input, .sv-filter-field select {
+  width: 100%; min-height: 40px; padding: 0 0.65rem;
+  font-family: inherit; font-size: 14px; line-height: 20px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+.sv-filter-field input:focus, .sv-filter-field select:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(21, 112, 239, 0.3);
+}
+.sv-filter-actions { display: flex; gap: 0.5rem; align-items: center; }
+@media (max-width: 640px) {
+  .sv-filter-field { flex-basis: calc(50% - 0.4rem); min-width: 0; }
+  .sv-filter-actions { width: 100%; }
+}
 
 .sv-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem 1rem; }
 .sv-form-grid .sv-span-2 { grid-column: span 2; }
@@ -796,6 +848,13 @@ button:disabled, button:disabled:hover {
   display: flex; width: 100%;
   margin-top: 1.25rem;
   min-height: 44px; font-size: 15px;
+}
+/* 32e: own-profile preview — the CTA is disabled (40% opacity by the
+   button contract) and the note below explains why, for everyone
+   including assistive tech (role="note" + aria-describedby). */
+.sv-rfq-preview-note {
+  margin: 0.5rem 0 0; font-size: 13px; line-height: 20px;
+  color: var(--text-2);
 }
 
 /* ============================================== AUTH LAYOUT (§6) */

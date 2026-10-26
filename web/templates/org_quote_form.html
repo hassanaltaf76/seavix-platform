@@ -1,8 +1,8 @@
-{% extends "base.html" %}{% block title %}{% if quote %}Edit quote{% else %}Raise quote{% endif %} — SeaVix{% endblock %}
-{% set active = "quotes" %}
+{% extends "base.html" %}{% block title %}{% if quote %}Edit quote{% else %}Create Quote{% endif %} — SeaVix{% endblock %}
+{% set active = "quote-new" if quote is none else "quotes" %}
 {% block page_title %}
   <h1>{% if quote %}Edit quote <span class="sv-mono sv-ugc">{{ quote.quote_no }}</span>
-      {% else %}Raise quote{% endif %}</h1>
+      {% else %}Create Quote{% endif %}</h1>
 {% endblock %}
 {% block page_desc %}
   {% if quote %}
@@ -42,7 +42,9 @@ function quoteRfqPicker() {
       } finally { this.loading = false; }
     },
     fmt(c) {
-      const st = {awaiting_quote: "Awaiting quote", quoted: "Quoted"};
+      // 32e: the picker shows the same owner-facing status labels as the
+      // lists ("Awaiting Quote" / "Quote Submitted").
+      const st = {awaiting_quote: "Awaiting Quote", quoted: "Quote Submitted"};
       return (c.reference_no || "—") + " · " + (c.vessel_name || "—")
         + " · " + (st[c.status] || c.status);
     },
